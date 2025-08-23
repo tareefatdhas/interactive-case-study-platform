@@ -7,7 +7,9 @@ import {
   getSession, 
   getCaseStudy, 
   updateSessionActivity,
-  releaseNextSection
+  releaseNextSection,
+  getResponsesBySession,
+  getStudentsByIds
 } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import type { Session, CaseStudy, Response, Student } from '@/types';
@@ -109,22 +111,37 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   useEffect(() => {
     if (!session) return;
 
-    // Subscribe to live session data from Realtime Database
-    const { subscribeToLiveSession, subscribeToLiveResponses, subscribeToStudentPresence } = require('@/lib/firebase/realtime');
+    // Ensure session exists in Realtime Database and subscribe to live data
+    const { subscribeToLiveSession, subscribeToLiveResponses, subscribeToStudentPresence, ensureLiveSessionExists } = require('@/lib/firebase/realtime');
+    
+    // Initialize Realtime Database session if it doesn't exist
+    ensureLiveSessionExists(session.id, session).catch(console.warn);
     
     const unsubscribeLive = subscribeToLiveSession(session.id, (liveSession) => {
-      if (liveSession) {
+      if (liveSession && liveSession.status) {
         // Update session with live status
         setSession(prev => prev ? {
           ...prev,
-          active: liveSession.status.active,
-          releasedSections: liveSession.status.releasedSections,
-          currentSection: liveSession.status.currentSection
+          active: liveSession.status.active ?? prev.active,
+          releasedSections: liveSession.status.releasedSections ?? prev.releasedSections,
+          currentSection: liveSession.status.currentSection ?? prev.currentSection
         } : prev);
       }
     });
 
-    // Subscribe to live responses from Realtime Database
+    // Load historical responses from Firestore first
+    const loadHistoricalResponses = async () => {
+      try {
+        const firestoreResponses = await getResponsesBySession(session.id);
+        setResponses(firestoreResponses);
+      } catch (error) {
+        console.error('Error loading historical responses:', error);
+      }
+    };
+    
+    loadHistoricalResponses();
+
+    // Subscribe to live responses from Realtime Database for new responses
     const unsubscribeResponses = subscribeToLiveResponses(session.id, (liveResponses) => {
       // Convert Realtime Database format to our Response format
       const liveResponseArray = Object.entries(liveResponses || {}).map(([id, response]) => ({
@@ -133,22 +150,50 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         submittedAt: new Date(response.timestamp)
       }));
       
-      // For now, just show live responses. In a full implementation, you might want to 
-      // merge with historical responses from Firestore if needed
-      setResponses(liveResponseArray);
+      // Merge with existing Firestore responses (avoid duplicates)
+      setResponses(prevResponses => {
+        const existingIds = new Set(prevResponses.map(r => r.id));
+        const newLiveResponses = liveResponseArray.filter(r => !existingIds.has(r.id));
+        return [...prevResponses, ...newLiveResponses];
+      });
     });
 
-    // Subscribe to student presence
+    // Load complete student data from Firestore
+    const loadStudentData = async () => {
+      try {
+        // Get all unique student IDs from multiple sources
+        const allStudentIds = new Set<string>();
+        session.studentsJoined?.forEach(id => allStudentIds.add(id));
+        responses.forEach(response => allStudentIds.add(response.studentId));
+        
+        if (allStudentIds.size > 0) {
+          const firestoreStudents = await getStudentsByIds(Array.from(allStudentIds));
+          setStudents(firestoreStudents);
+        }
+      } catch (error) {
+        console.error('Error loading student data:', error);
+      }
+    };
+    
+    loadStudentData();
+
+    // Subscribe to student presence for real-time updates
     const unsubscribePresence = subscribeToStudentPresence(session.id, (presenceData) => {
+      // Update presence information without overriding student data
       if (presenceData) {
-        const presentStudents = Object.entries(presenceData).map(([studentId, data]) => ({
-          id: studentId,
-          studentId,
-          name: data.name,
-          present: data.present,
-          lastSeen: new Date(data.lastSeen)
-        }));
-        setStudents(presentStudents);
+        setStudents(prevStudents => {
+          return prevStudents.map(student => {
+            const presenceInfo = presenceData[student.id];
+            if (presenceInfo) {
+              return {
+                ...student,
+                present: presenceInfo.present,
+                lastSeen: new Date(presenceInfo.lastSeen)
+              };
+            }
+            return student;
+          });
+        });
       }
     });
 
@@ -207,6 +252,25 @@ export default function PresentationPage({ params }: PresentationPageProps) {
     return `${diffMins}m`;
   }, [session, currentTime]);
 
+  // Get all unique students from multiple sources
+  const allStudentIds = useMemo(() => {
+    const studentIds = new Set<string>();
+    
+    // Add students from session.studentsJoined
+    session?.studentsJoined?.forEach(id => studentIds.add(id));
+    
+    // Add students who have submitted responses
+    responses.forEach(response => studentIds.add(response.studentId));
+    
+    // Add students from presence data
+    students.forEach(student => {
+      studentIds.add(student.id);
+      if (student.studentId) studentIds.add(student.studentId);
+    });
+    
+    return Array.from(studentIds);
+  }, [session, responses, students]);
+
   // Memoized student progress calculation
   const studentProgress = useMemo(() => {
     if (!session || !caseStudy) return [];
@@ -227,22 +291,36 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       return total;
     }, 0);
 
-    return session.studentsJoined.map(studentId => {
+    // Use all unique student IDs, not just session.studentsJoined
+    return allStudentIds.map(studentId => {
       const studentResponseList = studentResponses[studentId] || [];
-      const progress = totalQuestions > 0 ? (studentResponseList.length / totalQuestions) * 100 : 0;
-      const student = students.find(s => s.studentId === studentId);
+      
+      // Filter responses to only count those from released sections
+      const releasedResponses = studentResponseList.filter(response => {
+        const questionSection = caseStudy.sections.find(section => 
+          section.questions.some(q => q.id === response.questionId)
+        );
+        if (!questionSection) return false;
+        const sectionIndex = caseStudy.sections.indexOf(questionSection);
+        return session.releasedSections?.includes(sectionIndex) || false;
+      });
+      
+      const progress = totalQuestions > 0 ? (releasedResponses.length / totalQuestions) * 100 : 0;
+      // Fix: Check both document ID and readable studentId for student lookup
+      const student = students.find(s => s.id === studentId || s.studentId === studentId);
       
       return {
         studentId,
         name: student?.name || null,
         displayName: student?.name || student?.studentId || studentId,
-        responses: studentResponseList.length,
+        responses: releasedResponses.length, // Use filtered responses count
         totalQuestions,
         progress: Math.round(progress),
         completed: progress === 100
       };
-    }).sort((a, b) => b.progress - a.progress); // Sort by progress descending
-  }, [session, caseStudy, responses, students]);
+    }).filter(student => student.responses > 0 || (session?.studentsJoined?.includes(student.studentId)))
+      .sort((a, b) => b.progress - a.progress); // Sort by progress descending
+  }, [session, caseStudy, responses, students, allStudentIds]);
 
   // Calculate averages and metrics
   const metrics = useMemo(() => {
@@ -301,7 +379,8 @@ export default function PresentationPage({ params }: PresentationPageProps) {
           const questionResponses = responses
             .filter(r => r.questionId === question.id)
             .map(r => {
-              const student = students.find(s => s.studentId === r.studentId);
+              // Fix: Check both document ID and readable studentId for student lookup
+              const student = students.find(s => s.id === r.studentId || s.studentId === r.studentId);
               
               // For multiple choice, determine which option was selected
               let selectedIndex: number | undefined;

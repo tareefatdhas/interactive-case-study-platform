@@ -9,7 +9,9 @@ import {
   getCaseStudy, 
   updateSession,
   updateSessionActivity,
-  releaseNextSection
+  releaseNextSection,
+  getResponsesBySession,
+  getStudentsByIds
 } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
@@ -95,22 +97,37 @@ export default function SessionPage({ params }: SessionPageProps) {
   useEffect(() => {
     if (!session) return;
 
-    // Subscribe to live session data from Realtime Database
-    const { subscribeToLiveSession, subscribeToLiveResponses } = require('@/lib/firebase/realtime');
+    // Ensure session exists in Realtime Database and subscribe to live data
+    const { subscribeToLiveSession, subscribeToLiveResponses, ensureLiveSessionExists } = require('@/lib/firebase/realtime');
+    
+    // Initialize Realtime Database session if it doesn't exist
+    ensureLiveSessionExists(session.id, session).catch(console.warn);
     
     const unsubscribeLive = subscribeToLiveSession(session.id, (liveSession) => {
-      if (liveSession) {
+      if (liveSession && liveSession.status) {
         // Update session with live status
         setSession(prev => prev ? {
           ...prev,
-          active: liveSession.status.active,
-          releasedSections: liveSession.status.releasedSections,
-          currentSection: liveSession.status.currentSection
+          active: liveSession.status.active ?? prev.active,
+          releasedSections: liveSession.status.releasedSections ?? prev.releasedSections,
+          currentSection: liveSession.status.currentSection ?? prev.currentSection
         } : prev);
       }
     });
 
-    // Subscribe to live responses from Realtime Database
+    // Load historical responses from Firestore first
+    const loadHistoricalResponses = async () => {
+      try {
+        const firestoreResponses = await getResponsesBySession(session.id);
+        setResponses(firestoreResponses);
+      } catch (error) {
+        console.error('Error loading historical responses:', error);
+      }
+    };
+    
+    loadHistoricalResponses();
+
+    // Subscribe to live responses from Realtime Database for new responses
     const unsubscribeResponses = subscribeToLiveResponses(session.id, (liveResponses) => {
       // Convert Realtime Database format to our Response format
       const liveResponseArray = Object.entries(liveResponses || {}).map(([id, response]) => ({
@@ -119,24 +136,51 @@ export default function SessionPage({ params }: SessionPageProps) {
         submittedAt: new Date(response.timestamp)
       }));
       
-      // For now, just show live responses. In a full implementation, you might want to 
-      // merge with historical responses from Firestore if needed
-      setResponses(liveResponseArray);
+      // Merge with existing Firestore responses (avoid duplicates)
+      setResponses(prevResponses => {
+        const existingIds = new Set(prevResponses.map(r => r.id));
+        const newLiveResponses = liveResponseArray.filter(r => !existingIds.has(r.id));
+        return [...prevResponses, ...newLiveResponses];
+      });
     });
 
-    // Subscribe to student presence
+    // Load complete student data from Firestore
+    const loadStudentData = async () => {
+      try {
+        // Get all unique student IDs from multiple sources
+        const allStudentIds = new Set<string>();
+        session.studentsJoined?.forEach(id => allStudentIds.add(id));
+        responses.forEach(response => allStudentIds.add(response.studentId));
+        
+        if (allStudentIds.size > 0) {
+          const firestoreStudents = await getStudentsByIds(Array.from(allStudentIds));
+          setStudents(firestoreStudents);
+        }
+      } catch (error) {
+        console.error('Error loading student data:', error);
+      }
+    };
+    
+    loadStudentData();
+
+    // Subscribe to student presence for real-time updates
     const { subscribeToStudentPresence } = require('@/lib/firebase/realtime');
     const unsubscribePresence = subscribeToStudentPresence(session.id, (presenceData) => {
-      // Update student list with presence information
+      // Update presence information without overriding student data
       if (presenceData) {
-        const presentStudents = Object.entries(presenceData).map(([studentId, data]) => ({
-          id: studentId,
-          studentId,
-          name: data.name,
-          present: data.present,
-          lastSeen: new Date(data.lastSeen)
-        }));
-        setStudents(presentStudents);
+        setStudents(prevStudents => {
+          return prevStudents.map(student => {
+            const presenceInfo = presenceData[student.id];
+            if (presenceInfo) {
+              return {
+                ...student,
+                present: presenceInfo.present,
+                lastSeen: new Date(presenceInfo.lastSeen)
+              };
+            }
+            return student;
+          });
+        });
       }
     });
 
@@ -236,12 +280,32 @@ export default function SessionPage({ params }: SessionPageProps) {
 
   // Helper function to get student display name
   const getStudentDisplayName = (studentId: string) => {
-    const student = students.find(s => s.studentId === studentId);
+    // Fix: Check both document ID and readable studentId for student lookup
+    const student = students.find(s => s.id === studentId || s.studentId === studentId);
     if (student) {
-      return student.name || student.studentId;
+      return student.name || student.studentId || studentId;
     }
     return studentId; // Fallback to raw ID if student not found
   };
+
+  // Get all unique students from multiple sources
+  const allStudentIds = useMemo(() => {
+    const studentIds = new Set<string>();
+    
+    // Add students from session.studentsJoined
+    session?.studentsJoined?.forEach(id => studentIds.add(id));
+    
+    // Add students who have submitted responses
+    responses.forEach(response => studentIds.add(response.studentId));
+    
+    // Add students from presence data
+    students.forEach(student => {
+      studentIds.add(student.id);
+      if (student.studentId) studentIds.add(student.studentId);
+    });
+    
+    return Array.from(studentIds);
+  }, [session, responses, students]);
 
   // Memoized student progress calculation that updates when dependencies change
   const studentProgress = useMemo(() => {
@@ -263,22 +327,37 @@ export default function SessionPage({ params }: SessionPageProps) {
       return total;
     }, 0);
 
-    return session.studentsJoined.map(studentId => {
+    // Use all unique student IDs, not just session.studentsJoined
+    return allStudentIds.map(studentId => {
       const studentResponseList = studentResponses[studentId] || [];
-      const progress = totalQuestions > 0 ? (studentResponseList.length / totalQuestions) * 100 : 0;
-      const student = students.find(s => s.studentId === studentId);
+      
+      // Filter responses to only count those from released sections
+      const releasedResponses = studentResponseList.filter(response => {
+        const questionSection = caseStudy.sections.find(section => 
+          section.questions.some(q => q.id === response.questionId)
+        );
+        if (!questionSection) return false;
+        const sectionIndex = caseStudy.sections.indexOf(questionSection);
+        return session.releasedSections?.includes(sectionIndex) || false;
+      });
+      
+      const progress = totalQuestions > 0 ? (releasedResponses.length / totalQuestions) * 100 : 0;
+      // Fix: Check both document ID and readable studentId for student lookup
+      const student = students.find(s => s.id === studentId || s.studentId === studentId);
+      
+
       
       return {
         studentId,
         name: student?.name || null,
         displayName: student?.name || student?.studentId || studentId,
-        responses: studentResponseList.length,
+        responses: releasedResponses.length, // Use filtered responses count
         totalQuestions,
         progress: Math.round(progress),
         completed: progress === 100
       };
-    });
-  }, [session, caseStudy, responses, students]);
+    }).filter(student => student.responses > 0 || (session?.studentsJoined?.includes(student.studentId)));
+  }, [session, caseStudy, responses, students, allStudentIds]);
 
   // Memoized average progress calculation
   const averageProgress = useMemo(() => {
@@ -377,7 +456,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                       <div className="ml-3">
                         <p className="text-sm font-medium text-gray-600">Students Joined</p>
                         <p className="text-2xl font-bold text-gray-900">
-                          {session?.studentsJoined.length || 0}
+                          {studentProgress.length}
                         </p>
                       </div>
                     </div>

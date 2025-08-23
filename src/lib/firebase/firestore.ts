@@ -473,3 +473,90 @@ export const calculateStudentProgress = (responses: Response[], totalQuestions: 
     percentage: totalQuestions > 0 ? (responses.length / totalQuestions) * 100 : 0
   };
 };
+
+// Get all students with their performance statistics
+export const getAllStudentsWithStats = async (teacherId: string) => {
+  try {
+    // Get all sessions for this teacher to find all students who participated
+    const sessions = await getSessionsByTeacher(teacherId);
+    const allStudentIds = new Set<string>();
+    
+    sessions.forEach(session => {
+      session.studentsJoined?.forEach(studentId => {
+        allStudentIds.add(studentId);
+      });
+    });
+
+    if (allStudentIds.size === 0) {
+      return [];
+    }
+
+    // Get student details
+    const students = await getStudentsByIds(Array.from(allStudentIds));
+    
+    // Get all responses for these students
+    const studentStats = await Promise.all(
+      students.map(async (student) => {
+        // Get all responses by this student
+        // Try both the document ID and the readable studentId to be safe
+        const queries = [
+          query(
+            collection(db, COLLECTIONS.RESPONSES),
+            where('studentId', '==', student.id)
+          ),
+          ...(student.studentId && student.studentId !== student.id ? [
+            query(
+              collection(db, COLLECTIONS.RESPONSES),
+              where('studentId', '==', student.studentId)
+            )
+          ] : [])
+        ];
+        
+        const responseSnapshots = await Promise.all(queries.map(q => getDocs(q)));
+        const allResponses = new Map<string, Response>();
+        
+        responseSnapshots.forEach(responseSnapshot => {
+          responseSnapshot.docs.forEach(doc => {
+            allResponses.set(doc.id, {
+              id: doc.id,
+              ...doc.data()
+            } as Response);
+          });
+        });
+        
+        const responses = Array.from(allResponses.values());
+
+        // Calculate statistics
+        const totalResponses = responses.length;
+        const gradedResponses = responses.filter(r => r.points !== undefined);
+        const totalPoints = gradedResponses.reduce((sum, r) => sum + (r.points || 0), 0);
+        const maxTotalPoints = responses.reduce((sum, r) => sum + r.maxPoints, 0);
+        
+        // Calculate correct responses (for multiple choice questions)
+        const correctResponses = gradedResponses.filter(r => {
+          // A response is "correct" if it earned the maximum points for that question
+          return r.points === r.maxPoints;
+        }).length;
+        
+        const correctPercentage = totalResponses > 0 ? (correctResponses / totalResponses) * 100 : 0;
+
+        return {
+          ...student,
+          stats: {
+            totalResponses,
+            correctResponses,
+            correctPercentage: Math.round(correctPercentage * 10) / 10, // Round to 1 decimal
+            totalPoints,
+            maxTotalPoints,
+            averageScore: maxTotalPoints > 0 ? Math.round((totalPoints / maxTotalPoints) * 100 * 10) / 10 : 0
+          }
+        };
+      })
+    );
+
+    return studentStats;
+  } catch (error) {
+    console.error('Error getting students with stats:', error);
+    throw error;
+  }
+};

@@ -2,12 +2,6 @@
   "rules": {
     ".read": "auth != null",
     ".write": "auth != null",
-    "sessions": {
-      "$sessionId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
-      }
-    },
     "test": {
       ".read": true,
       ".write": true

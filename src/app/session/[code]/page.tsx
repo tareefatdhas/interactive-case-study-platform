@@ -299,8 +299,8 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
     const handleBeforeUnload = async () => {
       try {
-        const { updateStudentPresence } = require('@/lib/firebase/realtime');
-        await updateStudentPresence(session.id, student.studentId, false);
+        const { updateStudentPresenceStudent } = require('@/lib/firebase/student-realtime');
+        await updateStudentPresenceStudent(session.id, student.id, false);
       } catch (error) {
         console.warn('Failed to update presence on unload:', error);
       }
@@ -309,8 +309,8 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     // Set up presence tracking
     const setupPresence = async () => {
       try {
-        const { updateStudentPresence } = require('@/lib/firebase/realtime');
-        await updateStudentPresence(session.id, student.studentId, true);
+        const { updateStudentPresenceStudent } = require('@/lib/firebase/student-realtime');
+        await updateStudentPresenceStudent(session.id, student.id, true);
       } catch (error) {
         console.warn('Failed to set initial presence:', error);
       }
@@ -325,8 +325,8 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       // Update presence to offline when component unmounts
-      const { updateStudentPresence } = require('@/lib/firebase/realtime');
-      updateStudentPresence(session.id, student.studentId, false).catch(console.warn);
+      const { updateStudentPresenceStudent } = require('@/lib/firebase/student-realtime');
+      updateStudentPresenceStudent(session.id, student.id, false).catch(console.warn);
     };
   }, [session, student]);
 
@@ -335,9 +335,9 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     if (!session || step !== 'waiting') return;
 
     // Use Realtime Database for instant updates with zero polling
-    const { subscribeToSessionStatus } = require('@/lib/firebase/realtime');
+    const { subscribeToSessionStatusStudent } = require('@/lib/firebase/student-realtime');
     
-    const unsubscribe = subscribeToSessionStatus(session.id, (status) => {
+    const unsubscribe = subscribeToSessionStatusStudent(session.id, (status) => {
       if (status) {
         const nextSectionIndex = currentSection + 1;
         const isNextSectionNowReleased = status.releasedSections?.includes(nextSectionIndex) || false;
@@ -403,21 +403,23 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       console.log('JOIN: Joining session...');
       try {
         // Use hybrid approach: Update both Firestore (persistence) and Realtime Database (live presence)
-        await joinSession(session.id, studentData.studentId);
+        // Use the Firestore document ID for consistency
+        await joinSession(session.id, studentData.id);
         console.log('JOIN: Session joined successfully');
       } catch (error: any) {
         console.error('JOIN: Session join failed:', error.code || 'unknown', '-', error.message);
         throw error;
       }
       
-      // Add to Realtime Database for live presence
-      try {
-        const { joinLiveSession } = require('@/lib/firebase/realtime');
-        await joinLiveSession(session.id, studentData.studentId, studentData.name);
-        console.log('JOIN: Live session joined successfully');
-      } catch (error: any) {
-        console.warn('JOIN: Live session join failed (non-critical):', error);
-      }
+             // Add to Realtime Database for live presence
+       // Use the Firestore document ID for consistency with responses
+       try {
+         const { joinLiveSessionStudent } = require('@/lib/firebase/student-realtime');
+         await joinLiveSessionStudent(session.id, studentData.id, studentData.name);
+         console.log('JOIN: Live session joined successfully');
+       } catch (error: any) {
+         console.warn('JOIN: Live session join failed (non-critical):', error);
+       }
       
       console.log('JOIN: Getting responses...');
       let existingResponses: Response[] = [];
@@ -555,9 +557,10 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           });
 
           // Also add to Realtime Database for live teacher viewing
+          // Use the same studentId as Firestore for consistency
           try {
-            const { addLiveResponse } = require('@/lib/firebase/realtime');
-            await addLiveResponse(session.id, student.studentId, question.id, responseText);
+            const { addLiveResponseStudent } = require('@/lib/firebase/student-realtime');
+            await addLiveResponseStudent(session.id, student.id, question.id, responseText);
           } catch (error) {
             console.warn('Failed to add live response:', error);
           }

@@ -121,6 +121,8 @@ export default function SessionsPage() {
     return () => clearInterval(interval);
   }, [user]);
 
+
+
   const handleEndSession = async (sessionId: string) => {
     if (!confirm('Are you sure you want to end this session? Students will no longer be able to join or submit responses.')) {
       return;
@@ -242,6 +244,7 @@ export default function SessionsPage() {
               </p>
             </div>
             <div className="flex items-center space-x-3">
+
               {activeSessions.length > 1 && (
                 <Button 
                   variant="outline"

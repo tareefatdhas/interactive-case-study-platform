@@ -56,6 +56,32 @@ export const createLiveSession = async (sessionId: string, initialData: Partial<
   return sessionId;
 };
 
+export const ensureLiveSessionExists = async (sessionId: string, firestoreSession: any) => {
+  const sessionRef = ref(realtimeDb, `sessions/${sessionId}`);
+  
+  // Check if session exists in Realtime Database
+  const snapshot = await get(sessionRef);
+  
+  if (!snapshot.exists()) {
+    // Create the session with data from Firestore
+    const defaultSession: LiveSession = {
+      status: {
+        active: firestoreSession.active || false,
+        currentSection: firestoreSession.currentReleasedSection || 0,
+        releasedSections: firestoreSession.releasedSections || [0]
+      },
+      students: {},
+      responses: {},
+      activity: {
+        lastActivity: Date.now(),
+        teacherPresent: false
+      }
+    };
+    
+    await set(sessionRef, defaultSession);
+  }
+};
+
 export const updateSessionStatus = async (sessionId: string, status: Partial<LiveSession['status']>) => {
   const statusRef = ref(realtimeDb, `sessions/${sessionId}/status`);
   await update(statusRef, status);
