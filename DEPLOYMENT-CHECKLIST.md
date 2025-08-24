@@ -8,7 +8,7 @@ Your Interactive Case Study Platform is ready to deploy to Vercel and handle 120
 
 ### Firebase Configuration
 - [x] Environment variables configured for production
-- [x] Firebase project ID: interactive-case-study-2aff7
+- [x] Firebase project ID configured
 - [x] Realtime Database URL configured
 - [x] Authentication domain set up
 
@@ -43,13 +43,13 @@ Your Interactive Case Study Platform is ready to deploy to Vercel and handle 120
 
 1. **Environment Variables Setup**
    ```
-   NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyCKGAzNqlJjW7VmcXDdQ9U7WPihTHLGTk0
-   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=interactive-case-study-2aff7.firebaseapp.com
-   NEXT_PUBLIC_FIREBASE_PROJECT_ID=interactive-case-study-2aff7
-   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=interactive-case-study-2aff7.firebasestorage.app
-   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1038505602951
-   NEXT_PUBLIC_FIREBASE_APP_ID=1:1038505602951:web:52921a382780be5c5cad22
-   NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://interactive-case-study-2aff7-default-rtdb.asia-southeast1.firebasedatabase.app/
+   NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key_here
+   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
+   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id_here
+   NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id_here
+   NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://your-project-id-default-rtdb.region.firebasedatabase.app/
    NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
    ```
 

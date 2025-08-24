@@ -6,6 +6,9 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
+import BulletList from '@tiptap/extension-bullet-list';
+import OrderedList from '@tiptap/extension-ordered-list';
+import ListItem from '@tiptap/extension-list-item';
 import { 
   Bold, 
   Italic, 
@@ -44,7 +47,27 @@ export default function RichTextEditor({
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        // Disable list extensions from StarterKit as we'll configure them explicitly
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
+      }),
+      BulletList.configure({
+        HTMLAttributes: {
+          class: 'list-disc list-inside ml-4',
+        },
+      }),
+      OrderedList.configure({
+        HTMLAttributes: {
+          class: 'list-decimal list-inside ml-4',
+        },
+      }),
+      ListItem.configure({
+        HTMLAttributes: {
+          class: 'mb-1',
+        },
+      }),
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
@@ -65,7 +88,7 @@ export default function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[200px] p-4',
+        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[200px] p-4 prose-ul:list-disc prose-ol:list-decimal prose-li:marker:text-slate-400',
       },
     },
     immediatelyRender: false,

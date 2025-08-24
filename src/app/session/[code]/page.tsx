@@ -65,6 +65,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   // State for new section notifications
   const [newSectionAvailable, setNewSectionAvailable] = useState(false);
   const [newSectionIndex, setNewSectionIndex] = useState(-1);
+  const [initialReleasedSections, setInitialReleasedSections] = useState<number[] | null>(null);
 
   // Storage key for this specific session
   const storageKey = `student-session-${resolvedParams.code}`;
@@ -215,6 +216,9 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         
         setSession(sessionData);
         
+        // Track initial released sections to detect live releases later
+        setInitialReleasedSections(sessionData.releasedSections || []);
+        
         console.log('LOAD: Fetching case study data...');
         const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
         if (!caseStudyData) {
@@ -350,37 +354,48 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           currentReleasedSection: status.currentReleasedSection
         } : prev);
         
-        // Check if there are newly available sections
-        const maxReleasedSection = Math.max(...status.releasedSections);
-        const nextAvailableSection = currentSection + 1;
-        
-        // If we're in waiting step and next section is now available, auto-advance
-        if (step === 'waiting' && status.releasedSections.includes(nextAvailableSection)) {
-          setCurrentSection(nextAvailableSection);
-          setStep('reading');
-          setNewSectionAvailable(false);
-        }
-        // If we're reading/review and there are later sections available, show notification
-        else if ((step === 'reading' || step === 'review') && maxReleasedSection > currentSection) {
-          const isCurrentlyWorking = step === 'reading' && (
-            Object.keys(currentResponses).length > 0 || 
-            !hasReadSection ||
-            showQuestions
+        // Only show notifications for sections that are newly released (not already released when student joined)
+        if (initialReleasedSections !== null) {
+          const newlyReleasedSections = status.releasedSections.filter(
+            (sectionIndex: number) => !initialReleasedSections.includes(sectionIndex)
           );
           
-          // Only show notification if student isn't actively working on current section
-          // AND the new section is actually ahead of where they currently are
-          const targetNewSection = Math.min(maxReleasedSection, nextAvailableSection);
-          if (!isCurrentlyWorking && !newSectionAvailable && targetNewSection > currentSection) {
-            setNewSectionAvailable(true);
-            setNewSectionIndex(targetNewSection);
+          if (newlyReleasedSections.length > 0) {
+            const maxNewlyReleasedSection = Math.max(...newlyReleasedSections);
+            const nextAvailableSection = currentSection + 1;
+            
+            // If we're in waiting step and next section is now available, auto-advance
+            if (step === 'waiting' && newlyReleasedSections.includes(nextAvailableSection)) {
+              setCurrentSection(nextAvailableSection);
+              setStep('reading');
+              setNewSectionAvailable(false);
+            }
+            // If we're reading/review and there are newly released sections available, show notification
+            else if ((step === 'reading' || step === 'review') && maxNewlyReleasedSection > currentSection) {
+              const isCurrentlyWorking = step === 'reading' && (
+                Object.keys(currentResponses).length > 0 || 
+                !hasReadSection ||
+                showQuestions
+              );
+              
+              // Only show notification if student isn't actively working on current section
+              // AND the new section is actually ahead of where they currently are
+              const targetNewSection = Math.min(maxNewlyReleasedSection, nextAvailableSection);
+              if (!isCurrentlyWorking && !newSectionAvailable && targetNewSection > currentSection) {
+                setNewSectionAvailable(true);
+                setNewSectionIndex(targetNewSection);
+              }
+            }
+            
+            // Update our tracking of initial sections to include the newly released ones
+            setInitialReleasedSections(prev => prev ? [...prev, ...newlyReleasedSections] : status.releasedSections);
           }
         }
       }
     });
 
     return () => unsubscribe?.();
-  }, [session, step, currentSection, hasReadSection, showQuestions, currentResponses, newSectionAvailable]);
+  }, [session, step, currentSection, hasReadSection, showQuestions, currentResponses, newSectionAvailable, initialReleasedSections]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -634,6 +649,30 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     return responses.some(r => r.questionId === questionId);
   };
 
+  // Helper function to check if a section is completed (with release validation)
+  const isSectionCompleted = (sectionIndex: number) => {
+    if (!caseStudy || !session) return false;
+    
+    const maxReleasedSection = session?.releasedSections ? Math.max(...session.releasedSections) : -1;
+    const isReleased = sectionIndex <= maxReleasedSection;
+    
+    if (!isReleased) return false; // Can't be completed if not released
+    
+    const section = caseStudy.sections[sectionIndex];
+    if (!section) return false;
+    
+    // Only check responses that belong to released sections' questions
+    return section.questions.every(q => {
+      // Double-check: make sure this question belongs to a released section
+      const questionSectionIndex = caseStudy.sections.findIndex(s => 
+        s.questions.some(sq => sq.id === q.id)
+      );
+      const questionSectionReleased = questionSectionIndex <= maxReleasedSection;
+      
+      return questionSectionReleased && isQuestionAnswered(q.id);
+    });
+  };
+
   const canProceed = () => {
     if (!caseStudy) return false;
     const currentSectionData = caseStudy.sections[currentSection];
@@ -665,9 +704,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   };
 
   const isCurrentSectionCompleted = () => {
-    if (!caseStudy) return false;
-    const currentSectionData = caseStudy.sections[currentSection];
-    return currentSectionData.questions.every(q => isQuestionAnswered(q.id));
+    return isSectionCompleted(currentSection);
   };
 
   const handleNavigateToSection = (sectionIndex: number) => {
@@ -1437,7 +1474,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
               {caseStudy.sections.map((section, index) => {
                 const maxReleasedSection = session?.releasedSections ? Math.max(...session.releasedSections) : -1;
                 const isReleased = index <= maxReleasedSection;
-                const isCompleted = isReleased && section.questions.every(q => isQuestionAnswered(q.id));
+                const isCompleted = isSectionCompleted(index);
                 const isCurrent = index === currentSection;
                 
                 return (
