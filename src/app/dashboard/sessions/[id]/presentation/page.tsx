@@ -31,7 +31,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  BarChart2
+  BarChart2,
+  BookOpen,
+  FileText
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 
@@ -53,7 +55,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   const [error, setError] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [releasingSection, setReleasingSection] = useState(false);
-  const [currentView, setCurrentView] = useState<'overview' | 'questions'>('overview');
+  const [currentView, setCurrentView] = useState<'overview' | 'questions' | 'section'>('overview');
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
 
   const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL}/session/${session?.sessionCode}`;
@@ -86,7 +88,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
 
         setSession(sessionData);
         
-        const caseStudyData = await getCaseStudy(sessionData.caseStudyId);
+        const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
         if (caseStudyData) {
           setCaseStudy(caseStudyData);
         }
@@ -95,6 +97,11 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         if (sessionData.active) {
           await updateSessionActivity(sessionData.id);
         }
+
+        // Load initial responses
+        const { getResponsesBySession } = require('@/lib/firebase/firestore');
+        const initialResponses = await getResponsesBySession(sessionData.id);
+        setResponses(initialResponses);
 
       } catch (error: any) {
         setError(error.message || 'Failed to load session');
@@ -109,76 +116,30 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   }, [resolvedParams.id, user]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session?.id) return;
 
     // Ensure session exists in Realtime Database and subscribe to live data
-    const { subscribeToLiveSession, subscribeToLiveResponses, subscribeToStudentPresence, ensureLiveSessionExists } = require('@/lib/firebase/realtime');
+    const { subscribeToStudentPresence, ensureLiveSessionExists } = require('@/lib/firebase/realtime');
     
     // Initialize Realtime Database session if it doesn't exist
     ensureLiveSessionExists(session.id, session).catch(console.warn);
     
-    const unsubscribeLive = subscribeToLiveSession(session.id, (liveSession) => {
-      if (liveSession && liveSession.status) {
-        // Update session with live status
-        setSession(prev => prev ? {
-          ...prev,
-          active: liveSession.status.active ?? prev.active,
-          releasedSections: liveSession.status.releasedSections ?? prev.releasedSections,
-          currentSection: liveSession.status.currentSection ?? prev.currentSection
-        } : prev);
-      }
+    // We'll use Firestore session subscription instead of Realtime DB for consistency
+
+    // Use Firestore as single source of truth for responses
+    const { subscribeToSessionResponses, subscribeToSession } = require('@/lib/firebase/firestore');
+    
+    // Subscribe to responses with proper cleanup
+    const unsubscribeResponses = subscribeToSessionResponses(session.id, (firestoreResponses: any) => {
+      console.log('Presentation: Responses updated:', firestoreResponses.length, 'responses');
+      setResponses(firestoreResponses);
     });
 
-    // Load historical responses from Firestore first
-    const loadHistoricalResponses = async () => {
-      try {
-        const firestoreResponses = await getResponsesBySession(session.id);
-        setResponses(firestoreResponses);
-      } catch (error) {
-        console.error('Error loading historical responses:', error);
-      }
-    };
-    
-    loadHistoricalResponses();
-
-    // Subscribe to live responses from Realtime Database for new responses
-    const unsubscribeResponses = subscribeToLiveResponses(session.id, (liveResponses) => {
-      // Convert Realtime Database format to our Response format
-      const liveResponseArray = Object.entries(liveResponses || {}).map(([id, response]) => ({
-        id,
-        ...response,
-        submittedAt: new Date(response.timestamp)
-      }));
-      
-      // Merge with existing Firestore responses (avoid duplicates)
-      setResponses(prevResponses => {
-        const existingIds = new Set(prevResponses.map(r => r.id));
-        const newLiveResponses = liveResponseArray.filter(r => !existingIds.has(r.id));
-        return [...prevResponses, ...newLiveResponses];
-      });
-    });
-
-    // Load complete student data from Firestore
-    const loadStudentData = async () => {
-      try {
-        // Get all unique student IDs from multiple sources
-        const allStudentIds = new Set<string>();
-        session.studentsJoined?.forEach(id => allStudentIds.add(id));
-        responses.forEach(response => allStudentIds.add(response.studentId));
-        
-        if (allStudentIds.size > 0) {
-          const firestoreStudents = await getStudentsByIds(Array.from(allStudentIds));
-          setStudents(firestoreStudents);
-        }
-      } catch (error) {
-        console.error('Error loading student data:', error);
-      }
-    };
-    
-    loadStudentData();
+    // Don't subscribe to session updates here to avoid infinite loops
+    // Session is already loaded in the first useEffect
 
     // Subscribe to student presence for real-time updates
-    const unsubscribePresence = subscribeToStudentPresence(session.id, (presenceData) => {
+    const unsubscribePresence = subscribeToStudentPresence(session.id, (presenceData: any) => {
       // Update presence information without overriding student data
       if (presenceData) {
         setStudents(prevStudents => {
@@ -198,23 +159,50 @@ export default function PresentationPage({ params }: PresentationPageProps) {
     });
 
     return () => {
-      unsubscribeLive();
+      console.log('Cleaning up subscriptions for session:', session.id);
       unsubscribeResponses();
       unsubscribePresence();
     };
-  }, [session]);
+  }, [session?.id]); // Only re-subscribe when session ID changes
 
-  // Note: Student data is now managed by the Realtime Database presence subscription above
-  // This replaces the old Firestore-based student fetching for better real-time updates
+  // Load student data when session or responses change
+  useEffect(() => {
+    const loadStudentData = async () => {
+      if (!session) return;
+      
+      try {
+        // Get all unique student IDs from multiple sources
+        const allStudentIds = new Set<string>();
+        session.studentsJoined?.forEach(id => allStudentIds.add(id));
+        responses.forEach(response => allStudentIds.add(response.studentId));
+        
+        if (allStudentIds.size > 0) {
+          const firestoreStudents = await getStudentsByIds(Array.from(allStudentIds));
+          setStudents(firestoreStudents);
+        } else {
+          setStudents([]);
+        }
+      } catch (error) {
+        console.error('Error loading student data:', error);
+      }
+    };
+    
+    loadStudentData();
+  }, [session?.studentsJoined?.length, responses.length]); // Only re-run when counts change
 
   const handleReleaseNextSection = async () => {
     if (!session || !caseStudy) return;
     
-    const currentReleasedSection = session.currentReleasedSection || -1;
+    const currentReleasedSection = session.currentReleasedSection ?? 0;
     const nextSectionIndex = currentReleasedSection + 1;
     
     if (nextSectionIndex >= caseStudy.sections.length) {
       return; // All sections already released
+    }
+    
+    // Add confirmation dialog to prevent accidental releases
+    if (!confirm(`Release Section ${nextSectionIndex + 1}: "${caseStudy.sections[nextSectionIndex].title}"?`)) {
+      return;
     }
     
     setReleasingSection(true);
@@ -314,6 +302,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         studentId,
         name: student?.name || null,
         displayName: student?.name || student?.studentId || studentId,
+        actualStudentId: student?.studentId,
         responses: releasedResponses.length, // Use filtered responses count
         totalQuestions,
         progress: Math.round(progress),
@@ -359,6 +348,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       responses: Array<{
         studentId: string;
         studentName: string;
+        actualStudentId?: string;
         response: string;
         selectedIndex?: number;
         isCorrect?: boolean;
@@ -413,6 +403,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
               return {
                 studentId: r.studentId,
                 studentName: student?.name || student?.studentId || r.studentId,
+                actualStudentId: student?.studentId,
                 response: r.response,
                 selectedIndex,
                 isCorrect,
@@ -488,7 +479,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         if ((event.code === 'Space' || event.key === 'r' || event.key === 'R') && !releasingSection) {
           event.preventDefault();
           if (session?.active && caseStudy) {
-            const nextIndex = (session.currentReleasedSection || -1) + 1;
+            const nextIndex = (session.currentReleasedSection ?? 0) + 1;
             if (nextIndex < caseStudy.sections.length) {
               handleReleaseNextSection();
             }
@@ -508,13 +499,23 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       // Tab to switch views
       if (event.key === 'Tab') {
         event.preventDefault();
-        setCurrentView(prev => prev === 'overview' ? 'questions' : 'overview');
+        setCurrentView(prev => {
+          if (prev === 'overview') return 'questions';
+          if (prev === 'questions') return 'section';
+          return 'overview';
+        });
+      }
+      
+      // Escape to exit presentation mode
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        router.push(`/dashboard/sessions/${session?.id}`);
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [session, caseStudy, releasingSection, currentView, questionAnalysis.length]);
+  }, [session, caseStudy, releasingSection, currentView, questionAnalysis.length, router]);
 
   if (loading) {
     return (
@@ -548,31 +549,48 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gray-900 text-white overflow-hidden">
-        {/* Header with View Toggle */}
-        <div className="flex items-center justify-between px-12 py-8">
-          <div className="flex items-center space-x-8">
-            <div>
-              <h1 className="text-5xl font-light text-white mb-2">{caseStudy?.title}</h1>
-              <div className="flex items-center space-x-6 text-gray-400">
-                <span className="text-xl font-mono">{session?.sessionCode}</span>
-                <div className={`flex items-center space-x-2 ${
-                  session?.active ? 'text-green-400' : 'text-gray-500'
-                }`}>
-                  <div className={`w-2 h-2 rounded-full ${
-                    session?.active ? 'bg-green-400 animate-pulse' : 'bg-gray-500'
-                  }`}></div>
-                  <span className="text-sm uppercase tracking-wide">
-                    {session?.active ? 'Live' : 'Ended'}
-                  </span>
+        {/* Compact Header */}
+        <div className="px-8 py-4 border-b border-gray-800">
+          {/* Top Row: Title, Session Info, and Time */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-6">
+              <div>
+                <h1 className="text-3xl font-light text-white mb-1">{caseStudy?.title}</h1>
+                <div className="flex items-center space-x-4 text-gray-400">
+                  <span className="text-lg font-mono">{session?.sessionCode}</span>
+                  <div className={`flex items-center space-x-2 ${
+                    session?.active ? 'text-green-400' : 'text-gray-500'
+                  }`}>
+                    <div className={`w-2 h-2 rounded-full ${
+                      session?.active ? 'bg-green-400 animate-pulse' : 'bg-gray-500'
+                    }`}></div>
+                    <span className="text-sm uppercase tracking-wide">
+                      {session?.active ? 'Live' : 'Ended'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* View Toggle */}
-            <div className="flex bg-gray-800 rounded-2xl p-1 border border-gray-700">
+            <div className="text-right text-gray-400">
+              <div className="text-2xl font-mono">
+                {currentTime.toLocaleTimeString([], { 
+                  hour: '2-digit', 
+                  minute: '2-digit'
+                })}
+              </div>
+              <div className="text-sm">
+                {sessionDuration}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Row: View Toggle - Centered */}
+          <div className="flex justify-center">
+            <div className="flex bg-gray-800 rounded-xl p-1 border border-gray-700">
               <button
                 onClick={() => setCurrentView('overview')}
-                className={`px-6 py-3 rounded-xl text-sm font-medium transition-all ${
+                className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   currentView === 'overview'
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'text-gray-400 hover:text-white'
@@ -583,7 +601,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
               </button>
               <button
                 onClick={() => setCurrentView('questions')}
-                className={`px-6 py-3 rounded-xl text-sm font-medium transition-all ${
+                className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
                   currentView === 'questions'
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'text-gray-400 hover:text-white'
@@ -592,27 +610,26 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                 <MessageSquare className="w-4 h-4 mr-2 inline" />
                 Questions ({questionAnalysis.length})
               </button>
-            </div>
-          </div>
-
-          <div className="text-right text-gray-400">
-            <div className="text-2xl font-mono">
-              {currentTime.toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit'
-              })}
-            </div>
-            <div className="text-sm">
-              {sessionDuration}
+              <button
+                onClick={() => setCurrentView('section')}
+                className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  currentView === 'section'
+                    ? 'bg-blue-600 text-white shadow-lg'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <BookOpen className="w-4 h-4 mr-2 inline" />
+                Section
+              </button>
             </div>
           </div>
         </div>
 
         {/* Main Content */}
-        <div className="px-12 pb-20">
+        <div className="px-8 py-6 pb-20">
           {currentView === 'overview' ? (
             /* Overview Layout */
-            <div className="grid grid-cols-12 gap-12">
+            <div className="grid grid-cols-12 gap-8">
             
             {/* Left Side - Key Metrics & QR */}
             <div className="col-span-4 space-y-8">
@@ -672,7 +689,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                   {/* Release Control - More Prominent */}
                   <div className="text-center">
                     {(() => {
-                      const nextIndex = (session?.currentReleasedSection || -1) + 1;
+                      const nextIndex = (session?.currentReleasedSection ?? 0) + 1;
                       const canReleaseNext = nextIndex < caseStudy.sections.length;
                       
                       return canReleaseNext ? (
@@ -718,8 +735,8 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                   <div className="space-y-3">
                     {caseStudy.sections.map((section, index) => {
                       const isReleased = session?.releasedSections?.includes(index) || false;
-                      const isCurrent = (session?.currentReleasedSection || -1) === index;
-                      const nextToRelease = (session?.currentReleasedSection || -1) + 1 === index;
+                      const isCurrent = (session?.currentReleasedSection ?? 0) === index;
+                      const nextToRelease = (session?.currentReleasedSection ?? 0) + 1 === index;
                       
                       return (
                         <div 
@@ -802,9 +819,16 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center space-x-2">
-                            <span className="font-medium text-white text-base">
-                              {student.displayName}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className="font-medium text-white text-base">
+                                {student.name || student.displayName}
+                              </span>
+                              {student.actualStudentId && (
+                                <span className="text-xs text-gray-400 font-mono">
+                                  ID: {student.actualStudentId}
+                                </span>
+                              )}
+                            </div>
                             {student.completed && (
                               <CheckCircle className="w-4 h-4 text-green-400" />
                             )}
@@ -846,7 +870,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
               </div>
             </div>
             </div>
-          ) : (
+          ) : currentView === 'questions' ? (
             /* Questions Review Layout */
             <div className="space-y-8">
               {questionAnalysis.length > 0 ? (
@@ -1045,9 +1069,16 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                                   >
                                     <div className="flex items-center justify-between mb-3">
                                       <div className="flex items-center space-x-3">
-                                        <span className="font-medium text-white">
-                                          {response.studentName}
-                                        </span>
+                                        <div className="flex flex-col">
+                                          <span className="font-medium text-white">
+                                            {response.studentName}
+                                          </span>
+                                          {response.actualStudentId && (
+                                            <span className="text-xs text-gray-500 font-mono">
+                                              ID: {response.actualStudentId}
+                                            </span>
+                                          )}
+                                        </div>
                                         
                                         {typeof response.points === 'number' && (
                                           <span className="text-sm bg-gray-700 text-gray-300 px-2 py-1 rounded">
@@ -1090,6 +1121,257 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                 </div>
               )}
             </div>
+          ) : (
+            /* Section Display Layout */
+            (() => {
+              // Get the current section being displayed (use the most recently released section)
+              const releasedSections = session?.releasedSections || [];
+              // If no sections are released but session is active, default to section 0
+              const currentSectionIndex = releasedSections.length > 0 
+                ? Math.max(...releasedSections) 
+                : (session?.active && caseStudy?.sections && caseStudy.sections.length > 0 ? 0 : -1);
+              let currentSection = caseStudy && currentSectionIndex >= 0 ? caseStudy.sections[currentSectionIndex] : null;
+              
+              // Handle legacy sections without type field
+              if (currentSection && !currentSection.type) {
+                console.warn('Section missing type field, defaulting to "reading":', currentSection);
+                currentSection = { ...currentSection, type: 'reading' as const };
+              }
+              
+              if (!currentSection) {
+                return (
+                  <div className="text-center py-20 text-gray-500">
+                    <BookOpen className="w-16 h-16 mx-auto mb-6 opacity-50" />
+                    <p className="text-2xl mb-2">No Section Released</p>
+                    <p className="text-lg">Release a section to display it for the class</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="max-w-6xl mx-auto space-y-8">
+                  {/* Section Header */}
+                  <div className="text-center mb-12">
+                    <div className="text-sm text-gray-400 uppercase tracking-wide mb-2">
+                      Section {currentSectionIndex + 1} • {currentSection.type ? currentSection.type.charAt(0).toUpperCase() + currentSection.type.slice(1) : 'Unknown'}
+                    </div>
+                    <h2 className="text-4xl font-light text-white mb-4">
+                      {currentSection.title}
+                    </h2>
+                  </div>
+
+                  {/* Section Content Based on Type */}
+                  {currentSection.type === 'reading' ? (
+                    /* Reading Section Display */
+                    <div className="grid grid-cols-12 gap-8">
+                      {/* Reading Content */}
+                      <div className="col-span-7">
+                        <div className="bg-gray-800/30 rounded-3xl border border-gray-700/50 p-8">
+                          <div className="mb-6">
+                            <h3 className="text-xl font-light text-gray-300 mb-4 flex items-center">
+                              <FileText className="w-5 h-5 mr-2" />
+                              Reading Material
+                            </h3>
+                          </div>
+                          <div className="prose prose-invert prose-lg max-w-none">
+                            <div 
+                              className="text-gray-300 leading-relaxed"
+                              style={{ fontSize: '1.125rem', lineHeight: '1.7' }}
+                              dangerouslySetInnerHTML={{ __html: currentSection.content }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Questions Panel */}
+                      <div className="col-span-5">
+                        <div className="bg-gray-800/50 rounded-3xl border border-gray-700/50 p-6">
+                          <h3 className="text-xl font-light text-gray-300 mb-6 flex items-center">
+                            <MessageSquare className="w-5 h-5 mr-2" />
+                            Questions ({currentSection.questions.length})
+                          </h3>
+                          
+                          {currentSection.questions.length > 0 ? (
+                            <div className="space-y-6">
+                              {currentSection.questions.map((question, index) => (
+                                <div 
+                                  key={question.id}
+                                  className="bg-gray-800/50 p-5 rounded-2xl border border-gray-700/30"
+                                >
+                                  <div className="mb-3">
+                                    <div className="text-sm text-gray-400 mb-2">
+                                      Question {index + 1} • {question.type.replace('-', ' ')} • {question.points} pts
+                                    </div>
+                                    <div className="text-base text-white leading-relaxed">
+                                      {question.text}
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Multiple Choice Options - No answers revealed in Section display */}
+                                  {question.type === 'multiple-choice' && question.options && (
+                                    <div className="space-y-2 mt-4">
+                                      {question.options.map((option, optionIndex) => (
+                                        <div 
+                                          key={optionIndex}
+                                          className="p-3 rounded-lg border text-sm bg-gray-700/30 border-gray-600/30 text-gray-300"
+                                        >
+                                          <span className="font-mono text-gray-400 mr-2">
+                                            {String.fromCharCode(65 + optionIndex)}.
+                                          </span>
+                                          {option}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-500">
+                              <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                              <p>No questions for this section</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : currentSection.type === 'discussion' ? (
+                    /* Discussion Section Display */
+                    <div className="max-w-4xl mx-auto">
+                      <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/20 rounded-3xl p-12 text-center">
+                        <div className="mb-8">
+                          <MessageSquare className="w-16 h-16 mx-auto mb-4 text-purple-400" />
+                          <h3 className="text-2xl font-light text-purple-300 mb-2">
+                            Discussion Time
+                          </h3>
+                          <p className="text-gray-400">
+                            Engage students in meaningful conversation
+                          </p>
+                        </div>
+                        
+                        {/* Discussion Prompt */}
+                        <div className="bg-gray-800/50 rounded-2xl p-8 mb-8">
+                          <div className="text-sm text-gray-400 uppercase tracking-wide mb-4">
+                            Discussion Prompt
+                          </div>
+                          <div 
+                            className="text-xl text-white leading-relaxed"
+                            dangerouslySetInnerHTML={{ 
+                              __html: currentSection.discussionPrompt || currentSection.content 
+                            }}
+                          />
+                        </div>
+                        
+                        {/* Discussion Questions */}
+                        {currentSection.questions.length > 0 && (
+                          <div className="space-y-4">
+                            <div className="text-sm text-gray-400 uppercase tracking-wide mb-4">
+                              Discussion Questions
+                            </div>
+                            {currentSection.questions.map((question, index) => (
+                              <div 
+                                key={question.id}
+                                className="bg-gray-800/30 p-6 rounded-2xl border border-gray-700/30 text-left"
+                              >
+                                <div className="text-sm text-purple-400 mb-2">
+                                  Question {index + 1}
+                                </div>
+                                <div className="text-lg text-white leading-relaxed">
+                                  {question.text}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : currentSection.type === 'activity' ? (
+                    /* Activity Section Display */
+                    <div className="max-w-4xl mx-auto">
+                      <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/5 border border-orange-500/20 rounded-3xl p-12 text-center">
+                        <div className="mb-8">
+                          <Activity className="w-16 h-16 mx-auto mb-4 text-orange-400" />
+                          <h3 className="text-2xl font-light text-orange-300 mb-2">
+                            Activity Time
+                          </h3>
+                          <p className="text-gray-400">
+                            Interactive learning activity
+                          </p>
+                        </div>
+                        
+                        {/* Activity Instructions */}
+                        <div className="bg-gray-800/50 rounded-2xl p-8 mb-8">
+                          <div className="text-sm text-gray-400 uppercase tracking-wide mb-4">
+                            Activity Instructions
+                          </div>
+                          <div 
+                            className="text-xl text-white leading-relaxed"
+                            dangerouslySetInnerHTML={{ 
+                              __html: currentSection.activityInstructions || currentSection.content 
+                            }}
+                          />
+                        </div>
+                        
+                        {/* Activity Questions */}
+                        {currentSection.questions.length > 0 && (
+                          <div className="space-y-4">
+                            <div className="text-sm text-gray-400 uppercase tracking-wide mb-4">
+                              Activity Questions
+                            </div>
+                            {currentSection.questions.map((question, index) => (
+                              <div 
+                                key={question.id}
+                                className="bg-gray-800/30 p-6 rounded-2xl border border-gray-700/30 text-left"
+                              >
+                                <div className="text-sm text-orange-400 mb-2">
+                                  Question {index + 1} • {question.points} pts
+                                </div>
+                                <div className="text-lg text-white leading-relaxed">
+                                  {question.text}
+                                </div>
+                                
+                                {/* Multiple Choice Options for Activities */}
+                                {question.type === 'multiple-choice' && question.options && (
+                                  <div className="space-y-2 mt-4">
+                                    {question.options.map((option, optionIndex) => (
+                                      <div 
+                                        key={optionIndex}
+                                        className="p-3 rounded-lg bg-gray-700/30 border border-gray-600/30 text-gray-300 text-sm"
+                                      >
+                                        <span className="font-mono text-gray-400 mr-2">
+                                          {String.fromCharCode(65 + optionIndex)}.
+                                        </span>
+                                        {option}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Unknown Section Type */
+                    <div className="text-center py-20 text-gray-500">
+                      <BookOpen className="w-16 h-16 mx-auto mb-6 opacity-50" />
+                      <p className="text-2xl mb-2">Unknown Section Type</p>
+                      <p className="text-lg">Section type: {currentSection.type || 'undefined'}</p>
+                      <div className="bg-gray-800/50 rounded-2xl p-8 mt-8 max-w-2xl mx-auto">
+                        <div className="text-sm text-gray-400 uppercase tracking-wide mb-4">
+                          Section Content
+                        </div>
+                        <div 
+                          className="text-white leading-relaxed"
+                          dangerouslySetInnerHTML={{ __html: currentSection.content }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()
           )}
         </div>
 
@@ -1106,11 +1388,12 @@ export default function PresentationPage({ params }: PresentationPageProps) {
             <div className="h-4 w-px bg-gray-600"></div>
             
             <div className="text-gray-500 text-xs">
-              Press <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">TAB</kbd> to switch views
+              <kbd className="px-2 py-1 bg-gray-700 rounded text-xs">ESC</kbd> to exit • 
+              <kbd className="px-2 py-1 bg-gray-700 rounded text-xs ml-1">TAB</kbd> to switch views
             </div>
             
             {currentView === 'overview' && session?.active && caseStudy && (() => {
-              const nextIndex = (session.currentReleasedSection || -1) + 1;
+              const nextIndex = (session.currentReleasedSection ?? 0) + 1;
               const canReleaseNext = nextIndex < caseStudy.sections.length;
               
               return canReleaseNext && (

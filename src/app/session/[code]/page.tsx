@@ -556,14 +556,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
             ...(points !== undefined && { points })
           });
 
-          // Also add to Realtime Database for live teacher viewing
-          // Use the same studentId as Firestore for consistency
-          try {
-            const { addLiveResponseStudent } = require('@/lib/firebase/student-realtime');
-            await addLiveResponseStudent(session.id, student.id, question.id, responseText);
-          } catch (error) {
-            console.warn('Failed to add live response:', error);
-          }
+          // Response saved to Firestore only - teacher dashboard will get real-time updates via Firestore subscription
 
           // Only send to AI for assessment if not multiple choice (since MC is auto-graded)
           if (question.type !== 'multiple-choice') {
@@ -1121,6 +1114,19 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
               )}
             </Button>
           </div>
+          
+          {/* Switch User Link */}
+          <div className="mt-8 pt-4 border-t border-gray-100">
+            <div className="text-center">
+              <button
+                onClick={handleSwitchUser}
+                className="text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+                title="Switch to a different student account for testing"
+              >
+                Switch User
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1151,8 +1157,19 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
             </div>
           </div>
           
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-gray-400 mb-8">
             Case Study: {caseStudy?.title}
+          </div>
+          
+          {/* Switch User Link */}
+          <div className="pt-4 border-t border-gray-100">
+            <button
+              onClick={handleSwitchUser}
+              className="text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+              title="Switch to a different student account for testing"
+            >
+              Switch User
+            </button>
           </div>
         </div>
       </div>
@@ -1171,10 +1188,23 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           <p className="text-gray-600 mb-6">
             Thank you for participating in "{caseStudy?.title}". Your responses have been submitted for grading.
           </p>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-8">
             <p className="text-sm text-gray-700">
               Your instructor will review your responses and provide feedback soon.
             </p>
+          </div>
+          
+          {/* Switch User Link */}
+          <div className="pt-4 border-t border-gray-100">
+            <div className="text-center">
+              <button
+                onClick={handleSwitchUser}
+                className="text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+                title="Switch to a different student account for testing"
+              >
+                Switch User
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1206,6 +1236,18 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
   const currentSectionData = caseStudy.sections[currentSection];
   const progress = ((currentSection + 1) / caseStudy.sections.length) * 100;
+
+  const handleSwitchUser = () => {
+    // Clear stored session but keep remembered student info for "Continue as..." option
+    clearStoredSession();
+    // Don't clear the cookie - keep it so "Continue as..." still appears
+    // clearStudentInfoCookie(); 
+    setStudent(null);
+    setStudentInfo({ studentId: '', name: '' });
+    setResponses([]);
+    setStep('join');
+    setShowJoinAsOther(false);
+  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -1597,6 +1639,21 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Switch User Link - Only show in reading step when student is logged in */}
+        {step === 'reading' && student && (
+          <div className="mt-12 pt-8 border-t border-gray-100">
+            <div className="text-center">
+              <button
+                onClick={handleSwitchUser}
+                className="text-xs text-gray-400 hover:text-gray-600 underline transition-colors"
+                title="Switch to a different student account for testing"
+              >
+                Switch User
+              </button>
             </div>
           </div>
         )}

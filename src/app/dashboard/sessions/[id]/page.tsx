@@ -72,7 +72,7 @@ export default function SessionPage({ params }: SessionPageProps) {
 
         setSession(sessionData);
         
-        const caseStudyData = await getCaseStudy(sessionData.caseStudyId);
+        const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
         if (caseStudyData) {
           setCaseStudy(caseStudyData);
         }
@@ -103,14 +103,13 @@ export default function SessionPage({ params }: SessionPageProps) {
     // Initialize Realtime Database session if it doesn't exist
     ensureLiveSessionExists(session.id, session).catch(console.warn);
     
-    const unsubscribeLive = subscribeToLiveSession(session.id, (liveSession) => {
+    const unsubscribeLive = subscribeToLiveSession(session.id, (liveSession: any) => {
       if (liveSession && liveSession.status) {
         // Update session with live status
         setSession(prev => prev ? {
           ...prev,
           active: liveSession.status.active ?? prev.active,
-          releasedSections: liveSession.status.releasedSections ?? prev.releasedSections,
-          currentSection: liveSession.status.currentSection ?? prev.currentSection
+          releasedSections: liveSession.status.releasedSections ?? prev.releasedSections
         } : prev);
       }
     });
@@ -176,7 +175,7 @@ export default function SessionPage({ params }: SessionPageProps) {
 
     // Subscribe to student presence for real-time updates
     const { subscribeToStudentPresence } = require('@/lib/firebase/realtime');
-    const unsubscribePresence = subscribeToStudentPresence(session.id, (presenceData) => {
+    const unsubscribePresence = subscribeToStudentPresence(session.id, (presenceData: any) => {
       // Update presence information without overriding student data
       if (presenceData) {
         setStudents(prevStudents => {
@@ -259,7 +258,7 @@ export default function SessionPage({ params }: SessionPageProps) {
   const handleReleaseNextSection = async () => {
     if (!session || !caseStudy) return;
     
-    const currentReleasedSection = session.currentReleasedSection || 0;
+    const currentReleasedSection = session.currentReleasedSection ?? 0;
     const nextSectionIndex = currentReleasedSection + 1;
     
     if (nextSectionIndex >= caseStudy.sections.length) {
@@ -363,6 +362,7 @@ export default function SessionPage({ params }: SessionPageProps) {
         studentId,
         name: student?.name || null,
         displayName: student?.name || student?.studentId || studentId,
+        actualStudentId: student?.studentId,
         responses: releasedResponses.length, // Use filtered responses count
         totalQuestions,
         progress: Math.round(progress),
@@ -519,7 +519,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {caseStudy.sections.map((section, index) => {
                           const isReleased = session?.releasedSections?.includes(index) || false;
-                          const isCurrent = (session?.currentReleasedSection || 0) === index;
+                          const isCurrent = (session?.currentReleasedSection ?? 0) === index;
                           
                           return (
                             <div 
@@ -562,7 +562,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                             Next Section to Release:
                           </p>
                           {(() => {
-                            const nextIndex = (session?.currentReleasedSection || 0) + 1;
+                            const nextIndex = (session?.currentReleasedSection ?? 0) + 1;
                             if (nextIndex >= caseStudy.sections.length) {
                               return (
                                 <p className="text-sm text-green-600">
@@ -579,7 +579,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                         </div>
                         
                         {(() => {
-                          const nextIndex = (session?.currentReleasedSection || 0) + 1;
+                          const nextIndex = (session?.currentReleasedSection ?? 0) + 1;
                           const canReleaseNext = nextIndex < caseStudy.sections.length;
                           
                           return canReleaseNext ? (
@@ -621,27 +621,36 @@ export default function SessionPage({ params }: SessionPageProps) {
                     <div className="space-y-4">
                       {studentProgress.map((student) => (
                         <div key={student.studentId} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                          <div>
-                            <p className="font-medium text-gray-900">{student.displayName}</p>
-                            <p className="text-sm text-gray-600">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-col">
+                              <p className="font-medium text-gray-900">{student.name || student.displayName}</p>
+                              {student.actualStudentId && (
+                                <p className="text-xs text-gray-500 font-mono">
+                                  ID: {student.actualStudentId}
+                                </p>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">
                               {student.responses} of {student.totalQuestions} questions answered
                             </p>
                           </div>
-                          <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-4 flex-shrink-0">
                             <div className="w-24 bg-gray-200 rounded-full h-2">
                               <div 
-                                className={`h-2 rounded-full ${
+                                className={`h-2 rounded-full transition-all duration-300 ${
                                   student.completed ? 'bg-green-500' : 'bg-blue-500'
                                 }`}
                                 style={{ width: `${student.progress}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium text-gray-900 w-12 text-right">
-                              {student.progress}%
-                            </span>
-                            {student.completed && (
-                              <CheckCircle className="w-5 h-5 text-green-500" />
-                            )}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm font-medium text-gray-900 w-10 text-right tabular-nums">
+                                {student.progress}%
+                              </span>
+                              {student.completed && (
+                                <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
