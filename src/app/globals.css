@@ -176,14 +176,14 @@ h1, h2, h3, h4, h5, h6 {
   font-family: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif;
   line-height: 1.8;
   color: #1a1a1a;
-  font-size: 1.125rem;
+  font-size: 1.25rem; /* Reverted to original size */
   max-width: none;
 }
 
 @media (max-width: 640px) {
   .reading-content-minimal {
-    font-size: 1rem; /* Optimized for mobile viewport */
-    line-height: 1.7; /* Optimized for mobile reading */
+    font-size: 1.25rem; /* Reverted to original for better mobile readability */
+    line-height: 1.8; /* Reverted to original */
   }
 }
 
@@ -217,15 +217,15 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 640px) {
   .reading-content-minimal h1 {
-    font-size: 1.5rem; /* Optimized for mobile viewport */
+    font-size: 1.75rem; /* Reverted to original for better mobile visibility */
   }
   
   .reading-content-minimal h2 {
-    font-size: 1.25rem; /* Optimized for mobile viewport */
+    font-size: 1.5rem; /* Reverted to original for better mobile visibility */
   }
   
   .reading-content-minimal h3 {
-    font-size: 1.125rem; /* Optimized for mobile viewport */
+    font-size: 1.25rem; /* Reverted to original for better mobile visibility */
   }
 }
 
@@ -334,9 +334,9 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 640px) {
   .discussion-content {
-    font-size: 1.125rem; /* Optimized for mobile viewport */
-    padding: 1.5rem;
-    line-height: 1.6; /* Optimized for mobile reading */
+    font-size: 1.375rem; /* Reverted to original for better mobile readability */
+    padding: 2rem;
+    line-height: 1.8; /* Reverted to original */
   }
   
   .discussion-content::before,
@@ -450,9 +450,9 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 640px) {
   .activity-content {
-    font-size: 1rem; /* Optimized for mobile viewport */
-    padding: 1.25rem;
-    line-height: 1.5; /* Optimized for mobile reading */
+    font-size: 1.125rem; /* Reverted to original for better mobile readability */
+    padding: 1.5rem;
+    line-height: 1.6; /* Reverted to original */
   }
 }
 
@@ -568,41 +568,7 @@ h1, h2, h3, h4, h5, h6 {
     margin-top: 1.25rem;
   }
   
-  /* Mobile-specific font size adjustments for headings */
-  h1 {
-    font-size: 1.5rem !important;
-  }
-  
-  h2 {
-    font-size: 1.25rem !important;
-  }
-  
-  h3 {
-    font-size: 1.125rem !important;
-  }
-  
-  /* Student session specific mobile optimizations */
-  .max-w-3xl {
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
-  }
-  
-  /* Optimize section navigation circles for mobile */
-  .w-8.h-8 {
-    width: 2.25rem !important;
-    height: 2.25rem !important;
-  }
-  
-  .w-10.h-10 {
-    width: 2.5rem !important;
-    height: 2.5rem !important;
-  }
-  
-  /* Better mobile typography for case study titles */
-  .text-xl,
-  .text-2xl {
-    font-size: 1.25rem !important;
-  }
+  /* Keep original sizing - only minimal mobile optimizations for viewport */
 }
 
 /* Transitions - More specific to avoid interfering with text selection */
