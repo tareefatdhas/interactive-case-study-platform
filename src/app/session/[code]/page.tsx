@@ -716,7 +716,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         setStudent(studentData);
         
         console.log('QUICK JOIN: Joining session...');
-        await joinSession(session.id, studentData.studentId);
+        await joinSession(session.id, studentData.id);
         
         console.log('QUICK JOIN: Getting responses...');
         const existingResponses = await getResponsesByStudent(studentData.id, session.id);

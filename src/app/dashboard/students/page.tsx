@@ -18,10 +18,12 @@ interface StudentWithStats extends Student {
     totalPoints: number;
     maxTotalPoints: number;
     averageScore: number;
+    progressPercentage: number;
+    totalQuestionsAvailable: number;
   };
 }
 
-type SortField = 'name' | 'studentId' | 'correctPercentage' | 'totalPoints' | 'totalResponses' | 'averageScore';
+type SortField = 'name' | 'studentId' | 'progressPercentage' | 'correctPercentage' | 'totalResponses' | 'totalPoints';
 type SortDirection = 'asc' | 'desc';
 
 export default function StudentsPage() {
@@ -72,21 +74,21 @@ export default function StudentsPage() {
           aValue = (a.studentId || a.id).toLowerCase();
           bValue = (b.studentId || b.id).toLowerCase();
           break;
+        case 'progressPercentage':
+          aValue = a.stats.progressPercentage;
+          bValue = b.stats.progressPercentage;
+          break;
         case 'correctPercentage':
           aValue = a.stats.correctPercentage;
           bValue = b.stats.correctPercentage;
-          break;
-        case 'totalPoints':
-          aValue = a.stats.totalPoints;
-          bValue = b.stats.totalPoints;
           break;
         case 'totalResponses':
           aValue = a.stats.totalResponses;
           bValue = b.stats.totalResponses;
           break;
-        case 'averageScore':
-          aValue = a.stats.averageScore;
-          bValue = b.stats.averageScore;
+        case 'totalPoints':
+          aValue = a.stats.totalPoints;
+          bValue = b.stats.totalPoints;
           break;
         default:
           aValue = a.name?.toLowerCase() || '';
@@ -126,6 +128,9 @@ export default function StudentsPage() {
   const averageCorrectPercentage = totalStudents > 0 
     ? Math.round((students.reduce((sum, s) => sum + s.stats.correctPercentage, 0) / totalStudents) * 10) / 10
     : 0;
+  const averageProgressPercentage = totalStudents > 0 
+    ? Math.round((students.reduce((sum, s) => sum + s.stats.progressPercentage, 0) / totalStudents) * 10) / 10
+    : 0;
   const totalPointsEarned = students.reduce((sum, s) => sum + s.stats.totalPoints, 0);
 
   return (
@@ -158,7 +163,7 @@ export default function StudentsPage() {
 
           {/* Summary Stats */}
           {!loading && students.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
               <Card>
                 <CardContent className="p-6">
                   <div className="flex items-center">
@@ -198,6 +203,18 @@ export default function StudentsPage() {
               <Card>
                 <CardContent className="p-6">
                   <div className="flex items-center">
+                    <TrendingUp className="h-8 w-8 text-indigo-600" />
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600">Avg Progress</p>
+                      <p className="text-2xl font-bold text-gray-900">{averageProgressPercentage}%</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center">
                     <Trophy className="h-8 w-8 text-purple-600" />
                     <div className="ml-4">
                       <p className="text-sm font-medium text-gray-600">Total Points</p>
@@ -218,10 +235,10 @@ export default function StudentsPage() {
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Correct %</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Points</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Responses</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Score</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Points</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -276,15 +293,15 @@ export default function StudentsPage() {
                         </th>
                         <th 
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                          onClick={() => handleSort('correctPercentage')}
+                          onClick={() => handleSort('progressPercentage')}
                         >
-                          Correct % {getSortIcon('correctPercentage')}
+                          Progress {getSortIcon('progressPercentage')}
                         </th>
                         <th 
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                          onClick={() => handleSort('totalPoints')}
+                          onClick={() => handleSort('correctPercentage')}
                         >
-                          Total Points {getSortIcon('totalPoints')}
+                          Correct % {getSortIcon('correctPercentage')}
                         </th>
                         <th 
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
@@ -294,9 +311,9 @@ export default function StudentsPage() {
                         </th>
                         <th 
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
-                          onClick={() => handleSort('averageScore')}
+                          onClick={() => handleSort('totalPoints')}
                         >
-                          Avg Score {getSortIcon('averageScore')}
+                          Total Points {getSortIcon('totalPoints')}
                         </th>
                       </tr>
                     </thead>
@@ -321,6 +338,14 @@ export default function StudentsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
+                            <div className={`text-sm font-semibold ${getPerformanceColor(student.stats.progressPercentage)}`}>
+                              {student.stats.progressPercentage}%
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {student.stats.totalResponses}/{student.stats.totalQuestionsAvailable}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <div className={`text-sm font-semibold ${getPerformanceColor(student.stats.correctPercentage)}`}>
                               {student.stats.correctPercentage}%
                             </div>
@@ -329,21 +354,16 @@ export default function StudentsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                              {student.stats.totalPoints}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              /{student.stats.maxTotalPoints} max
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
                               {student.stats.totalResponses}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className={`text-sm font-semibold ${getPerformanceColor(student.stats.averageScore)}`}>
-                              {student.stats.averageScore}%
+                            <div className="text-sm font-medium text-gray-900">
+                              {student.stats.totalPoints}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              /{student.stats.maxTotalPoints} max
                             </div>
                           </td>
                         </tr>

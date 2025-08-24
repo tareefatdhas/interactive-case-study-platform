@@ -282,48 +282,56 @@ export const getStudentByStudentId = async (studentId: string): Promise<Student 
 export const getStudentsByIds = async (studentIds: string[]): Promise<Student[]> => {
   if (studentIds.length === 0) return [];
   
-  // First, try to get by studentId field (for readable IDs)
   const batchSize = 10;
-  const batches = [];
+  const students: Map<string, Student> = new Map();
   
+  // Try to get students by document ID
+  const docBatches = [];
   for (let i = 0; i < studentIds.length; i += batchSize) {
     const batch = studentIds.slice(i, i + batchSize);
-    const q = query(
-      collection(db, COLLECTIONS.STUDENTS),
-      where('studentId', 'in', batch)
-    );
-    batches.push(getDocs(q));
+    const docPromises = batch.map(id => getDoc(doc(db, COLLECTIONS.STUDENTS, id)));
+    docBatches.push(Promise.all(docPromises));
   }
   
-  const results = await Promise.all(batches);
-  const students: Student[] = [];
+  const docResults = await Promise.all(docBatches);
+  const remainingIds: string[] = [];
   
-  results.forEach(querySnapshot => {
-    querySnapshot.docs.forEach(doc => {
-      students.push({ id: doc.id, ...doc.data() } as Student);
+  let globalIndex = 0;
+  docResults.forEach(docArray => {
+    docArray.forEach((docSnap) => {
+      if (docSnap.exists()) {
+        const student = { id: docSnap.id, ...docSnap.data() } as Student;
+        students.set(student.id, student);
+      } else {
+        // If not found by document ID, we'll try by studentId field
+        remainingIds.push(studentIds[globalIndex]);
+      }
+      globalIndex++;
     });
   });
   
-  // If no students found by studentId, try by document ID (fallback for legacy data)
-  if (students.length === 0) {
-    const docBatches = [];
-    for (let i = 0; i < studentIds.length; i += batchSize) {
-      const batch = studentIds.slice(i, i + batchSize);
-      const docPromises = batch.map(id => getDoc(doc(db, COLLECTIONS.STUDENTS, id)));
-      docBatches.push(Promise.all(docPromises));
+  // For IDs not found as document IDs, try to find by studentId field
+  if (remainingIds.length > 0) {
+    const batches = [];
+    for (let i = 0; i < remainingIds.length; i += batchSize) {
+      const batch = remainingIds.slice(i, i + batchSize);
+      const q = query(
+        collection(db, COLLECTIONS.STUDENTS),
+        where('studentId', 'in', batch)
+      );
+      batches.push(getDocs(q));
     }
     
-    const docResults = await Promise.all(docBatches);
-    docResults.forEach(docArray => {
-      docArray.forEach(docSnap => {
-        if (docSnap.exists()) {
-          students.push({ id: docSnap.id, ...docSnap.data() } as Student);
-        }
+    const results = await Promise.all(batches);
+    results.forEach(querySnapshot => {
+      querySnapshot.docs.forEach(doc => {
+        const student = { id: doc.id, ...doc.data() } as Student;
+        students.set(student.id, student);
       });
     });
   }
   
-  return students;
+  return Array.from(students.values());
 };
 
 // Responses

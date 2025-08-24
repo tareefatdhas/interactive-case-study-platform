@@ -145,9 +145,10 @@ export default function DashboardPage() {
                   <Card key={caseStudy.id} className="hover:shadow-md transition-shadow">
                     <CardHeader>
                       <CardTitle className="text-base">{caseStudy.title}</CardTitle>
-                      <CardDescription className="line-clamp-2">
-                        {caseStudy.description}
-                      </CardDescription>
+                      <CardDescription 
+                        className="line-clamp-2"
+                        dangerouslySetInnerHTML={{ __html: caseStudy.description }}
+                      />
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center justify-between text-sm text-gray-500">

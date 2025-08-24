@@ -12,8 +12,8 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import RichTextEditor from '@/components/ui/RichTextEditor';
-import type { Section, Question, CaseStudy } from '@/types';
-import { Plus, Trash2, Save, ArrowLeft } from 'lucide-react';
+import type { Section, Question, CaseStudy, SectionType } from '@/types';
+import { Plus, Trash2, Save, ArrowLeft, BookOpen, MessageSquare, Activity } from 'lucide-react';
 
 export default function EditCaseStudyPage() {
   const { user } = useAuth();
@@ -58,7 +58,12 @@ export default function EditCaseStudyPage() {
           description: existingCaseStudy.description,
           courseId: existingCaseStudy.courseId,
         });
-        setSections(existingCaseStudy.sections || []);
+        // Migrate existing sections to include type field if missing
+        const migratedSections = (existingCaseStudy.sections || []).map(section => ({
+          ...section,
+          type: section.type || 'reading' // Default to reading for existing sections
+        }));
+        setSections(migratedSections);
       } catch (error: any) {
         console.error('Error loading case study:', error);
         setError('Failed to load case study');
@@ -77,7 +82,7 @@ export default function EditCaseStudyPage() {
     }));
   };
 
-  const handleSectionChange = (sectionId: string, field: keyof Section, value: string) => {
+  const handleSectionChange = (sectionId: string, field: keyof Section, value: string | SectionType) => {
     setSections(prev => prev.map(section => 
       section.id === sectionId 
         ? { ...section, [field]: value }
@@ -90,6 +95,7 @@ export default function EditCaseStudyPage() {
       id: generateId(),
       title: '',
       content: '',
+      type: 'reading',
       questions: [],
       order: sections.length
     };
@@ -128,7 +134,7 @@ export default function EditCaseStudyPage() {
     sectionId: string, 
     questionId: string, 
     field: keyof Question, 
-    value: string | number
+    value: any
   ) => {
     setSections(prev => prev.map(section =>
       section.id === sectionId
@@ -385,146 +391,213 @@ export default function EditCaseStudyPage() {
                     required
                     placeholder="e.g., Background Information"
                   />
-                  
-                  <RichTextEditor
-                    label="Content"
-                    content={section.content}
-                    onChange={(content) => handleSectionChange(section.id, 'content', content)}
-                    required
-                    placeholder="Write your case study content with rich text formatting..."
-                    helperText="Use the toolbar above to format text, add links, images, and more."
-                  />
 
-                  {/* Questions */}
+                  {/* Section Type Selector */}
                   <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-sm font-medium text-gray-900">Questions</h4>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => addQuestion(section.id)}
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Add Question
-                      </Button>
-                    </div>
-
-                    {section.questions.map((question, questionIndex) => (
-                      <div key={question.id} className="border rounded-md p-4 space-y-3 mb-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-700">
-                            Question {questionIndex + 1}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeQuestion(section.id, question.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        
-                        <Textarea
-                          label="Question Text"
-                          value={question.text}
-                          onChange={(e) => handleQuestionChange(section.id, question.id, 'text', e.target.value)}
-                          required
-                          placeholder="Enter your question here..."
-                          rows={2}
-                        />
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Question Type
-                            </label>
-                            <select
-                              value={question.type}
-                              onChange={(e) => handleQuestionChange(section.id, question.id, 'type', e.target.value)}
-                              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                            >
-                              <option value="text">Text Response</option>
-                              <option value="essay">Essay</option>
-                              <option value="multiple-choice">Multiple Choice</option>
-                            </select>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Section Type
+                    </label>
+                    <div className="grid grid-cols-3 gap-3">
+                      {[
+                        { type: 'reading' as SectionType, icon: BookOpen, label: 'Reading', color: 'blue' },
+                        { type: 'discussion' as SectionType, icon: MessageSquare, label: 'Discussion', color: 'purple' },
+                        { type: 'activity' as SectionType, icon: Activity, label: 'Activity', color: 'green' }
+                      ].map(({ type, icon: Icon, label, color }) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => handleSectionChange(section.id, 'type', type)}
+                          className={`p-3 border rounded-lg transition-all hover:shadow-md ${
+                            section.type === type
+                              ? `border-${color}-500 bg-${color}-50`
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex flex-col items-center gap-2">
+                            <Icon className={`w-5 h-5 ${
+                              section.type === type ? `text-${color}-600` : 'text-gray-400'
+                            }`} />
+                            <span className={`text-sm font-medium ${
+                              section.type === type ? `text-${color}-900` : 'text-gray-600'
+                            }`}>
+                              {label}
+                            </span>
                           </div>
-                          
-                          <Input
-                            label="Points"
-                            type="number"
-                            value={question.points}
-                            onChange={(e) => handleQuestionChange(section.id, question.id, 'points', parseInt(e.target.value) || 0)}
-                            min="1"
-                            max="100"
-                          />
-                        </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                        {/* Multiple Choice Options */}
-                        {question.type === 'multiple-choice' && (
-                          <div className="mt-4">
-                            <div className="flex items-center justify-between mb-3">
-                              <label className="block text-sm font-medium text-gray-700">
-                                Answer Options
-                              </label>
+                  {/* Content based on section type */}
+                  {section.type === 'reading' && (
+                    <RichTextEditor
+                      label="Content"
+                      content={section.content}
+                      onChange={(content) => handleSectionChange(section.id, 'content', content)}
+                      required
+                      placeholder="Write your case study content with rich text formatting..."
+                      helperText="Use the toolbar above to format text, add links, images, and more."
+                    />
+                  )}
+
+                  {section.type === 'discussion' && (
+                    <RichTextEditor
+                      label="Discussion Prompt"
+                      content={section.discussionPrompt || ''}
+                      onChange={(content) => handleSectionChange(section.id, 'discussionPrompt', content)}
+                      required
+                      placeholder="Enter the discussion question or prompt for students..."
+                      helperText="Use formatting, bullet points, and links to create engaging discussion prompts."
+                    />
+                  )}
+
+                  {section.type === 'activity' && (
+                    <RichTextEditor
+                      label="Activity Instructions"
+                      content={section.activityInstructions || ''}
+                      onChange={(content) => handleSectionChange(section.id, 'activityInstructions', content)}
+                      required
+                      placeholder="Provide clear instructions for the activity students should complete..."
+                      helperText="Use formatting, bullet points, and links to create clear activity instructions."
+                    />
+                  )}
+
+                  {/* Questions - Only show for reading sections */}
+                  {section.type === 'reading' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-sm font-medium text-gray-900">Questions</h4>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addQuestion(section.id)}
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add Question
+                        </Button>
+                      </div>
+
+                      {section.questions.map((question, questionIndex) => (
+                        <Card key={question.id} className="bg-gray-50">
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-sm font-medium text-gray-900">
+                                Question {questionIndex + 1}
+                              </h5>
                               <Button
                                 type="button"
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
-                                onClick={() => addOption(section.id, question.id)}
+                                onClick={() => removeQuestion(section.id, question.id)}
+                                className="text-red-600 hover:text-red-700"
                               >
-                                <Plus className="w-4 h-4 mr-1" />
-                                Add Option
+                                <Trash2 className="w-4 h-4" />
                               </Button>
                             </div>
-                            
-                            <div className="space-y-2">
-                              {question.options?.map((option, optionIndex) => (
-                                <div key={optionIndex} className="flex items-center gap-3">
-                                  <input
-                                    type="radio"
-                                    name={`correct-${question.id}`}
-                                    checked={question.correctAnswer === optionIndex}
-                                    onChange={() => handleQuestionChange(section.id, question.id, 'correctAnswer', optionIndex)}
-                                    className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                                  />
-                                  <Input
-                                    value={option}
-                                    onChange={(e) => updateOption(section.id, question.id, optionIndex, e.target.value)}
-                                    placeholder={`Option ${optionIndex + 1}`}
-                                    className="flex-1"
-                                  />
-                                  {question.options && question.options.length > 2 && (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => removeOption(section.id, question.id, optionIndex)}
-                                      className="text-red-600 hover:text-red-700"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                            
-                            <p className="text-xs text-gray-500 mt-2">
-                              Select the radio button next to the correct answer
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
 
-                    {section.questions.length === 0 && (
-                      <div className="text-center py-8 text-gray-500">
-                        No questions yet. Click "Add Question" to get started.
-                      </div>
-                    )}
-                  </div>
+                            <Input
+                              label="Question Text"
+                              value={question.text}
+                              onChange={(e) => handleQuestionChange(section.id, question.id, 'text', e.target.value)}
+                              required
+                              placeholder="Enter your question..."
+                            />
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Question Type
+                                </label>
+                                <select
+                                  value={question.type}
+                                  onChange={(e) => handleQuestionChange(section.id, question.id, 'type', e.target.value as 'text' | 'multiple-choice' | 'essay')}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="text">Short Answer</option>
+                                  <option value="essay">Essay</option>
+                                  <option value="multiple-choice">Multiple Choice</option>
+                                </select>
+                              </div>
+
+                              <Input
+                                label="Points"
+                                type="number"
+                                value={question.points.toString()}
+                                onChange={(e) => handleQuestionChange(section.id, question.id, 'points', parseInt(e.target.value) || 0)}
+                                required
+                                min="1"
+                                placeholder="10"
+                              />
+                            </div>
+
+                            {question.type === 'multiple-choice' && (
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Answer Options
+                                </label>
+                                <div className="space-y-2">
+                                  {(question.options || []).map((option, optionIndex) => (
+                                    <div key={optionIndex} className="flex items-center gap-2">
+                                      <input
+                                        type="radio"
+                                        name={`correct-${question.id}`}
+                                        checked={question.correctAnswer === optionIndex}
+                                        onChange={() => handleQuestionChange(section.id, question.id, 'correctAnswer', optionIndex)}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={option}
+                                        onChange={(e) => {
+                                          const newOptions = [...(question.options || [])];
+                                          newOptions[optionIndex] = e.target.value;
+                                          handleQuestionChange(section.id, question.id, 'options', newOptions);
+                                        }}
+                                        placeholder={`Option ${optionIndex + 1}`}
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          const newOptions = question.options?.filter((_, i) => i !== optionIndex) || [];
+                                          handleQuestionChange(section.id, question.id, 'options', newOptions);
+                                          // Adjust correct answer if needed
+                                          if (question.correctAnswer === optionIndex) {
+                                            handleQuestionChange(section.id, question.id, 'correctAnswer', undefined);
+                                          } else if (question.correctAnswer !== undefined && question.correctAnswer > optionIndex) {
+                                            handleQuestionChange(section.id, question.id, 'correctAnswer', question.correctAnswer - 1);
+                                          }
+                                        }}
+                                        className="text-red-600 hover:text-red-700"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const newOptions = [...(question.options || []), ''];
+                                      handleQuestionChange(section.id, question.id, 'options', newOptions);
+                                    }}
+                                    className="w-full"
+                                  >
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    Add Option
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}

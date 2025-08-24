@@ -46,6 +46,9 @@ service cloud.firestore {
         isTeacherOfResource(resource.data.teacherId);
       allow create: if isTeacher() && 
         isTeacherOfResource(request.resource.data.teacherId);
+      
+      // Allow students to update sessions for joining
+      allow update: if isAuthenticated();
     }
     
     // Students - teachers can manage all, anonymous users can create/update their own

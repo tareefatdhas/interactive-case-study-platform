@@ -291,8 +291,9 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       return total;
     }, 0);
 
-    // Use all unique student IDs, not just session.studentsJoined
-    return allStudentIds.map(studentId => {
+    // Only show progress for students who have officially joined the session
+    const joinedStudentIds = session.studentsJoined || [];
+    return joinedStudentIds.map(studentId => {
       const studentResponseList = studentResponses[studentId] || [];
       
       // Filter responses to only count those from released sections
@@ -318,9 +319,8 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         progress: Math.round(progress),
         completed: progress === 100
       };
-    }).filter(student => student.responses > 0 || (session?.studentsJoined?.includes(student.studentId)))
-      .sort((a, b) => b.progress - a.progress); // Sort by progress descending
-  }, [session, caseStudy, responses, students, allStudentIds]);
+    }).sort((a, b) => b.progress - a.progress); // Sort by progress descending
+  }, [session, caseStudy, responses, students]);
 
   // Calculate averages and metrics
   const metrics = useMemo(() => {
@@ -386,7 +386,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
               let selectedIndex: number | undefined;
               let isCorrect: boolean | undefined;
               
-              if (question.type === 'multiple-choice' && question.options) {
+              if (question.type === 'multiple-choice' && question.options && r.response) {
                 // Find the index of the selected option by matching the response text
                 selectedIndex = question.options.findIndex(option => option.trim() === r.response.trim());
                 if (selectedIndex === -1) {
@@ -399,11 +399,15 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                     selectedIndex = undefined;
                   }
                 }
-                
-                // Check if it's correct
-                if (selectedIndex !== undefined && question.correctAnswer !== undefined) {
-                  isCorrect = selectedIndex === question.correctAnswer;
-                }
+              } else if (question.type === 'multiple-choice' && !r.response) {
+                // Handle case where response is undefined/null
+                console.warn('Response is undefined for multiple choice question:', question.id, 'Student:', r.studentId);
+                selectedIndex = undefined;
+              }
+              
+              // Check if it's correct (moved outside the if blocks)
+              if (question.type === 'multiple-choice' && selectedIndex !== undefined && question.correctAnswer !== undefined) {
+                isCorrect = selectedIndex === question.correctAnswer;
               }
               
               return {

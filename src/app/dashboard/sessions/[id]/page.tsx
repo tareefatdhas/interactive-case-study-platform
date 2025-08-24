@@ -128,19 +128,30 @@ export default function SessionPage({ params }: SessionPageProps) {
     loadHistoricalResponses();
 
     // Subscribe to live responses from Realtime Database for new responses
-    const unsubscribeResponses = subscribeToLiveResponses(session.id, (liveResponses) => {
+    const unsubscribeResponses = subscribeToLiveResponses(session.id, (liveResponses: any) => {
       // Convert Realtime Database format to our Response format
-      const liveResponseArray = Object.entries(liveResponses || {}).map(([id, response]) => ({
+      const liveResponseArray = Object.entries(liveResponses || {}).map(([id, response]: [string, any]) => ({
         id,
         ...response,
         submittedAt: new Date(response.timestamp)
       }));
       
-      // Merge with existing Firestore responses (avoid duplicates)
+      // Merge with existing Firestore responses (avoid duplicates by studentId + questionId)
       setResponses(prevResponses => {
-        const existingIds = new Set(prevResponses.map(r => r.id));
-        const newLiveResponses = liveResponseArray.filter(r => !existingIds.has(r.id));
-        return [...prevResponses, ...newLiveResponses];
+        // Create a map of existing responses by studentId + questionId
+        const existingResponseMap = new Map(
+          prevResponses.map(r => [`${r.studentId}-${r.questionId}`, r])
+        );
+        
+        // Only add live responses that don't already exist
+        liveResponseArray.forEach(liveResponse => {
+          const key = `${liveResponse.studentId}-${liveResponse.questionId}`;
+          if (!existingResponseMap.has(key)) {
+            existingResponseMap.set(key, liveResponse);
+          }
+        });
+        
+        return Array.from(existingResponseMap.values());
       });
     });
 
@@ -327,8 +338,9 @@ export default function SessionPage({ params }: SessionPageProps) {
       return total;
     }, 0);
 
-    // Use all unique student IDs, not just session.studentsJoined
-    return allStudentIds.map(studentId => {
+    // Only show progress for students who have officially joined the session
+    const joinedStudentIds = session.studentsJoined || [];
+    return joinedStudentIds.map(studentId => {
       const studentResponseList = studentResponses[studentId] || [];
       
       // Filter responses to only count those from released sections
@@ -356,8 +368,8 @@ export default function SessionPage({ params }: SessionPageProps) {
         progress: Math.round(progress),
         completed: progress === 100
       };
-    }).filter(student => student.responses > 0 || (session?.studentsJoined?.includes(student.studentId)));
-  }, [session, caseStudy, responses, students, allStudentIds]);
+    });
+  }, [session, caseStudy, responses, students]);
 
   // Memoized average progress calculation
   const averageProgress = useMemo(() => {
@@ -456,7 +468,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                       <div className="ml-3">
                         <p className="text-sm font-medium text-gray-600">Students Joined</p>
                         <p className="text-2xl font-bold text-gray-900">
-                          {studentProgress.length}
+                          {session?.studentsJoined?.length || 0}
                         </p>
                       </div>
                     </div>

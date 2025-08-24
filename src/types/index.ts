@@ -9,12 +9,19 @@ export interface Question {
   points: number;
 }
 
+export type SectionType = 'reading' | 'discussion' | 'activity';
+
 export interface Section {
   id: string;
   title: string;
   content: string;
+  type: SectionType;
   questions: Question[];
   order: number;
+  // For discussion sections
+  discussionPrompt?: string;
+  // For activity sections  
+  activityInstructions?: string;
 }
 
 export interface CaseStudy {
@@ -29,19 +36,39 @@ export interface CaseStudy {
   updatedAt: Timestamp;
 }
 
+export type SessionType = 'case-study' | 'standalone';
+
 export interface Session {
   id: string;
   sessionCode: string;
-  caseStudyId: string;
+  sessionType: SessionType;
+  caseStudyId?: string; // Optional for standalone sessions
   teacherId: string;
   active: boolean;
   studentsJoined: string[];
   releasedSections: number[]; // Array of section indices that have been released (0-based)
   currentReleasedSection: number; // Current maximum section index released (-1 means none released)
+  
+  // For standalone sessions
+  title?: string;
+  description?: string;
+  sections?: StandaloneSection[];
+  
   createdAt: Timestamp;
   startedAt?: Timestamp;
   endedAt?: Timestamp;
   lastActivityAt?: Timestamp;
+}
+
+export interface StandaloneSection {
+  id: string;
+  title: string;
+  type: SectionType;
+  order: number;
+  // For discussion sections
+  discussionPrompt?: string;
+  // For activity sections  
+  activityInstructions?: string;
 }
 
 export interface Student {

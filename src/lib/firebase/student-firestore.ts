@@ -87,12 +87,9 @@ export const createStudentStudent = async (student: Omit<Student, 'id' | 'create
 };
 
 export const joinSessionStudent = async (sessionId: string, studentId: string) => {
-  // For students, we don't need to update the session document
-  // The session join is tracked through the student's presence in the realtime database
-  // and their responses in the responses collection
   console.log('STUDENT JOIN: Student', studentId, 'joining session', sessionId);
   
-  // Verify the session exists (read-only operation)
+  // Update the session document to add student to studentsJoined array
   const sessionRef = doc(studentDb, COLLECTIONS.SESSIONS, sessionId);
   const sessionDoc = await getDoc(sessionRef);
   
@@ -100,7 +97,18 @@ export const joinSessionStudent = async (sessionId: string, studentId: string) =
     throw new Error('Session not found');
   }
   
-  console.log('STUDENT JOIN: Session verified, join successful');
+  const sessionData = sessionDoc.data() as Session;
+  const studentsJoined = sessionData.studentsJoined || [];
+  
+  if (!studentsJoined.includes(studentId)) {
+    await updateDoc(sessionRef, {
+      studentsJoined: [...studentsJoined, studentId],
+      lastActivityAt: new Date()
+    });
+    console.log('STUDENT JOIN: Added to studentsJoined array');
+  } else {
+    console.log('STUDENT JOIN: Already in studentsJoined array');
+  }
 };
 
 export const getResponsesByStudentStudent = async (studentId: string, sessionId: string): Promise<Response[]> => {
