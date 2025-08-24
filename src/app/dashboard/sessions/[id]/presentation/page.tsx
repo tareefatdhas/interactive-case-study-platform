@@ -135,8 +135,13 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       setResponses(firestoreResponses);
     });
 
-    // Don't subscribe to session updates here to avoid infinite loops
-    // Session is already loaded in the first useEffect
+    // Subscribe to session updates to get real-time section releases
+    const unsubscribeSession = subscribeToSession(session.id, (updatedSession: any) => {
+      if (updatedSession) {
+        console.log('Presentation: Session updated:', updatedSession);
+        setSession(updatedSession);
+      }
+    });
 
     // Subscribe to student presence for real-time updates
     const unsubscribePresence = subscribeToStudentPresence(session.id, (presenceData: any) => {
@@ -161,6 +166,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
     return () => {
       console.log('Cleaning up subscriptions for session:', session.id);
       unsubscribeResponses();
+      unsubscribeSession();
       unsubscribePresence();
     };
   }, [session?.id]); // Only re-subscribe when session ID changes
@@ -376,7 +382,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
               let selectedIndex: number | undefined;
               let isCorrect: boolean | undefined;
               
-              if (question.type === 'multiple-choice' && question.options && r.response) {
+              if ((question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && question.options && r.response) {
                 // Find the index of the selected option by matching the response text
                 selectedIndex = question.options.findIndex(option => option.trim() === r.response.trim());
                 if (selectedIndex === -1) {
@@ -389,7 +395,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                     selectedIndex = undefined;
                   }
                 }
-              } else if (question.type === 'multiple-choice' && !r.response) {
+              } else if ((question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && !r.response) {
                 // Handle case where response is undefined/null
                 console.warn('Response is undefined for multiple choice question:', question.id, 'Student:', r.studentId);
                 selectedIndex = undefined;
@@ -398,6 +404,9 @@ export default function PresentationPage({ params }: PresentationPageProps) {
               // Check if it's correct (moved outside the if blocks)
               if (question.type === 'multiple-choice' && selectedIndex !== undefined && question.correctAnswer !== undefined) {
                 isCorrect = selectedIndex === question.correctAnswer;
+              } else if (question.type === 'multiple-choice-feedback' && selectedIndex !== undefined) {
+                // For feedback questions, all answers are considered correct
+                isCorrect = true;
               }
               
               return {
@@ -427,7 +436,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
           let incorrectCount: number | undefined;
           let optionDistribution: Array<{optionIndex: number, optionText: string, count: number, percentage: number}> | undefined;
           
-          if (question.type === 'multiple-choice') {
+          if (question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') {
             const responsesWithCorrectness = questionResponses.filter(r => typeof r.isCorrect === 'boolean');
             correctCount = responsesWithCorrectness.filter(r => r.isCorrect === true).length;
             incorrectCount = responsesWithCorrectness.filter(r => r.isCorrect === false).length;
@@ -923,7 +932,9 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                           <div className={`grid gap-4 pt-6 border-t border-gray-700 ${
                             questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice' 
                               ? 'grid-cols-5' 
-                              : 'grid-cols-3'
+                              : questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice-feedback'
+                                ? 'grid-cols-4'
+                                : 'grid-cols-3'
                           }`}>
                             <div className="text-center">
                               <div className="text-2xl font-light text-blue-400">
@@ -974,6 +985,18 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                                 </div>
                               </>
                             )}
+                            
+                            {/* Multiple Choice Feedback Specific Stats */}
+                            {questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice-feedback' && (
+                              <div className="text-center">
+                                <div className="text-2xl font-light text-blue-400">
+                                  {questionAnalysis[selectedQuestionIndex].totalResponses}
+                                </div>
+                                <div className="text-sm text-gray-400 uppercase tracking-wide">
+                                  Responses
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -985,7 +1008,9 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                             <h3 className="text-xl font-light text-gray-300 mb-2">
                               {questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice' 
                                 ? 'Response Distribution' 
-                                : 'Student Responses'
+                                : questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice-feedback'
+                                  ? 'Feedback Responses'
+                                  : 'Student Responses'
                               }
                             </h3>
                             <div className="text-sm text-gray-500">
@@ -994,12 +1019,15 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                           </div>
                           
                           {/* Multiple Choice Options with Response Distribution */}
-                          {questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice' && 
+                          {(questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice' || 
+                           questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice-feedback') && 
                            questionAnalysis[selectedQuestionIndex].questionOptions ? (
                             <div className="space-y-4">
                               {questionAnalysis[selectedQuestionIndex].questionOptions!.map((option, index) => {
                                 const distribution = questionAnalysis[selectedQuestionIndex].optionDistribution?.find(d => d.optionIndex === index);
-                                const isCorrect = questionAnalysis[selectedQuestionIndex].correctAnswer === index;
+                                const isCorrect = questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice-feedback' 
+                                  ? true  // All answers are considered correct for feedback questions
+                                  : questionAnalysis[selectedQuestionIndex].correctAnswer === index;
                                 const responseCount = distribution?.count || 0;
                                 const percentage = distribution?.percentage || 0;
                                 
@@ -1007,11 +1035,15 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                                   <div 
                                     key={index}
                                     className={`p-5 rounded-2xl border transition-all ${
-                                      isCorrect
-                                        ? 'bg-green-500/15 border-green-500/40'
-                                        : responseCount > 0
-                                          ? 'bg-blue-500/10 border-blue-500/30'
+                                      questionAnalysis[selectedQuestionIndex].questionType === 'multiple-choice-feedback'
+                                        ? responseCount > 0
+                                          ? 'bg-blue-500/15 border-blue-500/40'
                                           : 'bg-gray-800/50 border-gray-700/30'
+                                        : isCorrect
+                                          ? 'bg-green-500/15 border-green-500/40'
+                                          : responseCount > 0
+                                            ? 'bg-red-500/10 border-red-500/30'
+                                            : 'bg-gray-800/50 border-gray-700/30'
                                     }`}
                                   >
                                     <div className="flex items-center justify-between mb-3">
@@ -1208,7 +1240,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                                   </div>
                                   
                                   {/* Multiple Choice Options - No answers revealed in Section display */}
-                                  {question.type === 'multiple-choice' && question.options && (
+                                  {(question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && question.options && (
                                     <div className="space-y-2 mt-4">
                                       {question.options.map((option, optionIndex) => (
                                         <div 
@@ -1331,7 +1363,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                                 </div>
                                 
                                 {/* Multiple Choice Options for Activities */}
-                                {question.type === 'multiple-choice' && question.options && (
+                                {(question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && question.options && (
                                   <div className="space-y-2 mt-4">
                                     {question.options.map((option, optionIndex) => (
                                       <div 

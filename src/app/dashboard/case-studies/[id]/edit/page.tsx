@@ -240,8 +240,23 @@ export default function EditCaseStudyPage() {
         throw new Error('Case study title is required');
       }
 
-      if (sections.some(section => !section.title.trim() || !section.content.trim())) {
-        throw new Error('All sections must have a title and content');
+      // Validate sections
+      for (const section of sections) {
+        if (!section.title.trim()) {
+          throw new Error('All sections must have a title');
+        }
+
+        if (section.type === 'reading' && !section.content.trim()) {
+          throw new Error('Reading sections must have content');
+        }
+
+        if (section.type === 'discussion' && (!section.discussionPrompt?.trim() || section.discussionPrompt === '<p></p>')) {
+          throw new Error('Discussion sections must have a prompt');
+        }
+
+        if (section.type === 'activity' && (!section.activityInstructions?.trim() || section.activityInstructions === '<p></p>')) {
+          throw new Error('Activity sections must have instructions');
+        }
       }
 
       const totalPoints = calculateTotalPoints();
@@ -511,12 +526,13 @@ export default function EditCaseStudyPage() {
                                 </label>
                                 <select
                                   value={question.type}
-                                  onChange={(e) => handleQuestionChange(section.id, question.id, 'type', e.target.value as 'text' | 'multiple-choice' | 'essay')}
+                                  onChange={(e) => handleQuestionChange(section.id, question.id, 'type', e.target.value as 'text' | 'multiple-choice' | 'multiple-choice-feedback' | 'essay')}
                                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
                                   <option value="text">Short Answer</option>
                                   <option value="essay">Essay</option>
                                   <option value="multiple-choice">Multiple Choice</option>
+                                  <option value="multiple-choice-feedback">Multiple Choice (Feedback)</option>
                                 </select>
                               </div>
 
@@ -531,21 +547,31 @@ export default function EditCaseStudyPage() {
                               />
                             </div>
 
-                            {question.type === 'multiple-choice' && (
+                            {(question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && (
                               <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                   Answer Options
                                 </label>
                                 <div className="space-y-2">
+                                  {question.type === 'multiple-choice-feedback' && (
+                                    <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                      <p className="text-sm text-blue-800">
+                                        <strong>Feedback Question:</strong> All answers will be considered correct and earn full points. 
+                                        This is designed to gather student opinions and insights.
+                                      </p>
+                                    </div>
+                                  )}
                                   {(question.options || []).map((option, optionIndex) => (
                                     <div key={optionIndex} className="flex items-center gap-2">
-                                      <input
-                                        type="radio"
-                                        name={`correct-${question.id}`}
-                                        checked={question.correctAnswer === optionIndex}
-                                        onChange={() => handleQuestionChange(section.id, question.id, 'correctAnswer', optionIndex)}
-                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                                      />
+                                      {question.type === 'multiple-choice' && (
+                                        <input
+                                          type="radio"
+                                          name={`correct-${question.id}`}
+                                          checked={question.correctAnswer === optionIndex}
+                                          onChange={() => handleQuestionChange(section.id, question.id, 'correctAnswer', optionIndex)}
+                                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                        />
+                                      )}
                                       <input
                                         type="text"
                                         value={option}

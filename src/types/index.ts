@@ -3,7 +3,7 @@ import { Timestamp } from 'firebase/firestore';
 export interface Question {
   id: string;
   text: string;
-  type: 'text' | 'multiple-choice' | 'essay';
+  type: 'text' | 'multiple-choice' | 'multiple-choice-feedback' | 'essay';
   options?: string[];
   correctAnswer?: number; // Index of the correct option (for multiple-choice)
   points: number;

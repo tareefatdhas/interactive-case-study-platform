@@ -18,7 +18,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import type { Session, CaseStudy, Student, Section, Question, Response } from '@/types';
-import { User, CheckCircle, X, ArrowRight, ArrowLeft, BookOpen, Clock } from 'lucide-react';
+import { User, CheckCircle, X, ArrowRight, ArrowLeft, BookOpen, Clock, MessageSquare } from 'lucide-react';
 
 interface StudentSessionPageProps {
   params: Promise<{
@@ -61,6 +61,10 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   const [rememberedStudent, setRememberedStudent] = useState<{studentId: string, name: string} | null>(null);
   
   const [currentResponses, setCurrentResponses] = useState<Record<string, string>>({});
+  
+  // State for new section notifications
+  const [newSectionAvailable, setNewSectionAvailable] = useState(false);
+  const [newSectionIndex, setNewSectionIndex] = useState(-1);
 
   // Storage key for this specific session
   const storageKey = `student-session-${resolvedParams.code}`;
@@ -202,7 +206,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         if (!sessionData.releasedSections) {
           console.log('LEGACY: Session missing releasedSections, defaulting to all sections released');
           // For compatibility, release all sections initially for legacy sessions
-          const caseStudyData = await getCaseStudy(sessionData.caseStudyId);
+          const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
           const totalSections = caseStudyData?.sections.length || 2;
           sessionData.releasedSections = Array.from({ length: totalSections }, (_, i) => i);
           sessionData.currentReleasedSection = totalSections - 1;
@@ -212,7 +216,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         setSession(sessionData);
         
         console.log('LOAD: Fetching case study data...');
-        const caseStudyData = await getCaseStudy(sessionData.caseStudyId);
+        const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
         if (!caseStudyData) {
           console.error('LOAD: Case study not found');
           setError('Case study not found');
@@ -332,31 +336,51 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
   // Subscribe to session updates to detect when new sections are released
   useEffect(() => {
-    if (!session || step !== 'waiting') return;
-
+    if (!session || !['reading', 'review', 'waiting'].includes(step)) return;
+    
     // Use Realtime Database for instant updates with zero polling
     const { subscribeToSessionStatusStudent } = require('@/lib/firebase/student-realtime');
     
-    const unsubscribe = subscribeToSessionStatusStudent(session.id, (status) => {
-      if (status) {
-        const nextSectionIndex = currentSection + 1;
-        const isNextSectionNowReleased = status.releasedSections?.includes(nextSectionIndex) || false;
+    const unsubscribe = subscribeToSessionStatusStudent(session.id, (status: any) => {
+      if (status && status.releasedSections) {
+        // Update local session state with latest released sections
+        setSession(prev => prev ? {
+          ...prev,
+          releasedSections: status.releasedSections,
+          currentReleasedSection: status.currentReleasedSection
+        } : prev);
         
-        if (isNextSectionNowReleased) {
-          // Update local session state
-          setSession(prev => prev ? {
-            ...prev,
-            releasedSections: status.releasedSections,
-            currentSection: status.currentSection
-          } : prev);
-          setCurrentSection(nextSectionIndex);
+        // Check if there are newly available sections
+        const maxReleasedSection = Math.max(...status.releasedSections);
+        const nextAvailableSection = currentSection + 1;
+        
+        // If we're in waiting step and next section is now available, auto-advance
+        if (step === 'waiting' && status.releasedSections.includes(nextAvailableSection)) {
+          setCurrentSection(nextAvailableSection);
           setStep('reading');
+          setNewSectionAvailable(false);
+        }
+        // If we're reading/review and there are later sections available, show notification
+        else if ((step === 'reading' || step === 'review') && maxReleasedSection > currentSection) {
+          const isCurrentlyWorking = step === 'reading' && (
+            Object.keys(currentResponses).length > 0 || 
+            !hasReadSection ||
+            showQuestions
+          );
+          
+          // Only show notification if student isn't actively working on current section
+          // AND the new section is actually ahead of where they currently are
+          const targetNewSection = Math.min(maxReleasedSection, nextAvailableSection);
+          if (!isCurrentlyWorking && !newSectionAvailable && targetNewSection > currentSection) {
+            setNewSectionAvailable(true);
+            setNewSectionIndex(targetNewSection);
+          }
         }
       }
     });
 
     return () => unsubscribe?.();
-  }, [session, step, currentSection]);
+  }, [session, step, currentSection, hasReadSection, showQuestions, currentResponses, newSectionAvailable]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -533,7 +557,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       for (const question of currentSectionData.questions) {
         const response = currentResponses[question.id] || '';
         
-        if (response.trim() || question.type === 'multiple-choice') {
+        if (response.trim() || question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') {
           // For multiple choice, calculate points automatically
           let points: number | undefined;
           let responseText = response.trim();
@@ -541,6 +565,11 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           if (question.type === 'multiple-choice' && question.correctAnswer !== undefined) {
             const selectedIndex = parseInt(response);
             points = selectedIndex === question.correctAnswer ? question.points : 0;
+            responseText = question.options?.[selectedIndex] || response;
+          } else if (question.type === 'multiple-choice-feedback') {
+            // For feedback questions, all answers are correct and get full points
+            const selectedIndex = parseInt(response);
+            points = question.points;
             responseText = question.options?.[selectedIndex] || response;
           }
 
@@ -559,7 +588,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           // Response saved to Firestore only - teacher dashboard will get real-time updates via Firestore subscription
 
           // Only send to AI for assessment if not multiple choice (since MC is auto-graded)
-          if (question.type !== 'multiple-choice') {
+          if (question.type !== 'multiple-choice' && question.type !== 'multiple-choice-feedback') {
             try {
               await fetch('/api/chat', {
                 method: 'POST',
@@ -645,7 +674,39 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     const maxReleasedSection = session?.releasedSections ? Math.max(...session.releasedSections) : -1;
     if (sectionIndex <= maxReleasedSection) {
       setCurrentSection(sectionIndex);
+      
+      // Dismiss notification if we've navigated to or past the notification's target section
+      if (newSectionAvailable && sectionIndex >= newSectionIndex) {
+        setNewSectionAvailable(false);
+      }
     }
+  };
+
+  const handleSwitchUser = () => {
+    // Clear stored session but keep remembered student info for "Continue as..." option
+    clearStoredSession();
+    // Don't clear the cookie - keep it so "Continue as..." still appears
+    // clearStudentInfoCookie(); 
+    setStudent(null);
+    setStudentInfo({ studentId: '', name: '' });
+    setResponses([]);
+    setStep('join');
+    setShowJoinAsOther(false);
+  };
+
+  const handleGoToNewSection = () => {
+    if (newSectionIndex > currentSection) {
+      setCurrentSection(newSectionIndex);
+      setStep('reading');
+      setHasReadSection(false);
+      setShowQuestions(false);
+      setCurrentResponses({});
+      setNewSectionAvailable(false);
+    }
+  };
+
+  const handleDismissNewSection = () => {
+    setNewSectionAvailable(false);
   };
 
 
@@ -966,29 +1027,32 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           </div>
 
           {/* Questions Review */}
-          <div className="space-y-6 mb-8">
+          <div className="space-y-12 mb-12">
             {currentSectionData.questions.map((question, index) => (
-              <div key={question.id} className="bg-gray-50 rounded-lg p-6">
-                <div className="mb-4">
-                  <div className="flex items-start gap-3 mb-2">
-                    <div className="flex-shrink-0 w-6 h-6 bg-gray-600 text-white rounded-full flex items-center justify-center text-xs font-medium">
+              <div key={question.id} className="relative">
+                <div className="mb-8">
+                  <div className="flex items-start gap-5 mb-4">
+                    <div className="flex-shrink-0 w-10 h-10 border-2 border-gray-900 text-gray-900 rounded-full flex items-center justify-center text-sm font-semibold">
                       {index + 1}
                     </div>
-                    <label className="text-base font-medium text-gray-900 leading-relaxed">
+                    <h3 className="text-xl font-light text-gray-900 leading-relaxed">
                       {question.text}
-                    </label>
+                    </h3>
                   </div>
+                  <div className="w-full h-px bg-gray-200 mt-6"></div>
                 </div>
 
                 {/* Response and Feedback */}
-                <div className="space-y-3">
+                <div className="ml-15 space-y-6">
                   {/* Show submitted response */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-center gap-2 text-blue-700 mb-2">
-                      <CheckCircle className="h-4 w-4" />
-                      <span className="text-sm font-medium">Your Response:</span>
+                  <div className="border-l-4 border-blue-500 bg-blue-50/30 rounded-r-xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                        <CheckCircle className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <span className="text-sm font-medium text-blue-800">Your Response</span>
                     </div>
-                    <div className="text-sm text-blue-800">
+                    <div className="text-base text-gray-800 leading-relaxed">
                       {(() => {
                         const response = responses.find(r => r.questionId === question.id);
                         return response?.response || 'No response recorded';
@@ -998,22 +1062,22 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                   
                   {/* Show feedback for multiple choice questions */}
                   {question.type === 'multiple-choice' && question.correctAnswer !== undefined && (
-                    <div className={`border rounded-xl p-5 transition-all ${
+                    <div className={`border-l-4 rounded-r-xl p-6 ${
                       (() => {
                         const response = responses.find(r => r.questionId === question.id);
                         const userAnswer = question.options?.findIndex(opt => opt === response?.response) ?? -1;
                         const isCorrect = userAnswer === question.correctAnswer;
                         return isCorrect 
-                          ? 'bg-green-50/50 border-green-200/60 shadow-sm' 
-                          : 'bg-red-50/50 border-red-200/60 shadow-sm';
+                          ? 'border-green-500 bg-green-50/30' 
+                          : 'border-red-500 bg-red-50/30';
                       })()
                     }`}>
-                      <div className={`flex items-center gap-3 mb-3 ${
+                      <div className={`flex items-center gap-4 mb-5 ${
                         (() => {
                           const response = responses.find(r => r.questionId === question.id);
                           const userAnswer = question.options?.findIndex(opt => opt === response?.response) ?? -1;
                           const isCorrect = userAnswer === question.correctAnswer;
-                          return isCorrect ? 'text-green-600' : 'text-red-500';
+                          return isCorrect ? 'text-green-800' : 'text-red-800';
                         })()
                       }`}>
                         {(() => {
@@ -1022,20 +1086,32 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                           const isCorrect = userAnswer === question.correctAnswer;
                           return isCorrect ? (
                             <>
-                              <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
+                              <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center">
                                 <CheckCircle className="h-4 w-4 text-green-600" />
                               </div>
-                              <span className="font-medium text-green-700">Correct</span>
+                              <span className="font-medium text-green-800">Correct answer</span>
                             </>
                           ) : (
                             <>
-                              <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center">
-                                <X className="h-4 w-4 text-red-500" />
+                              <div className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center">
+                                <X className="h-4 w-4 text-red-600" />
                               </div>
-                              <span className="font-medium text-red-600">Incorrect</span>
+                              <span className="font-medium text-red-800">Incorrect answer</span>
                             </>
                           );
                         })()}
+                        
+                        <div className="ml-auto flex items-center gap-2 text-sm">
+                          <span className="text-gray-600">Points:</span>
+                          <span className="font-semibold">
+                            {(() => {
+                              const response = responses.find(r => r.questionId === question.id);
+                              const points = response?.points ?? 0;
+                              const maxPoints = response?.maxPoints ?? question.points;
+                              return `${points}/${maxPoints}`;
+                            })()}
+                          </span>
+                        </div>
                       </div>
                       
                       {/* Show correct answer if user was wrong */}
@@ -1046,45 +1122,65 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                         
                         if (!isCorrect && question.options && question.correctAnswer !== undefined) {
                           return (
-                            <div className="bg-white/60 rounded-lg p-3 border border-red-100/60">
-                              <p className="text-sm text-gray-600 mb-1">Correct answer:</p>
-                              <p className="text-sm font-medium text-gray-800">{question.options[question.correctAnswer]}</p>
+                            <div className="bg-white/70 rounded-lg p-4 border border-red-200/60">
+                              <p className="text-sm text-gray-600 mb-2 font-medium">The correct answer was:</p>
+                              <p className="text-base text-gray-800 leading-relaxed">
+                                {question.options[question.correctAnswer]}
+                              </p>
                             </div>
                           );
                         }
                         return null;
                       })()}
-                      
-                      {/* Show points earned */}
-                      <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
-                        <span className="text-xs text-gray-500">Points earned</span>
-                        <span className="text-sm font-medium text-gray-700">
-                          {(() => {
-                            const response = responses.find(r => r.questionId === question.id);
-                            const points = response?.points ?? 0;
-                            const maxPoints = response?.maxPoints ?? question.points;
-                            return `${points}/${maxPoints}`;
-                          })()}
-                        </span>
+                    </div>
+                  )}
+                  
+                  {/* Show feedback for multiple choice feedback questions */}
+                  {question.type === 'multiple-choice-feedback' && (
+                    <div className="border-l-4 border-blue-500 bg-blue-50/30 rounded-r-xl p-6">
+                      <div className="flex items-center gap-4 mb-5">
+                        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center">
+                          <CheckCircle className="h-4 w-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-blue-800 leading-none">
+                            Thank you for your feedback!
+                          </p>
+                          <p className="text-xs text-blue-600/80 mt-1">
+                            You earned {question.points} points
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-white/70 rounded-lg p-4 border border-blue-200/60">
+                        <p className="text-sm text-gray-600 mb-2 font-medium">Your response helps us understand different perspectives on this topic.</p>
+                        <p className="text-base text-gray-800 leading-relaxed">
+                          All responses are valuable for learning and discussion.
+                        </p>
                       </div>
                     </div>
                   )}
                   
                   {/* Show points for other question types */}
-                  {question.type !== 'multiple-choice' && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">
+                  {question.type !== 'multiple-choice' && question.type !== 'multiple-choice-feedback' && (
+                    <div className="border-l-4 border-amber-500 bg-amber-50/30 rounded-r-xl p-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center">
+                          <Clock className="h-4 w-4 text-amber-600" />
+                        </div>
+                        <span className="font-medium text-amber-800">
                           Awaiting instructor review
                         </span>
-                        <span className="text-xs text-gray-500">
-                          {(() => {
-                            const response = responses.find(r => r.questionId === question.id);
-                            const points = response?.points;
-                            const maxPoints = response?.maxPoints ?? question.points;
-                            return points !== undefined ? `${points}/${maxPoints} points` : `Worth ${maxPoints} points`;
-                          })()}
-                        </span>
+                        <div className="ml-auto flex items-center gap-2 text-sm">
+                          <span className="text-gray-600">Worth:</span>
+                          <span className="font-semibold">
+                            {(() => {
+                              const response = responses.find(r => r.questionId === question.id);
+                              const points = response?.points;
+                              const maxPoints = response?.maxPoints ?? question.points;
+                              return points !== undefined ? `${points}/${maxPoints} points` : `${maxPoints} points`;
+                            })()}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1237,18 +1333,6 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   const currentSectionData = caseStudy.sections[currentSection];
   const progress = ((currentSection + 1) / caseStudy.sections.length) * 100;
 
-  const handleSwitchUser = () => {
-    // Clear stored session but keep remembered student info for "Continue as..." option
-    clearStoredSession();
-    // Don't clear the cookie - keep it so "Continue as..." still appears
-    // clearStudentInfoCookie(); 
-    setStudent(null);
-    setStudentInfo({ studentId: '', name: '' });
-    setResponses([]);
-    setStep('join');
-    setShowJoinAsOther(false);
-  };
-
   return (
     <div className="min-h-screen bg-white">
       {/* Collapsible Progress Header */}
@@ -1297,6 +1381,48 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         </div>
       </div>
 
+      {/* New Section Available Notification */}
+      {newSectionAvailable && (
+        <div 
+          className="sticky z-10 mx-auto max-w-3xl px-4 sm:px-6 mb-4 transition-all duration-300 ease-in-out"
+          style={{ 
+            top: isHeaderCollapsed ? '4rem' : '6rem'
+          }}
+        >
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  <ArrowRight className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-blue-900">
+                    New Section Available!
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    Section {newSectionIndex + 1} has been released and is ready to read.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleGoToNewSection}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 h-auto"
+                >
+                  Go to Section {newSectionIndex + 1}
+                </Button>
+                <button
+                  onClick={handleDismissNewSection}
+                  className="text-blue-500 hover:text-blue-700 p-1"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Reading Container */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 transition-all duration-300 ease-in-out"
            style={{ 
@@ -1311,7 +1437,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
               {caseStudy.sections.map((section, index) => {
                 const maxReleasedSection = session?.releasedSections ? Math.max(...session.releasedSections) : -1;
                 const isReleased = index <= maxReleasedSection;
-                const isCompleted = section.questions.every(q => isQuestionAnswered(q.id));
+                const isCompleted = isReleased && section.questions.every(q => isQuestionAnswered(q.id));
                 const isCurrent = index === currentSection;
                 
                 return (
@@ -1362,6 +1488,30 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
         {/* Section Title */}
         <div className="text-center mb-12 sm:mb-16">
+          {/* Section Type Indicator */}
+          {currentSectionData.type !== 'reading' && (
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-6 ${
+              currentSectionData.type === 'discussion' 
+                ? 'bg-purple-100 text-purple-800'
+                : currentSectionData.type === 'activity'
+                ? 'bg-orange-100 text-orange-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {currentSectionData.type === 'discussion' && (
+                <>
+                  <MessageSquare className="h-4 w-4" />
+                  Discussion Section
+                </>
+              )}
+              {currentSectionData.type === 'activity' && (
+                <>
+                  <BookOpen className="h-4 w-4" />
+                  Activity Section
+                </>
+              )}
+            </div>
+          )}
+          
           <h2 className="text-2xl sm:text-3xl font-light text-gray-900 leading-tight">
             {currentSectionData.title}
           </h2>
@@ -1370,7 +1520,13 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         {/* Reading Content */}
         <div 
           ref={contentRef}
-          className="reading-content-minimal max-w-none mb-16 sm:mb-20"
+          className={`max-w-none mb-16 sm:mb-20 ${
+            currentSectionData.type === 'discussion' 
+              ? 'discussion-content' 
+              : currentSectionData.type === 'activity'
+              ? 'activity-content'
+              : 'reading-content-minimal'
+          }`}
         >
           {/* Case Study Description - Only show before first section */}
           {currentSection === 0 && caseStudy.description && (
@@ -1385,7 +1541,17 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           
           {/* Section Content */}
           <div dangerouslySetInnerHTML={{ 
-            __html: currentSectionData.content 
+            __html: (() => {
+              switch (currentSectionData.type) {
+                case 'discussion':
+                  return currentSectionData.discussionPrompt || '';
+                case 'activity':
+                  return currentSectionData.activityInstructions || '';
+                case 'reading':
+                default:
+                  return currentSectionData.content || '';
+              }
+            })()
           }} />
         </div>
 
@@ -1395,7 +1561,17 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
             <div className="flex items-center gap-3 justify-center">
               <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
               <p className="text-sm text-gray-600">
-                Continue reading to proceed to questions
+                {(() => {
+                  switch (currentSectionData.type) {
+                    case 'discussion':
+                      return 'Continue reading the discussion prompt to proceed to questions';
+                    case 'activity':
+                      return 'Continue reading the activity instructions to proceed to questions';
+                    case 'reading':
+                    default:
+                      return 'Continue reading to proceed to questions';
+                  }
+                })()}
               </p>
             </div>
           </div>
@@ -1410,40 +1586,44 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
             <div className="w-full h-px bg-gray-200 mb-12"></div>
             
             {/* Questions */}
-            <div className="space-y-10 sm:space-y-12">
+            <div className="space-y-16 sm:space-y-20">
               {currentSectionData.questions.map((question, index) => (
-                <div key={question.id} className="bg-gray-50 border border-gray-100 rounded-lg p-6 sm:p-8">
+                <div key={question.id} className="relative">
                   {/* Question Header */}
-                  <div className="mb-6">
-                    <div className="flex items-start gap-4 mb-3">
-                      <div className="flex-shrink-0 w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center text-sm font-medium">
+                  <div className="mb-8 sm:mb-10">
+                    <div className="flex items-start gap-5 mb-4">
+                      <div className="flex-shrink-0 w-10 h-10 border-2 border-gray-900 text-gray-900 rounded-full flex items-center justify-center text-sm font-semibold">
                         {index + 1}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <label className="text-base sm:text-lg text-gray-900 leading-relaxed font-medium block">
+                        <h3 className="text-xl sm:text-2xl font-light text-gray-900 leading-relaxed mb-3">
                           {question.text}
-                        </label>
-                        <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                          {question.points} points
-                        </p>
-                      </div>
-                      {isQuestionAnswered(question.id) && (
-                        <div className="flex-shrink-0">
-                          <CheckCircle className="h-5 w-5 text-green-600" />
+                        </h3>
+                        <div className="flex items-center gap-4">
+                          <p className="text-sm text-gray-500">
+                            {question.points} {question.points === 1 ? 'point' : 'points'}
+                          </p>
+                          {isQuestionAnswered(question.id) && (
+                            <div className="flex items-center gap-2 text-green-700">
+                              <CheckCircle className="h-4 w-4" />
+                              <span className="text-sm font-medium">Answered</span>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
+                    <div className="w-full h-px bg-gray-200 mt-6"></div>
                   </div>
                   
                   {!isQuestionAnswered(question.id) && (
-                    <div className="space-y-1">
-                      {question.type === 'multiple-choice' && question.options ? (
-                        <div className="space-y-1">
+                    <div className="ml-15 space-y-6">
+                      {(question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && question.options ? (
+                        <div className="space-y-3">
                           {question.options.map((option, optionIndex) => (
                             <label 
                               key={optionIndex}
                               htmlFor={`${question.id}-option-${optionIndex}`}
-                              className="flex items-start gap-4 p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-white hover:border-gray-300 transition-colors"
+                              className="group flex items-start gap-4 py-4 px-6 rounded-xl border border-gray-200 cursor-pointer hover:border-gray-300 hover:bg-gray-50/50 transition-all duration-200"
                             >
                               <input
                                 type="radio"
@@ -1452,22 +1632,22 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                                 value={optionIndex.toString()}
                                 checked={currentResponses[question.id] === optionIndex.toString()}
                                 onChange={(e) => handleResponseChange(question.id, e.target.value)}
-                                className="h-5 w-5 text-gray-900 focus:ring-2 focus:ring-gray-900 border-gray-300 mt-0.5 flex-shrink-0"
+                                className="h-5 w-5 text-gray-900 focus:ring-2 focus:ring-gray-900 border-gray-300 mt-1 flex-shrink-0"
                               />
-                              <span className="text-sm sm:text-base text-gray-700 leading-relaxed">
+                              <span className="text-base sm:text-lg text-gray-800 leading-relaxed font-normal group-hover:text-gray-900 transition-colors">
                                 {option}
                               </span>
                             </label>
                           ))}
                         </div>
                       ) : (
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
                           <Textarea
                             value={currentResponses[question.id] || ''}
                             onChange={(e) => handleResponseChange(question.id, e.target.value)}
-                            placeholder="Type your response here..."
-                            rows={question.type === 'essay' ? 6 : 4}
-                            className="w-full text-sm sm:text-base resize-none border-0 focus:ring-0 focus:outline-none p-0 bg-transparent placeholder-gray-400"
+                            placeholder="Share your thoughts here..."
+                            rows={question.type === 'essay' ? 8 : 5}
+                            className="w-full text-base sm:text-lg leading-relaxed resize-none border-0 focus:ring-0 focus:outline-none p-6 bg-transparent placeholder-gray-400"
                           />
                         </div>
                       )}
@@ -1475,14 +1655,16 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                   )}
 
                   {isQuestionAnswered(question.id) && (
-                    <div className="space-y-3">
+                    <div className="ml-15 space-y-6">
                       {/* Show submitted response */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div className="flex items-center gap-2 text-blue-700 mb-2">
-                          <CheckCircle className="h-4 w-4" />
-                          <span className="text-sm font-medium">Your Response:</span>
+                      <div className="border-l-4 border-blue-500 bg-blue-50/30 rounded-r-xl p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                            <CheckCircle className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <span className="text-sm font-medium text-blue-800">Your Response</span>
                         </div>
-                        <div className="text-sm text-blue-800">
+                        <div className="text-base text-gray-800 leading-relaxed">
                           {(() => {
                             const response = responses.find(r => r.questionId === question.id);
                             return response?.response || 'No response recorded';
@@ -1492,22 +1674,22 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                       
                       {/* Show feedback for multiple choice questions */}
                       {question.type === 'multiple-choice' && question.correctAnswer !== undefined && (
-                        <div className={`border rounded-xl p-5 transition-all ${
+                        <div className={`border-l-4 rounded-r-xl p-6 ${
                           (() => {
                             const response = responses.find(r => r.questionId === question.id);
                             const userAnswer = question.options?.findIndex(opt => opt === response?.response) ?? -1;
                             const isCorrect = userAnswer === question.correctAnswer;
                             return isCorrect 
-                              ? 'bg-green-50/50 border-green-200/60 shadow-sm' 
-                              : 'bg-red-50/50 border-red-200/60 shadow-sm';
+                              ? 'border-green-500 bg-green-50/30' 
+                              : 'border-red-500 bg-red-50/30';
                           })()
                         }`}>
-                          <div className={`flex items-center gap-3 mb-3 ${
+                          <div className={`flex items-center gap-4 mb-5 ${
                             (() => {
                               const response = responses.find(r => r.questionId === question.id);
                               const userAnswer = question.options?.findIndex(opt => opt === response?.response) ?? -1;
                               const isCorrect = userAnswer === question.correctAnswer;
-                              return isCorrect ? 'text-green-600' : 'text-red-500';
+                              return isCorrect ? 'text-green-800' : 'text-red-800';
                             })()
                           }`}>
                             {(() => {
@@ -1516,20 +1698,32 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                               const isCorrect = userAnswer === question.correctAnswer;
                               return isCorrect ? (
                                 <>
-                                  <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
+                                  <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center">
                                     <CheckCircle className="h-4 w-4 text-green-600" />
                                   </div>
-                                  <span className="font-medium text-green-700">Correct</span>
+                                  <span className="font-medium text-green-800">Correct answer</span>
                                 </>
                               ) : (
                                 <>
-                                  <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center">
-                                    <X className="h-4 w-4 text-red-500" />
+                                  <div className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center">
+                                    <X className="h-4 w-4 text-red-600" />
                                   </div>
-                                  <span className="font-medium text-red-600">Incorrect</span>
+                                  <span className="font-medium text-red-800">Incorrect answer</span>
                                 </>
                               );
                             })()}
+                            
+                            <div className="ml-auto flex items-center gap-2 text-sm">
+                              <span className="text-gray-600">Points:</span>
+                              <span className="font-semibold">
+                                {(() => {
+                                  const response = responses.find(r => r.questionId === question.id);
+                                  const points = response?.points ?? 0;
+                                  const maxPoints = response?.maxPoints ?? question.points;
+                                  return `${points}/${maxPoints}`;
+                                })()}
+                              </span>
+                            </div>
                           </div>
                           
                           {/* Show correct answer if user was wrong */}
@@ -1540,45 +1734,65 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                             
                             if (!isCorrect && question.options && question.correctAnswer !== undefined) {
                               return (
-                                <div className="bg-white/60 rounded-lg p-3 border border-red-100/60">
-                                  <p className="text-sm text-gray-600 mb-1">Correct answer:</p>
-                                  <p className="text-sm font-medium text-gray-800">{question.options[question.correctAnswer]}</p>
+                                <div className="bg-white/70 rounded-lg p-4 border border-red-200/60">
+                                  <p className="text-sm text-gray-600 mb-2 font-medium">The correct answer was:</p>
+                                  <p className="text-base text-gray-800 leading-relaxed">
+                                    {question.options[question.correctAnswer]}
+                                  </p>
                                 </div>
                               );
                             }
                             return null;
                           })()}
-                          
-                          {/* Show points earned */}
-                          <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
-                            <span className="text-xs text-gray-500">Points earned</span>
-                            <span className="text-sm font-medium text-gray-700">
-                              {(() => {
-                                const response = responses.find(r => r.questionId === question.id);
-                                const points = response?.points ?? 0;
-                                const maxPoints = response?.maxPoints ?? question.points;
-                                return `${points}/${maxPoints}`;
-                              })()}
-                            </span>
+                        </div>
+                      )}
+                      
+                      {/* Show feedback for multiple choice feedback questions */}
+                      {question.type === 'multiple-choice-feedback' && (
+                        <div className="border-l-4 border-blue-500 bg-blue-50/30 rounded-r-xl p-6">
+                          <div className="flex items-center gap-4 mb-5">
+                            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center">
+                              <CheckCircle className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-blue-800 leading-none">
+                                Thank you for your feedback!
+                              </p>
+                              <p className="text-xs text-blue-600/80 mt-1">
+                                You earned {question.points} points
+                              </p>
+                            </div>
+                          </div>
+                          <div className="bg-white/70 rounded-lg p-4 border border-blue-200/60">
+                            <p className="text-sm text-gray-600 mb-2 font-medium">Your response helps us understand different perspectives on this topic.</p>
+                            <p className="text-base text-gray-800 leading-relaxed">
+                              All responses are valuable for learning and discussion.
+                            </p>
                           </div>
                         </div>
                       )}
                       
                       {/* Show points for other question types */}
-                      {question.type !== 'multiple-choice' && (
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">
+                      {question.type !== 'multiple-choice' && question.type !== 'multiple-choice-feedback' && (
+                        <div className="border-l-4 border-amber-500 bg-amber-50/30 rounded-r-xl p-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center">
+                              <Clock className="h-4 w-4 text-amber-600" />
+                            </div>
+                            <span className="font-medium text-amber-800">
                               Awaiting instructor review
                             </span>
-                            <span className="text-xs text-gray-500">
-                              {(() => {
-                                const response = responses.find(r => r.questionId === question.id);
-                                const points = response?.points;
-                                const maxPoints = response?.maxPoints ?? question.points;
-                                return points !== undefined ? `${points}/${maxPoints} points` : `Worth ${maxPoints} points`;
-                              })()}
-                            </span>
+                            <div className="ml-auto flex items-center gap-2 text-sm">
+                              <span className="text-gray-600">Worth:</span>
+                              <span className="font-semibold">
+                                {(() => {
+                                  const response = responses.find(r => r.questionId === question.id);
+                                  const points = response?.points;
+                                  const maxPoints = response?.maxPoints ?? question.points;
+                                  return points !== undefined ? `${points}/${maxPoints} points` : `${maxPoints} points`;
+                                })()}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       )}

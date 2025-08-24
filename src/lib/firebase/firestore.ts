@@ -502,6 +502,10 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
     // Get student details
     const students = await getStudentsByIds(Array.from(allStudentIds));
     
+    // Get all case studies for this teacher
+    const caseStudies = await getCaseStudiesByTeacher(teacherId);
+    const caseStudyMap = new Map(caseStudies.map(cs => [cs.id, cs]));
+    
     // Get all responses for these students
     const studentStats = await Promise.all(
       students.map(async (student) => {
@@ -534,11 +538,27 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
         
         const responses = Array.from(allResponses.values());
 
+        // Calculate total questions available for sessions this student participated in
+        const studentSessions = sessions.filter(session => 
+          session.studentsJoined?.includes(student.id) || 
+          session.studentsJoined?.includes(student.studentId)
+        );
+        
+        const totalQuestionsAvailable = studentSessions.reduce((total, session) => {
+          const caseStudy = caseStudyMap.get(session.caseStudyId);
+          if (caseStudy) {
+            return total + (caseStudy.sections?.reduce((sectionTotal, section) => {
+              return sectionTotal + (section.questions?.length || 0);
+            }, 0) || 0);
+          }
+          return total;
+        }, 0);
+
         // Calculate statistics
         const totalResponses = responses.length;
         const gradedResponses = responses.filter(r => r.points !== undefined);
         const totalPoints = gradedResponses.reduce((sum, r) => sum + (r.points || 0), 0);
-        const maxTotalPoints = responses.reduce((sum, r) => sum + r.maxPoints, 0);
+        const maxTotalPoints = responses.reduce((sum, r) => sum + (r.maxPoints || 0), 0);
         
         // Calculate correct responses (for multiple choice questions)
         const correctResponses = gradedResponses.filter(r => {
@@ -547,6 +567,7 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
         }).length;
         
         const correctPercentage = totalResponses > 0 ? (correctResponses / totalResponses) * 100 : 0;
+        const progressPercentage = totalQuestionsAvailable > 0 ? (totalResponses / totalQuestionsAvailable) * 100 : 0;
 
         return {
           ...student,
@@ -556,7 +577,9 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
             correctPercentage: Math.round(correctPercentage * 10) / 10, // Round to 1 decimal
             totalPoints,
             maxTotalPoints,
-            averageScore: maxTotalPoints > 0 ? Math.round((totalPoints / maxTotalPoints) * 100 * 10) / 10 : 0
+            averageScore: maxTotalPoints > 0 ? Math.round((totalPoints / maxTotalPoints) * 100 * 10) / 10 : 0,
+            progressPercentage: Math.round(progressPercentage * 10) / 10, // Round to 1 decimal
+            totalQuestionsAvailable
           }
         };
       })

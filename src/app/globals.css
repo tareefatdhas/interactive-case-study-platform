@@ -293,6 +293,245 @@ h1, h2, h3, h4, h5, h6 {
   color: #1a1a1a;
 }
 
+/* Discussion Content Styles - Quote-like and thoughtful */
+.discussion-content {
+  font-family: Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif;
+  line-height: 1.8;
+  color: #4a5568;
+  font-size: 1.375rem;
+  font-style: italic;
+  max-width: none;
+  background: linear-gradient(to bottom, #fafaff, #ffffff);
+  border-radius: 1rem;
+  padding: 2.5rem;
+  border: 1px solid #e5e7ff;
+  box-shadow: 0 1px 3px 0 rgba(139, 92, 246, 0.05);
+  position: relative;
+}
+
+/* Add quote marks as decorative elements */
+.discussion-content::before {
+  content: '"';
+  font-size: 4rem;
+  color: #a78bfa;
+  position: absolute;
+  top: 1rem;
+  left: 1.5rem;
+  line-height: 1;
+  font-family: serif;
+}
+
+.discussion-content::after {
+  content: '"';
+  font-size: 4rem;
+  color: #a78bfa;
+  position: absolute;
+  bottom: 1rem;
+  right: 1.5rem;
+  line-height: 1;
+  font-family: serif;
+}
+
+@media (max-width: 640px) {
+  .discussion-content {
+    font-size: 1.25rem;
+    padding: 2rem;
+    line-height: 1.7;
+  }
+  
+  .discussion-content::before,
+  .discussion-content::after {
+    font-size: 3rem;
+  }
+  
+  .discussion-content::before {
+    top: 0.5rem;
+    left: 1rem;
+  }
+  
+  .discussion-content::after {
+    bottom: 0.5rem;
+    right: 1rem;
+  }
+}
+
+.discussion-content p {
+  margin-bottom: 1.5rem;
+  text-align: left;
+  color: #4a5568;
+  font-style: italic;
+  font-size: 1.375rem;
+}
+
+.discussion-content h1, 
+.discussion-content h2, 
+.discussion-content h3 {
+  margin-top: 2rem;
+  margin-bottom: 1.25rem;
+  color: #4c1d95;
+  font-weight: 500;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.discussion-content h1 {
+  font-size: 1.75rem;
+  color: #5b21b6;
+}
+
+.discussion-content h2 {
+  font-size: 1.625rem;
+  color: #6b21b8;
+}
+
+.discussion-content h3 {
+  font-size: 1.5rem;
+  color: #7c3aed;
+}
+
+.discussion-content blockquote {
+  border-left: 4px solid #a855f7;
+  background: linear-gradient(to right, #f3e8ff, #faf5ff);
+  padding: 1.25rem;
+  margin: 1.5rem 0;
+  border-radius: 0.5rem;
+  font-style: italic;
+  color: #6b21b8;
+}
+
+.discussion-content ul, 
+.discussion-content ol {
+  margin: 1.25rem 0;
+  padding-left: 2rem;
+}
+
+.discussion-content li {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.discussion-content strong {
+  font-weight: 600;
+  color: #5b21b6;
+}
+
+.discussion-content em {
+  font-style: italic;
+  color: #6b21b8;
+}
+
+.discussion-content a {
+  color: #7c3aed;
+  text-decoration: underline;
+  text-decoration-color: #ddd6fe;
+  text-underline-offset: 2px;
+  transition: all 0.2s ease;
+}
+
+.discussion-content a:hover {
+  color: #5b21b6;
+  text-decoration-color: #7c3aed;
+}
+
+/* Activity Content Styles - Action-oriented and clear */
+.activity-content {
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  color: #1f2937;
+  font-size: 1.125rem;
+  max-width: none;
+  background: linear-gradient(to bottom, #fffbf0, #ffffff);
+  border-radius: 1rem;
+  padding: 2rem;
+  border: 1px solid #fbbf24;
+  box-shadow: 0 1px 3px 0 rgba(245, 158, 11, 0.05);
+}
+
+@media (max-width: 640px) {
+  .activity-content {
+    font-size: 1rem;
+    padding: 1.5rem;
+    line-height: 1.5;
+  }
+}
+
+.activity-content p {
+  margin-bottom: 1.25rem;
+  text-align: left;
+  color: #374151;
+}
+
+.activity-content h1, 
+.activity-content h2, 
+.activity-content h3 {
+  margin-top: 1.75rem;
+  margin-bottom: 1rem;
+  color: #92400e;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.activity-content h1 {
+  font-size: 1.5rem;
+  color: #b45309;
+}
+
+.activity-content h2 {
+  font-size: 1.375rem;
+  color: #d97706;
+}
+
+.activity-content h3 {
+  font-size: 1.25rem;
+  color: #f59e0b;
+}
+
+.activity-content blockquote {
+  border-left: 4px solid #f59e0b;
+  background: linear-gradient(to right, #fef3c7, #fffbeb);
+  padding: 1.25rem;
+  margin: 1.5rem 0;
+  border-radius: 0.5rem;
+  font-style: italic;
+  color: #92400e;
+}
+
+.activity-content ul, 
+.activity-content ol {
+  margin: 1.25rem 0;
+  padding-left: 2rem;
+}
+
+.activity-content li {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.activity-content strong {
+  font-weight: 600;
+  color: #92400e;
+}
+
+.activity-content em {
+  font-style: italic;
+  color: #b45309;
+}
+
+.activity-content a {
+  color: #d97706;
+  text-decoration: underline;
+  text-decoration-color: #fde68a;
+  text-underline-offset: 2px;
+  transition: all 0.2s ease;
+}
+
+.activity-content a:hover {
+  color: #92400e;
+  text-decoration-color: #d97706;
+}
+
 /* Transitions */
 * {
   transition: all 200ms ease;
