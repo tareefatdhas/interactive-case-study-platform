@@ -55,12 +55,12 @@ export default function RichTextEditor({
       }),
       BulletList.configure({
         HTMLAttributes: {
-          class: 'list-disc list-inside ml-4',
+          class: 'list-disc list-outside pl-6',
         },
       }),
       OrderedList.configure({
         HTMLAttributes: {
-          class: 'list-decimal list-inside ml-4',
+          class: 'list-decimal list-outside pl-6',
         },
       }),
       ListItem.configure({
@@ -88,7 +88,7 @@ export default function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[200px] p-4 prose-ul:list-disc prose-ol:list-decimal prose-li:marker:text-slate-400',
+        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[200px] p-4',
       },
     },
     immediatelyRender: false,
@@ -245,11 +245,12 @@ export default function RichTextEditor({
         </div>
 
         {/* Editor Content */}
-        <EditorContent 
-          editor={editor} 
-          className="bg-white"
-          placeholder={placeholder}
-        />
+        <div className="bg-white [&_.ProseMirror]:outline-none [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ul]:pl-6 [&_.ProseMirror_ol]:pl-6 [&_.ProseMirror_li]:list-item">
+          <EditorContent 
+            editor={editor} 
+            placeholder={placeholder}
+          />
+        </div>
       </div>
 
       {/* Link Dialog */}

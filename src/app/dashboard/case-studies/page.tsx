@@ -147,7 +147,7 @@ export default function CaseStudiesPage() {
                       
                       <CardDescription className="line-clamp-2 text-sm text-gray-600">
                         <div 
-                          className="prose prose-sm max-w-none [&>p]:m-0 [&>strong]:font-semibold"
+                          className="prose prose-sm max-w-none [&>p]:m-0 [&>strong]:font-semibold [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1"
                           dangerouslySetInnerHTML={{ __html: caseStudy.description || 'No description provided.' }}
                         />
                       </CardDescription>

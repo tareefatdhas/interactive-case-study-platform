@@ -661,6 +661,14 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     const section = caseStudy.sections[sectionIndex];
     if (!section) return false;
     
+    // Special case: sections with no questions can only be completed if the user has visited them
+    // This prevents confusion where empty sections appear completed without user interaction
+    if (section.questions.length === 0) {
+      // Check if student has progressed past this section or is currently on it
+      // This is more intuitive - empty sections are "completed" when the student has seen them
+      return sectionIndex < currentSection || (sectionIndex === currentSection && step !== 'join');
+    }
+    
     // Only check responses that belong to released sections' questions
     return section.questions.every(q => {
       // Double-check: make sure this question belongs to a released section
@@ -1568,32 +1576,38 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           {/* Case Study Description - Only show before first section */}
           {currentSection === 0 && caseStudy.description && (
             <div className="mb-12 sm:mb-16">
-              <div dangerouslySetInnerHTML={{ 
-                __html: caseStudy.description 
-              }} />
+              <div 
+                className="[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1"
+                dangerouslySetInnerHTML={{ 
+                  __html: caseStudy.description 
+                }} 
+              />
               {/* Divider between description and first section */}
               <div className="w-full h-px bg-gray-200 my-12 sm:my-16"></div>
             </div>
           )}
           
           {/* Section Content */}
-          <div dangerouslySetInnerHTML={{ 
-            __html: (() => {
-              switch (currentSectionData.type) {
-                case 'discussion':
-                  return currentSectionData.discussionPrompt || '';
-                case 'activity':
-                  return currentSectionData.activityInstructions || '';
-                case 'reading':
-                default:
-                  return currentSectionData.content || '';
-              }
-            })()
-          }} />
+          <div 
+            className="[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1"
+            dangerouslySetInnerHTML={{ 
+              __html: (() => {
+                switch (currentSectionData.type) {
+                  case 'discussion':
+                    return currentSectionData.discussionPrompt || '';
+                  case 'activity':
+                    return currentSectionData.activityInstructions || '';
+                  case 'reading':
+                  default:
+                    return currentSectionData.content || '';
+                }
+              })()
+            }} 
+          />
         </div>
 
         {/* Reading Completion Indicator */}
-        {!hasReadSection && (
+        {!hasReadSection && currentSectionData.questions.length > 0 && (
           <div className="mt-12 p-6 border border-gray-200 rounded-lg bg-gray-50">
             <div className="flex items-center gap-3 justify-center">
               <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
@@ -1614,8 +1628,30 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           </div>
         )}
 
+        {/* Empty Section Completion Indicator */}
+        {!hasReadSection && currentSectionData.questions.length === 0 && (
+          <div className="mt-12 p-6 border border-green-200 rounded-lg bg-green-50">
+            <div className="flex items-center gap-3 justify-center">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <p className="text-sm text-green-700">
+                {(() => {
+                  switch (currentSectionData.type) {
+                    case 'discussion':
+                      return 'Discussion section complete - no questions to answer';
+                    case 'activity':
+                      return 'Activity section complete - no questions to answer';
+                    case 'reading':
+                    default:
+                      return 'Reading section complete - no questions to answer';
+                  }
+                })()}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Questions Section - Appears at end */}
-        {hasReadSection && (
+        {hasReadSection && currentSectionData.questions.length > 0 && (
           <div className={`transition-all duration-500 ease-in-out ${
             showQuestions ? 'opacity-100' : 'opacity-0'
           }`}>
@@ -1633,9 +1669,9 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                         {index + 1}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-xl sm:text-2xl font-light text-gray-900 leading-relaxed mb-3">
-                          {question.text}
-                        </h3>
+                                          <h3 className="text-lg sm:text-xl md:text-2xl font-light text-gray-900 leading-relaxed mb-3">
+                    {question.text}
+                  </h3>
                         <div className="flex items-center gap-4">
                           <p className="text-sm text-gray-500">
                             {question.points} {question.points === 1 ? 'point' : 'points'}
@@ -1660,7 +1696,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                             <label 
                               key={optionIndex}
                               htmlFor={`${question.id}-option-${optionIndex}`}
-                              className="group flex items-start gap-4 py-4 px-6 rounded-xl border border-gray-200 cursor-pointer hover:border-gray-300 hover:bg-gray-50/50 transition-all duration-200"
+                              className="group flex items-start gap-4 py-5 px-6 rounded-xl border border-gray-200 cursor-pointer hover:border-gray-300 hover:bg-gray-50/50 transition-all duration-200 min-h-[60px] sm:min-h-[auto] sm:py-4"
                             >
                               <input
                                 type="radio"
@@ -1671,7 +1707,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                                 onChange={(e) => handleResponseChange(question.id, e.target.value)}
                                 className="h-5 w-5 text-gray-900 focus:ring-2 focus:ring-gray-900 border-gray-300 mt-1 flex-shrink-0"
                               />
-                              <span className="text-base sm:text-lg text-gray-800 leading-relaxed font-normal group-hover:text-gray-900 transition-colors">
+                              <span className="text-lg sm:text-lg text-gray-800 leading-relaxed font-normal group-hover:text-gray-900 transition-colors">
                                 {option}
                               </span>
                             </label>
@@ -1891,6 +1927,53 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Navigation for empty sections */}
+        {hasReadSection && currentSectionData.questions.length === 0 && (
+          <div className="mt-12 space-y-3">
+            {/* Navigation Row */}
+            <div className="flex gap-3">
+              {canNavigateToPrevious() && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleNavigateToSection(currentSection - 1)}
+                  className="flex-1 h-12 text-sm font-medium border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  ← Previous Section
+                </Button>
+              )}
+              
+              {canNavigateToNext() && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleNavigateToSection(currentSection + 1)}
+                  className="flex-1 h-12 text-sm font-medium border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Next Section →
+                </Button>
+              )}
+            </div>
+
+            {/* Complete Button for final sections or waiting */}
+            {!canNavigateToNext() && (
+              <>
+                {currentSection >= (caseStudy?.sections.length || 0) - 1 ? (
+                  <div className="w-full h-12 flex items-center justify-center bg-green-50 border border-green-200 rounded-lg">
+                    <span className="text-sm font-medium text-green-700">
+                      ✓ Case Study Completed
+                    </span>
+                  </div>
+                ) : (
+                  <div className="w-full h-12 flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg">
+                    <span className="text-sm font-medium text-gray-700">
+                      ⏳ Waiting for Next Section
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
         

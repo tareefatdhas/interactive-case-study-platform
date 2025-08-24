@@ -146,7 +146,7 @@ export default function DashboardPage() {
                     <CardHeader>
                       <CardTitle className="text-base">{caseStudy.title}</CardTitle>
                       <CardDescription 
-                        className="line-clamp-2"
+                        className="line-clamp-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1"
                         dangerouslySetInnerHTML={{ __html: caseStudy.description }}
                       />
                     </CardHeader>

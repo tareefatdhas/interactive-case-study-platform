@@ -1200,15 +1200,15 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                       <div className="col-span-7">
                         <div className="bg-gray-800/30 rounded-3xl border border-gray-700/50 p-8">
                           <div className="mb-6">
-                            <h3 className="text-xl font-light text-gray-300 mb-4 flex items-center">
+                            <h3 className="text-xl font-light text-white mb-4 flex items-center" style={{ color: 'white' }}>
                               <FileText className="w-5 h-5 mr-2" />
                               Reading Material
                             </h3>
                           </div>
-                          <div className="prose prose-invert prose-lg max-w-none">
+                          <div className="prose prose-invert prose-lg max-w-none [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1 [&_strong]:text-white [&_strong]:font-bold [&_b]:text-white [&_b]:font-bold" style={{ color: 'white' }}>
                             <div 
-                              className="text-gray-300 leading-relaxed"
-                              style={{ fontSize: '1.125rem', lineHeight: '1.7' }}
+                              className="text-white leading-relaxed [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1 [&_strong]:text-white [&_strong]:font-bold [&_b]:text-white [&_b]:font-bold"
+                              style={{ color: 'white', fontSize: '1.125rem', lineHeight: '1.7' }}
                               dangerouslySetInnerHTML={{ __html: currentSection.content }}
                             />
                           </div>
@@ -1218,7 +1218,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                       {/* Questions Panel */}
                       <div className="col-span-5">
                         <div className="bg-gray-800/50 rounded-3xl border border-gray-700/50 p-6">
-                          <h3 className="text-xl font-light text-gray-300 mb-6 flex items-center">
+                          <h3 className="text-xl font-light text-white mb-6 flex items-center" style={{ color: 'white' }}>
                             <MessageSquare className="w-5 h-5 mr-2" />
                             Questions ({currentSection.questions.length})
                           </h3>
@@ -1287,7 +1287,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                             Discussion Prompt
                           </div>
                           <div 
-                            className="text-xl text-white leading-relaxed"
+                            className="text-xl text-white leading-relaxed [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1 [&_strong]:text-white [&_strong]:font-bold [&_b]:text-white [&_b]:font-bold"
                             dangerouslySetInnerHTML={{ 
                               __html: currentSection.discussionPrompt || currentSection.content 
                             }}
@@ -1337,7 +1337,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                             Activity Instructions
                           </div>
                           <div 
-                            className="text-xl text-white leading-relaxed"
+                            className="text-xl text-white leading-relaxed [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1 [&_strong]:text-white [&_strong]:font-bold [&_b]:text-white [&_b]:font-bold"
                             dangerouslySetInnerHTML={{ 
                               __html: currentSection.activityInstructions || currentSection.content 
                             }}
@@ -1395,7 +1395,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                           Section Content
                         </div>
                         <div 
-                          className="text-white leading-relaxed"
+                          className="text-white leading-relaxed [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1 [&_strong]:text-white [&_strong]:font-bold [&_b]:text-white [&_b]:font-bold"
                           dangerouslySetInnerHTML={{ __html: currentSection.content }}
                         />
                       </div>

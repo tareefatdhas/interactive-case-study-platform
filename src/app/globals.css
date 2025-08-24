@@ -182,8 +182,8 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 640px) {
   .reading-content-minimal {
-    font-size: 1.125rem; /* Increased from 1.0rem for better mobile readability */
-    line-height: 1.7;
+    font-size: 1.25rem; /* Increased from 1.125rem for better mobile readability */
+    line-height: 1.8; /* Increased for better mobile reading */
   }
 }
 
@@ -217,15 +217,15 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 640px) {
   .reading-content-minimal h1 {
-    font-size: 1.5rem;
+    font-size: 1.75rem; /* Increased for better mobile visibility */
   }
   
   .reading-content-minimal h2 {
-    font-size: 1.375rem;
+    font-size: 1.5rem; /* Increased for better mobile visibility */
   }
   
   .reading-content-minimal h3 {
-    font-size: 1.125rem;
+    font-size: 1.25rem; /* Increased for better mobile visibility */
   }
 }
 
@@ -334,9 +334,9 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 640px) {
   .discussion-content {
-    font-size: 1.25rem;
+    font-size: 1.375rem; /* Increased for better mobile readability */
     padding: 2rem;
-    line-height: 1.7;
+    line-height: 1.8; /* Increased for better reading */
   }
   
   .discussion-content::before,
@@ -450,9 +450,9 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 640px) {
   .activity-content {
-    font-size: 1rem;
+    font-size: 1.125rem; /* Increased for better mobile readability */
     padding: 1.5rem;
-    line-height: 1.5;
+    line-height: 1.6; /* Increased for better reading */
   }
 }
 
@@ -532,9 +532,118 @@ h1, h2, h3, h4, h5, h6 {
   text-decoration-color: #d97706;
 }
 
-/* Transitions */
+/* Mobile Touch Target Optimizations */
+@media (max-width: 640px) {
+  /* Ensure minimum touch target size of 44px for buttons */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Increase input height for better mobile usability */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  textarea {
+    min-height: 44px;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  /* Larger text in form elements */
+  label {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  
+  /* Better spacing for mobile */
+  .space-y-1 > * + * {
+    margin-top: 0.75rem;
+  }
+  
+  .space-y-3 > * + * {
+    margin-top: 1rem;
+  }
+  
+  .space-y-4 > * + * {
+    margin-top: 1.25rem;
+  }
+}
+
+/* Transitions - More specific to avoid interfering with text selection */
 * {
-  transition: all 200ms ease;
+  transition: color 200ms ease, background-color 200ms ease, border-color 200ms ease, opacity 200ms ease, transform 200ms ease;
+}
+
+/* Ensure text selection works properly */
+* {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Allow text selection in reading content areas */
+.reading-content,
+.reading-content-mobile,
+.reading-content-minimal,
+.discussion-content,
+.activity-content {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+/* Ensure text selection works in content divs */
+div[class*="reading-content"],
+div[class*="discussion-content"],
+div[class*="activity-content"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+/* Improve text selection experience */
+::selection {
+  background: #bee3f8;
+  color: #2c5282;
+}
+
+::-moz-selection {
+  background: #bee3f8;
+  color: #2c5282;
+}
+
+/* Ensure content areas are not interfered with by overlapping elements */
+.max-w-3xl {
+  position: relative;
+  z-index: 1;
+}
+
+/* Ensure reading content is selectable and not blocked */
+div[ref="contentRef"] {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+/* Ensure sticky elements don't block text selection in content areas */
+.sticky {
+  pointer-events: none;
+}
+
+.sticky > * {
+  pointer-events: auto;
+}
+
+/* Ensure content areas are always selectable */
+div[class*="reading-content"],
+div[class*="discussion-content"], 
+div[class*="activity-content"] {
+  pointer-events: auto !important;
 }
 
 /* Focus styles */
