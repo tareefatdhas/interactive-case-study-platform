@@ -1249,7 +1249,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                   const isNextSectionReleased = nextSectionIndex <= maxReleasedSection;
                   
                   return isNextSectionReleased 
-                    ? `Continue to Section ${nextSectionIndex + 1}` 
+                    ? `Continue to Section ${nextSectionIndex + 1} →` 
                     : 'Wait for Next Section';
                 })()
               )}
@@ -1882,7 +1882,28 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
               {/* Action Buttons */}
               <div className="pt-8 space-y-3">
-                {/* Navigation Row */}
+                {/* Submit/Complete Button - Primary Action First */}
+                {!isCurrentSectionCompleted() && (
+                  <Button
+                    onClick={handleSubmitSection}
+                    disabled={!canProceed()}
+                    loading={submitLoading}
+                    className="w-full h-12 text-sm font-medium bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Submit Section {currentSection + 1}
+                  </Button>
+                )}
+
+                {/* Section Status for completed sections */}
+                {isCurrentSectionCompleted() && (
+                  <div className="w-full h-12 flex items-center justify-center bg-green-50 border border-green-200 rounded-lg">
+                    <span className="text-sm font-medium text-green-700">
+                      ✓ Section {currentSection + 1} Completed
+                    </span>
+                  </div>
+                )}
+
+                {/* Navigation Row - Secondary Actions */}
                 <div className="flex gap-3">
                   {canNavigateToPrevious() && (
                     <Button
@@ -1904,27 +1925,6 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                     </Button>
                   )}
                 </div>
-
-                {/* Submit/Complete Button */}
-                {!isCurrentSectionCompleted() && (
-                  <Button
-                    onClick={handleSubmitSection}
-                    disabled={!canProceed()}
-                    loading={submitLoading}
-                    className="w-full h-12 text-sm font-medium bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Submit Section {currentSection + 1}
-                  </Button>
-                )}
-
-                {/* Section Status for completed sections */}
-                {isCurrentSectionCompleted() && (
-                  <div className="w-full h-12 flex items-center justify-center bg-green-50 border border-green-200 rounded-lg">
-                    <span className="text-sm font-medium text-green-700">
-                      ✓ Section {currentSection + 1} Completed
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
