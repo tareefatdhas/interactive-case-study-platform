@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { 
@@ -16,7 +16,7 @@ import type { CaseStudy } from '@/types';
 import { Play, QrCode } from 'lucide-react';
 import QRCode from 'react-qr-code';
 
-export default function NewSessionPage() {
+function NewSessionContent() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -265,5 +265,21 @@ export default function NewSessionPage() {
         </div>
       </DashboardLayout>
     </ProtectedRoute>
+  );
+}
+
+export default function NewSessionPage() {
+  return (
+    <Suspense fallback={
+      <ProtectedRoute>
+        <DashboardLayout>
+          <div className="flex items-center justify-center min-h-96">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900"></div>
+          </div>
+        </DashboardLayout>
+      </ProtectedRoute>
+    }>
+      <NewSessionContent />
+    </Suspense>
   );
 }
