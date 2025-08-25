@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCaseStudiesByTeacher, getSessionsByTeacher, checkAndTimeoutInactiveSessions, endSession, deleteSession } from '@/lib/firebase/firestore';
+import { getCaseStudiesByTeacher, getSessionsByTeacher, checkAndTimeoutInactiveSessions, endSession, deleteSession, updateSession } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -27,9 +27,9 @@ export default function SessionsPage() {
     const loadData = async () => {
       if (user) {
         try {
-          // Load case studies and sessions
+          // Load case studies (including archived ones for session display) and sessions
           const [studies, sessionsData] = await Promise.all([
-            getCaseStudiesByTeacher(user.uid),
+            getCaseStudiesByTeacher(user.uid, true), // Include archived for session references
             getSessionsByTeacher(user.uid)
           ]);
           
@@ -445,7 +445,7 @@ export default function SessionsPage() {
                       <div className="flex-1 min-w-0">
                         <CardTitle className="flex items-center space-x-3 mb-3">
                           <span className="text-lg font-semibold text-gray-900 truncate">
-                            {caseStudyTitles[session.caseStudyId] || 'Unknown Case Study'}
+                            {session.caseStudyTitle || caseStudyTitles[session.caseStudyId || ''] || 'Unknown Case Study'}
                           </span>
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
                             session.active 

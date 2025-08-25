@@ -43,6 +43,7 @@ export const createCaseStudy = async (caseStudy: Omit<CaseStudy, 'id' | 'created
   const now = Timestamp.now();
   const docRef = await addDoc(collection(db, COLLECTIONS.CASE_STUDIES), {
     ...caseStudy,
+    archived: false, // Ensure new case studies are not archived
     createdAt: now,
     updatedAt: now
   });
@@ -68,7 +69,7 @@ export const updateCaseStudy = async (id: string, caseStudy: Partial<Omit<CaseSt
   });
 };
 
-export const getCaseStudiesByTeacher = async (teacherId: string): Promise<CaseStudy[]> => {
+export const getCaseStudiesByTeacher = async (teacherId: string, includeArchived = false): Promise<CaseStudy[]> => {
   const q = query(
     collection(db, COLLECTIONS.CASE_STUDIES),
     where('teacherId', '==', teacherId)
@@ -78,14 +79,59 @@ export const getCaseStudiesByTeacher = async (teacherId: string): Promise<CaseSt
   const querySnapshot = await getDocs(q);
   const caseStudies = querySnapshot.docs.map(doc => ({
     id: doc.id,
+    archived: false, // Default for backward compatibility
     ...doc.data()
   })) as CaseStudy[];
   
+  // Filter out archived case studies unless specifically requested
+  const filtered = includeArchived ? caseStudies : caseStudies.filter(cs => !cs.archived);
+  
   // Sort in JavaScript as temporary workaround
-  return caseStudies.sort((a, b) => {
+  return filtered.sort((a, b) => {
     const aTime = a.createdAt?.toDate?.() || new Date(0);
     const bTime = b.createdAt?.toDate?.() || new Date(0);
     return bTime.getTime() - aTime.getTime();
+  });
+};
+
+export const duplicateCaseStudy = async (caseStudyId: string): Promise<string> => {
+  const originalCaseStudy = await getCaseStudy(caseStudyId);
+  if (!originalCaseStudy) {
+    throw new Error('Case study not found');
+  }
+
+  const now = Timestamp.now();
+  const duplicatedCaseStudy = {
+    ...originalCaseStudy,
+    title: `(Copy) ${originalCaseStudy.title}`,
+    archived: false, // Ensure copies are not archived
+    archivedAt: null,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  // Remove the id field since it will be auto-generated
+  const { id, ...caseStudyData } = duplicatedCaseStudy;
+
+  const docRef = await addDoc(collection(db, COLLECTIONS.CASE_STUDIES), caseStudyData);
+  return docRef.id;
+};
+
+export const archiveCaseStudy = async (caseStudyId: string): Promise<void> => {
+  const now = Timestamp.now();
+  await updateDoc(doc(db, COLLECTIONS.CASE_STUDIES, caseStudyId), {
+    archived: true,
+    archivedAt: now,
+    updatedAt: now
+  });
+};
+
+export const unarchiveCaseStudy = async (caseStudyId: string): Promise<void> => {
+  const now = Timestamp.now();
+  await updateDoc(doc(db, COLLECTIONS.CASE_STUDIES, caseStudyId), {
+    archived: false,
+    archivedAt: null,
+    updatedAt: now
   });
 };
 

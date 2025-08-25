@@ -63,9 +63,12 @@ function NewSessionContent() {
     try {
       const sessionCode = generateSessionCode();
       
+      const selectedCaseStudyData = caseStudies.find(cs => cs.id === selectedCaseStudy);
+      
       const sessionId = await createSession({
         sessionCode,
         caseStudyId: selectedCaseStudy,
+        caseStudyTitle: selectedCaseStudyData?.title,
         teacherId: user.uid,
         active: true,
         studentsJoined: [],

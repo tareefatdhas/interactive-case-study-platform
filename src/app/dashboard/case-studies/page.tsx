@@ -3,18 +3,23 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCaseStudiesByTeacher } from '@/lib/firebase/firestore';
+import { getCaseStudiesByTeacher, duplicateCaseStudy, archiveCaseStudy } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Dialog from '@/components/ui/Dialog';
 import type { CaseStudy } from '@/types';
-import { BookOpen, Plus, Play, Edit, Calendar, Users, Clock, Award, FileText, HelpCircle } from 'lucide-react';
+import { BookOpen, Plus, Play, Edit, Calendar, Users, Clock, Award, FileText, HelpCircle, Copy, Archive, MoreVertical } from 'lucide-react';
 
 export default function CaseStudiesPage() {
   const { user } = useAuth();
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [caseStudyToArchive, setCaseStudyToArchive] = useState<CaseStudy | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
 
   useEffect(() => {
     const loadCaseStudies = async () => {
@@ -32,6 +37,18 @@ export default function CaseStudiesPage() {
 
     loadCaseStudies();
   }, [user]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownOpen) {
+        setDropdownOpen(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [dropdownOpen]);
 
   const formatDate = (timestamp: any) => {
     if (!timestamp) return 'Unknown';
@@ -58,6 +75,63 @@ export default function CaseStudiesPage() {
       });
     });
     return Array.from(types);
+  };
+
+  const handleDuplicate = async (caseStudy: CaseStudy) => {
+    if (!user) return;
+    
+    setActionLoading(`duplicate-${caseStudy.id}`);
+    try {
+      const newId = await duplicateCaseStudy(caseStudy.id);
+      // Reload case studies to show the new duplicate
+      const studies = await getCaseStudiesByTeacher(user.uid);
+      setCaseStudies(studies);
+    } catch (error) {
+      console.error('Error duplicating case study:', error);
+      // You could add toast notification here
+    } finally {
+      setActionLoading(null);
+      setDropdownOpen(null);
+    }
+  };
+
+  const handleArchiveClick = (caseStudy: CaseStudy) => {
+    console.log('📦 Archive clicked for case study:', caseStudy.title);
+    setCaseStudyToArchive(caseStudy);
+    setArchiveDialogOpen(true);
+    setDropdownOpen(null);
+  };
+
+  const handleArchiveConfirm = async () => {
+    console.log('📦 Archive confirmed for case study:', caseStudyToArchive?.title);
+    if (!caseStudyToArchive || !user) {
+      console.log('❌ Missing caseStudyToArchive or user:', { caseStudyToArchive: !!caseStudyToArchive, user: !!user });
+      return;
+    }
+
+    setActionLoading(`archive-${caseStudyToArchive.id}`);
+    console.log('⏳ Starting archive process...');
+    try {
+      await archiveCaseStudy(caseStudyToArchive.id);
+      console.log('✅ Case study archived successfully');
+      // Remove from local state (since we filter out archived ones)
+      setCaseStudies(prev => prev.filter(cs => cs.id !== caseStudyToArchive.id));
+      console.log('✅ UI updated - case study removed from list');
+    } catch (error) {
+      console.error('❌ Error archiving case study:', error);
+      // You could add toast notification here
+    } finally {
+      setActionLoading(null);
+      setArchiveDialogOpen(false);
+      setCaseStudyToArchive(null);
+      console.log('✅ Archive process completed - dialog closed');
+    }
+  };
+
+  const handleArchiveCancel = () => {
+    console.log('❌ Archive cancelled');
+    setArchiveDialogOpen(false);
+    setCaseStudyToArchive(null);
   };
 
   return (
@@ -138,11 +212,55 @@ export default function CaseStudiesPage() {
                             </div>
                           </div>
                         </div>
-                        <Link href={`/dashboard/case-studies/${caseStudy.id}/edit`}>
-                          <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors">
-                            <Edit className="w-4 h-4" />
+                        
+                        {/* Actions Dropdown */}
+                        <div className="relative">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDropdownOpen(dropdownOpen === caseStudy.id ? null : caseStudy.id);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          >
+                            <MoreVertical className="w-4 h-4" />
                           </button>
-                        </Link>
+                          
+                          {dropdownOpen === caseStudy.id && (
+                            <div className="absolute right-0 top-8 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                              <div className="py-1">
+                                <Link 
+                                  href={`/dashboard/case-studies/${caseStudy.id}/edit`}
+                                  className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                                  onClick={() => setDropdownOpen(null)}
+                                >
+                                  <Edit className="w-4 h-4 mr-3" />
+                                  Edit
+                                </Link>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDuplicate(caseStudy);
+                                  }}
+                                  disabled={actionLoading === `duplicate-${caseStudy.id}`}
+                                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                                >
+                                  <Copy className="w-4 h-4 mr-3" />
+                                  {actionLoading === `duplicate-${caseStudy.id}` ? 'Duplicating...' : 'Duplicate'}
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleArchiveClick(caseStudy);
+                                  }}
+                                  className="flex items-center w-full px-4 py-2 text-sm text-amber-600 hover:bg-amber-50 transition-colors"
+                                >
+                                  <Archive className="w-4 h-4 mr-3" />
+                                  Archive
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       
                       <CardDescription className="line-clamp-2 text-sm text-gray-600">
@@ -218,6 +336,18 @@ export default function CaseStudiesPage() {
             </div>
           )}
         </div>
+        
+        {/* Archive Confirmation Dialog */}
+        <Dialog 
+          isOpen={archiveDialogOpen}
+          onClose={handleArchiveCancel}
+          onConfirm={handleArchiveConfirm}
+          title="Archive Case Study"
+          message={`Are you sure you want to archive "${caseStudyToArchive?.title}"? This will hide it from your case studies list but preserve all session data and references. You can restore it later if needed.`}
+          confirmText={actionLoading ? 'Archiving...' : 'Archive'}
+          cancelText="Cancel"
+          variant="default"
+        />
       </DashboardLayout>
     </ProtectedRoute>
   );

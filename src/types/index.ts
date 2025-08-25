@@ -32,6 +32,8 @@ export interface CaseStudy {
   totalPoints: number;
   courseId: string;
   teacherId: string;
+  archived: boolean; // Soft delete - hide from normal views but preserve for sessions
+  archivedAt?: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -43,6 +45,7 @@ export interface Session {
   sessionCode: string;
   sessionType: SessionType;
   caseStudyId?: string; // Optional for standalone sessions
+  caseStudyTitle?: string; // Store title to avoid orphaned references
   teacherId: string;
   active: boolean;
   studentsJoined: string[];
