@@ -57,6 +57,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   const [releasingSection, setReleasingSection] = useState(false);
   const [currentView, setCurrentView] = useState<'overview' | 'questions' | 'section'>('overview');
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
+  const [showFullScreenQR, setShowFullScreenQR] = useState(false);
 
   const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL}/session/${session?.sessionCode}`;
 
@@ -515,16 +516,20 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         });
       }
       
-      // Escape to exit presentation mode
+      // Escape to exit presentation mode or close QR modal
       if (event.key === 'Escape') {
         event.preventDefault();
-        router.push(`/dashboard/sessions/${session?.id}`);
+        if (showFullScreenQR) {
+          setShowFullScreenQR(false);
+        } else {
+          router.push(`/dashboard/sessions/${session?.id}`);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [session, caseStudy, releasingSection, currentView, questionAnalysis.length, router]);
+  }, [session, caseStudy, releasingSection, currentView, questionAnalysis.length, router, showFullScreenQR]);
 
   if (loading) {
     return (
@@ -673,18 +678,22 @@ export default function PresentationPage({ params }: PresentationPageProps) {
 
               {/* QR Code - Refined */}
               <div className="text-center mt-8">
-                <div className="bg-white p-5 rounded-3xl inline-block shadow-2xl border-4 border-gray-700">
+                <button
+                  onClick={() => setShowFullScreenQR(true)}
+                  className="bg-white p-5 rounded-3xl inline-block shadow-2xl border-4 border-gray-700 hover:border-blue-500 transition-all hover:scale-105 cursor-pointer"
+                  title="Click to enlarge QR code"
+                >
                   <QRCode 
                     value={joinUrl}
                     size={180}
                   />
-                </div>
+                </button>
                 <div className="mt-4">
                   <div className="text-3xl font-mono text-white mb-1 tracking-wider">
                     {session?.sessionCode}
                   </div>
                   <div className="text-xs text-gray-500 uppercase tracking-widest">
-                    Scan to Join Session
+                    Click QR Code to Enlarge
                   </div>
                 </div>
               </div>
@@ -1443,6 +1452,111 @@ export default function PresentationPage({ params }: PresentationPageProps) {
             )}
           </div>
         </div>
+
+        {/* Full Screen QR Code Modal */}
+        {showFullScreenQR && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center p-8"
+            onClick={() => setShowFullScreenQR(false)}
+          >
+            <div className="text-center max-w-2xl mx-auto" onClick={(e) => e.stopPropagation()}>
+              {/* Close Button */}
+              <button
+                onClick={() => setShowFullScreenQR(false)}
+                className="absolute top-8 right-8 text-white/70 hover:text-white text-6xl leading-none z-10"
+                title="Press ESC or click to close"
+              >
+                ×
+              </button>
+
+              {/* Header */}
+              <div className="mb-12">
+                <h2 className="text-5xl font-light text-white mb-4">
+                  Join Session
+                </h2>
+                <div className="text-6xl font-mono text-blue-400 mb-2 tracking-widest">
+                  {session?.sessionCode}
+                </div>
+                <p className="text-xl text-gray-400">
+                  Scan QR code or visit: {joinUrl?.replace(/^https?:\/\//, '')}
+                </p>
+              </div>
+
+              {/* Extra Large QR Code */}
+              <div className="bg-white p-10 rounded-3xl inline-block shadow-2xl mb-8">
+                <QRCode 
+                  value={joinUrl}
+                  size={500}
+                />
+              </div>
+
+              {/* Compact Student Stats */}
+              <div className="flex justify-center gap-6 mb-8">
+                <div className="text-center px-4 py-3 rounded-xl bg-gray-800/50">
+                  <div className="text-2xl font-light text-green-400">
+                    {metrics.totalStudents}
+                  </div>
+                  <div className="text-sm text-gray-400 uppercase tracking-wide">
+                    Students
+                  </div>
+                </div>
+                <div className="text-center px-4 py-3 rounded-xl bg-gray-800/50">
+                  <div className="text-2xl font-light text-blue-400">
+                    {metrics.activeStudents}
+                  </div>
+                  <div className="text-sm text-gray-400 uppercase tracking-wide">
+                    Active
+                  </div>
+                </div>
+                <div className="text-center px-4 py-3 rounded-xl bg-gray-800/50">
+                  <div className="text-2xl font-light text-purple-400">
+                    {metrics.averageProgress}%
+                  </div>
+                  <div className="text-sm text-gray-400 uppercase tracking-wide">
+                    Progress
+                  </div>
+                </div>
+              </div>
+
+              {/* Real-time Student List */}
+              {studentProgress.length > 0 && (
+                <div className="bg-gray-800/30 rounded-2xl p-6 max-w-lg mx-auto">
+                  <h3 className="text-xl text-white mb-4 text-center">
+                    Recently Joined Students
+                  </h3>
+                  <div className="space-y-3 max-h-40 overflow-y-auto">
+                    {studentProgress.slice(0, 8).map((student) => (
+                      <div 
+                        key={student.studentId}
+                        className="flex items-center justify-between p-3 rounded-lg bg-gray-700/50"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                          <span className="text-white">
+                            {student.name || student.displayName}
+                          </span>
+                        </div>
+                        <span className="text-sm text-gray-400">
+                          {student.progress}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Instructions */}
+              <div className="mt-8 text-center text-gray-500">
+                <p className="text-lg mb-2">
+                  Press <kbd className="px-3 py-1 bg-gray-700 rounded text-white">ESC</kbd> to close
+                </p>
+                <p className="text-sm">
+                  Students will automatically appear as they join
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </ProtectedRoute>
   );
