@@ -824,7 +824,36 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                 
                 {studentProgress.length > 0 ? (
                   <div className="space-y-3 max-h-[55vh] overflow-y-auto">
-                    {studentProgress.slice(0, 10).map((student) => (
+                    {studentProgress
+                      .map(student => {
+                        // Find the most recent response time for this student
+                        const studentResponses = responses.filter(r => r.studentId === student.studentId);
+                        const mostRecentResponse = studentResponses.length > 0 
+                          ? studentResponses.reduce((latest, current) => {
+                              const latestTime = latest.submittedAt?.toDate?.() || new Date(0);
+                              const currentTime = current.submittedAt?.toDate?.() || new Date(0);
+                              return currentTime > latestTime ? current : latest;
+                            })
+                          : null;
+                        
+                        return {
+                          ...student,
+                          lastActivityTime: mostRecentResponse?.submittedAt || new Date(0)
+                        };
+                      })
+                      .sort((a, b) => {
+                        // First sort: Completed students (100%) first
+                        if (a.completed !== b.completed) {
+                          return a.completed ? -1 : 1;
+                        }
+                        
+                        // Second sort: By most recent activity (latest first)
+                        const aTime = a.lastActivityTime instanceof Date ? a.lastActivityTime : a.lastActivityTime?.toDate?.() || new Date(0);
+                        const bTime = b.lastActivityTime instanceof Date ? b.lastActivityTime : b.lastActivityTime?.toDate?.() || new Date(0);
+                        return bTime.getTime() - aTime.getTime();
+                      })
+                      .slice(0, 10)
+                      .map((student) => (
                       <div 
                         key={student.studentId} 
                         className={`p-4 rounded-2xl border transition-all ${
@@ -1525,7 +1554,23 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                     Recently Joined Students
                   </h3>
                   <div className="space-y-3 max-h-40 overflow-y-auto">
-                    {studentProgress.slice(0, 8).map((student) => (
+                    {studentProgress
+                      .map(student => {
+                        // Find the student document to get creation/join time
+                        const studentDoc = students.find(s => s.id === student.studentId || s.studentId === student.studentId);
+                        return {
+                          ...student,
+                          joinTime: studentDoc?.createdAt || new Date(0)
+                        };
+                      })
+                      .sort((a, b) => {
+                        // Sort by join time descending (most recent first)
+                        const aTime = a.joinTime instanceof Date ? a.joinTime : a.joinTime?.toDate?.() || new Date(0);
+                        const bTime = b.joinTime instanceof Date ? b.joinTime : b.joinTime?.toDate?.() || new Date(0);
+                        return bTime.getTime() - aTime.getTime();
+                      })
+                      .slice(0, 8)
+                      .map((student) => (
                       <div 
                         key={student.studentId}
                         className="flex items-center justify-between p-3 rounded-lg bg-gray-700/50"

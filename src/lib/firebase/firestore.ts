@@ -585,6 +585,7 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
         const responses = Array.from(allResponses.values());
 
         // Calculate total questions available for sessions this student participated in
+        // Only count questions from sections that have been released
         const studentSessions = sessions.filter(session => 
           session.studentsJoined?.includes(student.id) || 
           session.studentsJoined?.includes(student.studentId)
@@ -592,33 +593,58 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
         
         const totalQuestionsAvailable = studentSessions.reduce((total, session) => {
           const caseStudy = caseStudyMap.get(session.caseStudyId);
-          if (caseStudy) {
-            return total + (caseStudy.sections?.reduce((sectionTotal, section) => {
-              return sectionTotal + (section.questions?.length || 0);
+          if (caseStudy && session.releasedSections) {
+            // Only count questions from sections that have been released to students
+            const releasedSectionIndices = new Set(session.releasedSections);
+            return total + (caseStudy.sections?.reduce((sectionTotal, section, index) => {
+              // Check if this section has been released (0-based indexing)
+              if (releasedSectionIndices.has(index)) {
+                return sectionTotal + (section.questions?.length || 0);
+              }
+              return sectionTotal;
             }, 0) || 0);
           }
           return total;
         }, 0);
 
         // Calculate statistics
-        const totalResponses = responses.length;
         const gradedResponses = responses.filter(r => r.points !== undefined);
         const totalPoints = gradedResponses.reduce((sum, r) => sum + (r.points || 0), 0);
         const maxTotalPoints = responses.reduce((sum, r) => sum + (r.maxPoints || 0), 0);
         
-        // Calculate correct responses (for multiple choice questions)
-        const correctResponses = gradedResponses.filter(r => {
+        // Filter responses to only include those from released sections
+        const responsesFromReleasedSections = responses.filter(response => {
+          // Find the session this response belongs to
+          const responseSession = studentSessions.find(session => session.id === response.sessionId);
+          if (!responseSession || !responseSession.releasedSections) return false;
+
+          // Find the case study and section for this response
+          const caseStudy = caseStudyMap.get(responseSession.caseStudyId);
+          if (!caseStudy) return false;
+
+          // Find the section index for this response's sectionId
+          const sectionIndex = caseStudy.sections?.findIndex(section => section.id === response.sectionId);
+          if (sectionIndex === -1) return false;
+
+          // Check if this section was released
+          return responseSession.releasedSections.includes(sectionIndex);
+        });
+
+        const gradedResponsesFromReleasedSections = responsesFromReleasedSections.filter(r => r.points !== undefined);
+
+        // Calculate correct responses (for multiple choice questions) from released sections only
+        const correctResponses = gradedResponsesFromReleasedSections.filter(r => {
           // A response is "correct" if it earned the maximum points for that question
           return r.points === r.maxPoints;
         }).length;
         
-        const correctPercentage = totalResponses > 0 ? (correctResponses / totalResponses) * 100 : 0;
-        const progressPercentage = totalQuestionsAvailable > 0 ? (totalResponses / totalQuestionsAvailable) * 100 : 0;
+        const correctPercentage = responsesFromReleasedSections.length > 0 ? (correctResponses / responsesFromReleasedSections.length) * 100 : 0;
+        const progressPercentage = totalQuestionsAvailable > 0 ? (responsesFromReleasedSections.length / totalQuestionsAvailable) * 100 : 0;
 
         return {
           ...student,
           stats: {
-            totalResponses,
+            totalResponses: responsesFromReleasedSections.length,
             correctResponses,
             correctPercentage: Math.round(correctPercentage * 10) / 10, // Round to 1 decimal
             totalPoints,
