@@ -930,7 +930,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
               <CardHeader>
                 <CardTitle>Student Information</CardTitle>
                 <CardDescription>
-                  Enter your details to join this case study session
+                  Enter your student ID and the name you'd like to be called
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -944,10 +944,10 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                   />
                   
                   <Input
-                    label="Full Name"
+                    label="Display Name"
                     value={studentInfo.name}
                     onChange={(e) => setStudentInfo(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g., Alex Johnson"
+                    placeholder="e.g., Alex or Alex J."
                     required
                   />
 
