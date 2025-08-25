@@ -7,8 +7,10 @@ import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import StudentResponseModal from '@/components/teacher/StudentResponseModal';
 import type { Student } from '@/types';
-import { UserCheck, Users, Trophy, Target, TrendingUp, Award, BookOpen, Search, ChevronUp, ChevronDown, Filter } from 'lucide-react';
+import { UserCheck, Users, Trophy, Target, TrendingUp, Award, BookOpen, Search, ChevronUp, ChevronDown, Filter, Download, Eye } from 'lucide-react';
 
 interface StudentWithStats extends Student {
   stats: {
@@ -33,6 +35,8 @@ export default function StudentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [selectedStudent, setSelectedStudent] = useState<StudentWithStats | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -53,7 +57,7 @@ export default function StudentsPage() {
 
   // Filtered and sorted students
   const filteredAndSortedStudents = useMemo(() => {
-    let filtered = students.filter(student => {
+    const filtered = students.filter(student => {
       const searchLower = searchTerm.toLowerCase();
       return (
         student.name?.toLowerCase().includes(searchLower) ||
@@ -123,6 +127,49 @@ export default function StudentsPage() {
     return 'text-red-600';
   };
 
+  const exportToCSV = () => {
+    const headers = ['Student Name', 'Student ID', 'Progress %', 'Progress (Responses/Total)', 'Correct %', 'Correct (Responses/Total)', 'Total Responses', 'Total Points', 'Max Total Points'];
+    
+    const csvData = filteredAndSortedStudents.map(student => [
+      student.name || '',
+      student.studentId || student.id,
+      student.stats.progressPercentage,
+      `${student.stats.totalResponses}/${student.stats.totalQuestionsAvailable}`,
+      student.stats.correctPercentage,
+      `${student.stats.correctResponses}/${student.stats.totalResponses}`,
+      student.stats.totalResponses,
+      student.stats.totalPoints,
+      student.stats.maxTotalPoints
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.map(cell => 
+        typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell
+      ).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `students-data-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const openResponseModal = (student: StudentWithStats) => {
+    setSelectedStudent(student);
+    setIsModalOpen(true);
+  };
+
+  const closeResponseModal = () => {
+    setSelectedStudent(null);
+    setIsModalOpen(false);
+  };
+
   const totalStudents = students.length;
   const totalResponses = students.reduce((sum, s) => sum + s.stats.totalResponses, 0);
   const averageCorrectPercentage = totalStudents > 0 
@@ -145,6 +192,16 @@ export default function StudentsPage() {
                 Track student performance and engagement across all sessions.
               </p>
             </div>
+            {students.length > 0 && (
+              <Button
+                onClick={exportToCSV}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
+              </Button>
+            )}
           </div>
 
           {/* Search Bar */}
@@ -315,6 +372,9 @@ export default function StudentsPage() {
                         >
                           Total Points {getSortIcon('totalPoints')}
                         </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -366,6 +426,17 @@ export default function StudentsPage() {
                               /{student.stats.maxTotalPoints} max
                             </div>
                           </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => openResponseModal(student)}
+                              className="flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                            >
+                              <Eye className="w-4 h-4" />
+                              View Responses
+                            </Button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -391,6 +462,18 @@ export default function StudentsPage() {
           )}
         </div>
       </DashboardLayout>
+      
+      {/* Student Response Modal */}
+      {selectedStudent && (
+        <StudentResponseModal
+          isOpen={isModalOpen}
+          onClose={closeResponseModal}
+          studentId={selectedStudent.studentId || ''}
+          studentDocId={selectedStudent.id}
+          studentName={selectedStudent.name || 'Unknown Student'}
+          teacherId={user?.uid || ''}
+        />
+      )}
     </ProtectedRoute>
   );
 }

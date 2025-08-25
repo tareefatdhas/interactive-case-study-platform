@@ -630,11 +630,15 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
           return responseSession.releasedSections.includes(sectionIndex);
         });
 
-        const gradedResponsesFromReleasedSections = responsesFromReleasedSections.filter(r => r.points !== undefined);
-
-        // Calculate correct responses (for multiple choice questions) from released sections only
-        const correctResponses = gradedResponsesFromReleasedSections.filter(r => {
-          // A response is "correct" if it earned the maximum points for that question
+        // Calculate correct responses from released sections
+        // - Waiting for Approval (points === undefined): considered correct
+        // - Graded responses: correct if points === maxPoints
+        const correctResponses = responsesFromReleasedSections.filter(r => {
+          // If not graded yet (Waiting for Approval), consider it correct
+          if (r.points === undefined) {
+            return true;
+          }
+          // If graded, it's correct if it earned the maximum points
           return r.points === r.maxPoints;
         }).length;
         
