@@ -17,6 +17,7 @@ import type {
   Student,
   Response,
 } from '@/types';
+import { normalizeStudentId } from '@/lib/utils';
 
 // Collections - same as main firestore
 export const COLLECTIONS = {
@@ -63,9 +64,12 @@ export const getCaseStudyStudent = async (id: string): Promise<CaseStudy | null>
 };
 
 export const getStudentByStudentIdStudent = async (studentId: string): Promise<Student | null> => {
+  // Always search by normalized ID to prevent duplicates
+  const normalizedId = normalizeStudentId(studentId);
+  
   const q = query(
     collection(studentDb, COLLECTIONS.STUDENTS),
-    where('studentId', '==', studentId)
+    where('studentIdNormalized', '==', normalizedId)
   );
   const querySnapshot = await getDocs(q);
   
@@ -79,8 +83,11 @@ export const getStudentByStudentIdStudent = async (studentId: string): Promise<S
 
 export const createStudentStudent = async (student: Omit<Student, 'id' | 'createdAt'>) => {
   const now = Timestamp.now();
+  const normalizedId = normalizeStudentId(student.studentId);
+  
   const docRef = await addDoc(collection(studentDb, COLLECTIONS.STUDENTS), {
     ...student,
+    studentIdNormalized: normalizedId, // Add normalized ID for searching
     createdAt: now
   });
   return docRef.id;

@@ -77,6 +77,7 @@ export interface StandaloneSection {
 export interface Student {
   id: string;
   studentId: string;
+  studentIdNormalized: string; // For duplicate detection and searching
   name: string;
   email?: string;
   courseIds: string[];

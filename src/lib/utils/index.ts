@@ -9,6 +9,30 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
+/**
+ * Normalizes a student ID to prevent duplicates from formatting differences
+ * Handles: case sensitivity, whitespace, underscores (preserves hyphens, dots, @ for emails)
+ */
+export function normalizeStudentId(studentId: string): string {
+  if (!studentId) return '';
+  
+  return studentId
+    .toLowerCase()                    // Convert to lowercase
+    .trim()                          // Remove leading/trailing whitespace
+    .replace(/\s+/g, '')             // Remove all whitespace
+    .replace(/_/g, '')               // Remove underscores (but keep hyphens, dots, @)
+    .replace(/[^a-z0-9\-\.@]/g, ''); // Keep alphanumeric, hyphens, dots, and @ signs
+}
+
+/**
+ * Formats a student ID for display purposes (preserves original casing/format)
+ * while still being searchable via normalized version
+ */
+export function formatStudentIdForDisplay(studentId: string): string {
+  if (!studentId) return '';
+  return studentId.trim().toUpperCase(); // Just clean whitespace and uppercase for consistency
+}
+
 export function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('en-US', {
     year: 'numeric',

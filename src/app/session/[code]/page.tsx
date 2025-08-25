@@ -938,8 +938,12 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                   <Input
                     label="Student ID"
                     value={studentInfo.studentId}
-                    onChange={(e) => setStudentInfo(prev => ({ ...prev, studentId: e.target.value }))}
-                    placeholder="e.g., STU001"
+                    onChange={(e) => {
+                      // Allow letters, numbers, hyphens, dots, and @ signs (for email addresses)
+                      const cleanedValue = e.target.value.replace(/[^A-Za-z0-9\-\.@]/g, '');
+                      setStudentInfo(prev => ({ ...prev, studentId: cleanedValue }));
+                    }}
+                    placeholder="e.g., STU001 or student@university.edu"
                     required
                   />
                   
