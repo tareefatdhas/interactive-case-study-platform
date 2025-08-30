@@ -452,9 +452,9 @@ export default function ProgressTab({
             </div>
           ) : (
             <>
-              {(view === 'overall' ? overallLeaderboard : leaderboard).map((entry) => (
+              {(view === 'overall' ? overallLeaderboard : leaderboard).map((entry, index) => (
                 <LeaderboardEntry
-                  key={entry.studentId}
+                  key={`leaderboard-${entry.studentId}-${index}`}
                   rank={entry.rank || 0}
                   studentId={entry.studentId}
                   totalPoints={view === 'overall' ? 
@@ -479,6 +479,7 @@ export default function ProgressTab({
                 <>
                   <div className="border-t border-gray-200 my-2" />
                   <LeaderboardEntry
+                    key={`current-user-${studentId}`}
                     rank={currentUserRank}
                     studentId={studentId || ''}
                     totalPoints={view === 'overall' ? 

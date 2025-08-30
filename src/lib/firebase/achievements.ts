@@ -118,29 +118,42 @@ export const getStudentAchievements = async (studentId: string): Promise<Student
 };
 
 export const getAvailableAchievementsForStudent = async (teacherId: string, courseId?: string): Promise<Achievement[]> => {
-  // Get global achievements
-  const globalAchievements = await getGlobalAchievements();
-  
-  // Get course-specific achievements if courseId provided
-  let courseAchievements: Achievement[] = [];
-  if (courseId) {
-    courseAchievements = await getAchievementsByCourse(courseId);
+  try {
+    // Use studentDb for all queries to ensure proper auth context
+    console.log('Getting achievements for teacher:', teacherId, 'courseId:', courseId);
+    
+    // First, try to get any achievements to test permissions
+    console.log('Testing basic achievements access...');
+    const testQuery = query(
+      collection(studentDb, COLLECTIONS.ACHIEVEMENTS),
+      limit(1)
+    );
+    const testSnapshot = await getDocs(testQuery);
+    console.log('Basic achievements access test:', testSnapshot.size > 0 ? 'SUCCESS' : 'NO_DATA');
+    
+    // Get teacher's achievements (both global and course-specific)
+    const q = query(
+      collection(studentDb, COLLECTIONS.ACHIEVEMENTS),
+      where('teacherId', '==', teacherId),
+      where('enabled', '==', true)
+    );
+    const querySnapshot = await getDocs(q);
+    const teacherAchievements = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Achievement[];
+    
+    console.log('Found teacher achievements:', teacherAchievements.length);
+    return teacherAchievements;
+  } catch (error) {
+    console.error('Error fetching achievements for student:', error);
+    console.error('Error details:', {
+      code: error.code,
+      message: error.message,
+      stack: error.stack
+    });
+    throw error;
   }
-  
-  // Get teacher's global achievements (courseId is null)
-  const q = query(
-    collection(studentDb, COLLECTIONS.ACHIEVEMENTS),
-    where('teacherId', '==', teacherId),
-    where('courseId', '==', null),
-    where('enabled', '==', true)
-  );
-  const querySnapshot = await getDocs(q);
-  const teacherGlobalAchievements = querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  })) as Achievement[];
-  
-  return [...globalAchievements, ...courseAchievements, ...teacherGlobalAchievements];
 };
 
 export const unlockAchievement = async (
