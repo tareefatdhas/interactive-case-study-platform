@@ -64,8 +64,20 @@ export class AchievementChecker {
     try {
       // Get all available achievements and current student achievements
       const [availableAchievements, studentAchievements, studentProgress, overallProgress] = await Promise.all([
-        getAvailableAchievementsForStudent(teacherId, courseId),
-        getStudentAchievements(studentId),
+        getAvailableAchievementsForStudent(teacherId, courseId).catch(error => {
+          if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+            console.warn('Student does not have permission to read achievements. Skipping achievement check.');
+            return [];
+          }
+          throw error;
+        }),
+        getStudentAchievements(studentId).catch(error => {
+          if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+            console.warn('Student does not have permission to read student achievements. Skipping achievement check.');
+            return [];
+          }
+          throw error;
+        }),
         sessionId ? getStudentProgressStudent(studentId, sessionId) : Promise.resolve(null),
         getStudentOverallProgressStudent(studentId)
       ]);
@@ -212,7 +224,13 @@ export class AchievementChecker {
 
     try {
       const [studentAchievements, studentProgress, overallProgress] = await Promise.all([
-        getStudentAchievements(studentId),
+        getStudentAchievements(studentId).catch(error => {
+          if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+            console.warn('Student does not have permission to read student achievements. Skipping achievement check.');
+            return [];
+          }
+          throw error;
+        }),
         sessionId ? getStudentProgressStudent(studentId, sessionId) : Promise.resolve(null),
         getStudentOverallProgressStudent(studentId)
       ]);

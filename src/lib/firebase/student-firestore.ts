@@ -71,6 +71,16 @@ export const getCaseStudyStudent = async (id: string): Promise<CaseStudy | null>
   return null;
 };
 
+export const getSessionStudent = async (id: string): Promise<Session | null> => {
+  const docRef = doc(studentDb, COLLECTIONS.SESSIONS, id);
+  const docSnap = await getDoc(docRef);
+  
+  if (docSnap.exists()) {
+    return { id: docSnap.id, ...docSnap.data() } as Session;
+  }
+  return null;
+};
+
 export const getStudentByStudentIdStudent = async (studentId: string): Promise<Student | null> => {
   // Always search by normalized ID to prevent duplicates
   const normalizedId = normalizeStudentId(studentId);
@@ -184,9 +194,8 @@ export const createHighlightStudent = async (highlight: Omit<Highlight, 'id' | '
     // Import achievement checker and trigger highlight achievements
     const AchievementChecker = (await import('./achievement-checker')).default;
     
-    // Get session details to find teacher info
-    const { getSession } = await import('./firestore');
-    const session = await getSession(highlight.sessionId);
+    // Get session details to find teacher info using student database
+    const session = await getSessionStudent(highlight.sessionId);
     
     if (session) {
       const context = {
@@ -199,7 +208,12 @@ export const createHighlightStudent = async (highlight: Omit<Highlight, 'id' | '
       await AchievementChecker.onHighlightCreated(context);
     }
   } catch (error) {
-    console.error('Error checking achievements after highlight creation:', error);
+    // Handle Firebase permission errors gracefully
+    if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+      console.debug('Achievement checking skipped due to permissions (expected for anonymous users)');
+    } else {
+      console.error('Error checking achievements after highlight creation:', error);
+    }
   }
   
   return docRef.id;

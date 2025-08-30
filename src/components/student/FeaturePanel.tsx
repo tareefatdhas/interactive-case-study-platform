@@ -21,6 +21,7 @@ interface FeaturePanelProps {
   onHighlightJump?: (highlightId: string) => void;
   teacherId?: string; // For achievements
   courseId?: string; // For achievements
+  suggestedTab?: string; // Tab to focus on when opened
 }
 
 interface TabButtonProps {
@@ -64,9 +65,10 @@ export default function FeaturePanel({
   maxPoints = 0,
   onHighlightJump,
   teacherId,
-  courseId
+  courseId,
+  suggestedTab
 }: FeaturePanelProps) {
-  const [activeTab, setActiveTab] = useState('notes');
+  const [activeTab, setActiveTab] = useState(suggestedTab || 'notes');
   const [startY, setStartY] = useState(0);
   const [currentY, setCurrentY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -77,6 +79,13 @@ export default function FeaturePanel({
     { id: 'progress', label: 'Progress', icon: <TrendingUp className="h-full w-full" /> },
     { id: 'achievements', label: 'Achievements', icon: <Award className="h-full w-full" /> },
   ];
+
+  // Update active tab when suggestedTab changes
+  useEffect(() => {
+    if (suggestedTab && tabs.some(tab => tab.id === suggestedTab)) {
+      setActiveTab(suggestedTab);
+    }
+  }, [suggestedTab]);
 
   // Handle swipe to close
   const handleTouchStart = (e: React.TouchEvent) => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use, useRef, useCallback } from 'react';
+import { useState, useEffect, use, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInAnonymously } from 'firebase/auth';
 import { Timestamp } from 'firebase/firestore';
@@ -23,6 +23,7 @@ import { User, CheckCircle, X, ArrowRight, BookOpen, Clock, MessageSquare, Setti
 import { DEFAULT_MILESTONES } from '@/lib/ai/assessment';
 import FloatingActionButton from '@/components/student/FloatingActionButton';
 import FeaturePanel from '@/components/student/FeaturePanel';
+import { useFABState } from '@/components/student/useFABState';
 import HighlightableContent from '@/components/student/HighlightableContent';
 import ReadingSettingsPanel from '@/components/student/ReadingSettingsPanel';
 import AchievementNotification, { AchievementToast, useAchievementNotifications } from '@/components/student/AchievementNotification';
@@ -95,34 +96,6 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
   // Achievement notifications
   const { notifications, showAchievementNotification, closeNotification } = useAchievementNotifications();
-
-  // Function to check for achievements and show notifications
-  const checkAndShowAchievements = useCallback(async () => {
-    if (!student || !session) return;
-
-    try {
-      // Import achievement checker
-      const { default: AchievementChecker } = await import('@/lib/firebase/achievement-checker');
-      
-      const context = {
-        studentId: student.id,
-        sessionId: session.id,
-        teacherId: session.teacherId,
-        courseId: undefined // Would need to be passed in or derived
-      };
-
-      // Check for newly unlocked achievements
-      const unlockedAchievements = await AchievementChecker.checkAndUnlockAchievements(context);
-      
-      // Show notifications for each newly unlocked achievement
-      unlockedAchievements.forEach(({ achievement, xpAwarded, bonusPoints }) => {
-        showAchievementNotification(achievement, xpAwarded, bonusPoints);
-      });
-      
-    } catch (error) {
-      console.error('Error checking achievements:', error);
-    }
-  }, [student, session, showAchievementNotification]);
 
   // Storage key for this specific session
   const storageKey = `student-session-${resolvedParams.code}`;
@@ -666,10 +639,20 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       // Update overall progress asynchronously
       calculateAndUpdateOverallProgress(student.id).catch(console.error);
       
+      // Trigger FAB progress notification
+      onProgressMade();
+      
       // Check for achievements after submitting responses
       // Add a small delay to ensure all database updates are complete
       setTimeout(() => {
-        checkAndShowAchievements();
+        checkAndShowAchievements().catch(error => {
+          // Silently handle permission errors for section completion achievement checking
+          if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+            console.debug('Achievement checking skipped due to permissions (expected for anonymous users)');
+          } else {
+            console.error('Unexpected error in section completion achievement checking:', error);
+          }
+        });
       }, 1000);
       
       // Show review state first so students can see their feedback
@@ -825,6 +808,85 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     }
   }, [session?.id, showPopularHighlights]);
 
+  // FAB state management - with error handling for Firebase permissions
+  const fabStateContext = useMemo(() => {
+    try {
+      return {
+        currentSection,
+        totalSections: caseStudy?.sections.length || 1,
+        sectionCompleted: caseStudy && session ? isSectionCompleted(currentSection) : false,
+        totalPoints: responses.reduce((total, response) => total + (response.points || 0), 0),
+        maxPoints: caseStudy?.sections.slice(0, currentSection + 1).reduce((total, section) => 
+          total + section.questions.reduce((sectionTotal, question) => sectionTotal + question.points, 0), 0
+        ) || 0,
+        recentHighlights: 0, // Will be updated by the hook
+        recentAchievements: [], // Will be updated by the hook
+        hasAnsweredCurrentSection: caseStudy?.sections[currentSection]?.questions.every(q => 
+          responses.some(r => r.questionId === q.id)
+        ) || false,
+        progressPercentage: caseStudy ? ((currentSection + 1) / caseStudy.sections.length) * 100 : 0
+      };
+    } catch (error) {
+      console.warn('Error creating FAB state context:', error);
+      // Return safe defaults if there's an error
+      return {
+        currentSection: 0,
+        totalSections: 1,
+        sectionCompleted: false,
+        totalPoints: 0,
+        maxPoints: 0,
+        recentHighlights: 0,
+        recentAchievements: [],
+        hasAnsweredCurrentSection: false,
+        progressPercentage: 0
+      };
+    }
+  }, [currentSection, caseStudy, session, responses]);
+
+  const {
+    fabState,
+    notifications: fabNotifications,
+    suggestedTab,
+    clearNotifications: clearFABNotifications,
+    onHighlightCreated,
+    onProgressMade,
+    onAchievementUnlocked
+  } = useFABState(fabStateContext);
+
+  // Function to check for achievements and show notifications
+  const checkAndShowAchievements = useCallback(async (): Promise<void> => {
+    if (!student || !session) return;
+
+    try {
+      // Import achievement checker
+      const { default: AchievementChecker } = await import('@/lib/firebase/achievement-checker');
+      
+      const context = {
+        studentId: student.id,
+        sessionId: session.id,
+        teacherId: session.teacherId,
+        courseId: undefined // Would need to be passed in or derived
+      };
+
+      // Check for newly unlocked achievements
+      const unlockedAchievements = await AchievementChecker.checkAndUnlockAchievements(context);
+      
+      // Show notifications for each newly unlocked achievement
+      unlockedAchievements.forEach(({ achievement, xpAwarded, bonusPoints }) => {
+        showAchievementNotification(achievement, xpAwarded, bonusPoints);
+        onAchievementUnlocked(achievement);
+      });
+      
+    } catch (error: any) {
+      // Handle Firebase permission errors gracefully
+      if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+        console.warn('Firebase permissions insufficient for achievement checking. This is expected for anonymous users or restricted environments.');
+      } else {
+        console.error('Error checking achievements:', error);
+      }
+    }
+  }, [student, session, showAchievementNotification, onAchievementUnlocked]);
+
   const handleHighlightCreateForSection = useCallback(async (highlight: { id: string; text: string; color: string; note?: string; startOffset: number; endOffset: number; createdAt: Date }, sectionIndex: number) => {
     if (!student || !session || !caseStudy) return;
 
@@ -870,15 +932,25 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       };
       setHighlights(prev => [...prev, newHighlight]);
       
+      // Trigger FAB highlight notification
+      onHighlightCreated();
+      
       // Check for highlight-based achievements
       // Small delay to ensure database updates are complete
       setTimeout(() => {
-        checkAndShowAchievements();
+        checkAndShowAchievements().catch(error => {
+          // Silently handle permission errors for highlight-based achievement checking
+          if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+            console.debug('Achievement checking skipped due to permissions (expected for anonymous users)');
+          } else {
+            console.error('Unexpected error in highlight achievement checking:', error);
+          }
+        });
       }, 500);
     } catch (error) {
       console.error('Failed to create highlight:', error);
     }
-  }, [student, session, caseStudy]);
+  }, [student, session, caseStudy, onHighlightCreated]);
 
   const handleHighlightDelete = useCallback(async (highlightId: string) => {
     try {
@@ -2641,7 +2713,15 @@ This summary was generated using AI analysis of your responses and performance.
         )}
 
         {/* Floating Action Button */}
-        <FloatingActionButton onClick={() => setIsFeaturePanelOpen(true)} />
+        <FloatingActionButton 
+          onClick={() => {
+            clearFABNotifications();
+            setIsFeaturePanelOpen(true);
+          }}
+          state={fabState}
+          notifications={fabNotifications}
+          suggestedTab={suggestedTab}
+        />
 
         {/* Feature Panel */}
         <FeaturePanel
@@ -2659,6 +2739,7 @@ This summary was generated using AI analysis of your responses and performance.
           ) || 0}
           onHighlightJump={handleHighlightJump}
           teacherId={session?.teacherId}
+          suggestedTab={suggestedTab}
         />
 
         {/* Reading Settings Panel for Popular Highlights */}
