@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
 import type { CaseStudy } from '@/types';
-import { BookOpen, Plus, Play, Edit, Calendar, Users, Clock, Award, FileText, HelpCircle, Copy, Archive, MoreVertical } from 'lucide-react';
+import { BookOpen, Plus, Play, Edit, Calendar, Users, Clock, Award, FileText, HelpCircle, Copy, Archive, MoreVertical, Sparkles } from 'lucide-react';
 
 export default function CaseStudiesPage() {
   const { user } = useAuth();
@@ -146,12 +146,20 @@ export default function CaseStudiesPage() {
                 Manage your interactive case studies and create new ones.
               </p>
             </div>
-            <Link href="/dashboard/case-studies/new">
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                New Case Study
-              </Button>
-            </Link>
+            <div className="flex gap-3">
+              <Link href="/dashboard/case-studies/generate">
+                <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Generate with AI
+                </Button>
+              </Link>
+              <Link href="/dashboard/case-studies/new">
+                <Button variant="outline">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Manually
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {loading ? (
@@ -177,12 +185,20 @@ export default function CaseStudiesPage() {
                 <p className="text-gray-600 mb-6">
                   Get started by creating your first interactive case study.
                 </p>
-                <Link href="/dashboard/case-studies/new">
-                  <Button>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Case Study
-                  </Button>
-                </Link>
+                <div className="flex gap-3 justify-center">
+                  <Link href="/dashboard/case-studies/generate">
+                    <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate with AI
+                    </Button>
+                  </Link>
+                  <Link href="/dashboard/case-studies/new">
+                    <Button variant="outline">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Manually
+                    </Button>
+                  </Link>
+                </div>
               </CardContent>
             </Card>
           ) : (

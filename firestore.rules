@@ -85,5 +85,57 @@ service cloud.firestore {
       allow create: if isTeacher() && 
         isTeacherOfResource(request.resource.data.teacherId);
     }
+    
+    // Highlights - students can manage their own highlights, teachers can read all
+    match /highlights/{highlightId} {
+      allow read: if request.auth != null;
+      
+      allow create: if request.auth != null &&
+                       request.resource.data.authorUid == request.auth.uid;
+                       
+      allow update: if request.auth != null && 
+                       resource.data.authorUid == request.auth.uid;
+                       
+      allow delete: if request.auth != null && 
+                       resource.data.authorUid == request.auth.uid;
+    }
+    
+    // Student Progress - students can manage their own progress, teachers can read all
+    match /studentProgress/{progressId} {
+      allow read: if isAuthenticated(); // All authenticated users can read progress
+      allow create: if isAuthenticated(); // Anonymous users can create progress records
+      allow update: if isAuthenticated() && (
+        isTeacher() || // Teachers can update any progress
+        (isAnonymous() && resource.data.studentId == request.auth.uid) // Anonymous users can update their own progress
+      );
+    }
+    
+    // Student Overall Progress - students can manage their own overall progress, teachers can read all
+    match /studentOverallProgress/{studentId} {
+      allow read: if isAuthenticated(); // All authenticated users can read overall progress
+      allow create: if isAuthenticated(); // Anonymous users can create overall progress records
+      allow update: if isAuthenticated() && (
+        isTeacher() || // Teachers can update any overall progress
+        isAnonymous() // Anonymous users can update overall progress
+      );
+    }
+    
+    // Achievements - teachers can manage their own achievements, students can read enabled ones
+    match /achievements/{achievementId} {
+      allow read: if isAuthenticated(); // All authenticated users can read achievements
+      allow create: if isTeacher() && 
+        isTeacherOfResource(request.resource.data.teacherId); // Teachers can create their own achievements
+      allow update: if isTeacher() && 
+        isTeacherOfResource(resource.data.teacherId); // Teachers can update their own achievements
+      allow delete: if isTeacher() && 
+        isTeacherOfResource(resource.data.teacherId); // Teachers can delete their own achievements
+    }
+    
+    // Student Achievements - students can read their own, achievements are created by system
+    match /studentAchievements/{studentAchievementId} {
+      allow read: if isAuthenticated(); // All authenticated users can read student achievements
+      allow create: if isAuthenticated(); // System can create student achievements (via cloud functions or server)
+      allow update: if isAuthenticated(); // System can update student achievements for bonus application
+    }
   }
 }

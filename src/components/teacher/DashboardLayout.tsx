@@ -15,7 +15,8 @@ import {
   LogOut,
   Menu,
   X,
-  UserCheck
+  UserCheck,
+  Award
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -27,6 +28,7 @@ const navigation = [
   { name: 'Case Studies', href: '/dashboard/case-studies', icon: BookOpen },
   { name: 'Sessions', href: '/dashboard/sessions', icon: Users },
   { name: 'Students', href: '/dashboard/students', icon: UserCheck },
+  { name: 'Achievements', href: '/dashboard/achievements', icon: Award },
   { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];

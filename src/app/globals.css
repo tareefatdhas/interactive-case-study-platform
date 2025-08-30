@@ -71,6 +71,9 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: 1.75rem;
   text-align: justify;
   hyphens: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
 }
 
 .reading-content-mobile h1, 
@@ -191,6 +194,9 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: 1.5rem;
   text-align: left;
   color: #2d2d2d;
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
 }
 
 .reading-content-minimal h1, 
@@ -584,6 +590,14 @@ h1, h2, h3, h4, h5, h6 {
   user-select: text;
 }
 
+/* Override any conflicting selection rules */
+p, span, div, h1, h2, h3, h4, h5, h6 {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
 /* Allow text selection in reading content areas */
 .reading-content,
 .reading-content-mobile,
@@ -617,6 +631,38 @@ div[class*="activity-content"] {
 ::-moz-selection {
   background: #bee3f8;
   color: #2c5282;
+}
+
+/* Highlightable content selection styles */
+.highlightable-content ::selection,
+.reading-content-minimal .highlightable-content ::selection,
+.discussion-content .highlightable-content ::selection,
+.activity-content .highlightable-content ::selection {
+  background: rgba(59, 130, 246, 0.7) !important;
+  color: inherit !important;
+}
+
+.highlightable-content ::-moz-selection,
+.reading-content-minimal .highlightable-content ::-moz-selection,
+.discussion-content .highlightable-content ::-moz-selection,
+.activity-content .highlightable-content ::-moz-selection {
+  background: rgba(59, 130, 246, 0.7) !important;
+  color: inherit !important;
+}
+
+.highlightable-content *,
+.highlightable-content p,
+.highlightable-content span,
+.highlightable-content div,
+.reading-content-minimal .highlightable-content *,
+.discussion-content .highlightable-content *,
+.activity-content .highlightable-content * {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  transition: none !important;
+  cursor: text !important;
 }
 
 /* Ensure content areas are not interfered with by overlapping elements */

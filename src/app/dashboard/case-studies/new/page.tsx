@@ -25,6 +25,7 @@ export default function NewCaseStudyPage() {
     title: '',
     description: '',
     courseId: 'default', // TODO: Implement course selection
+    conclusionGuidance: '',
   });
 
   const [sections, setSections] = useState<Section[]>([
@@ -222,7 +223,8 @@ export default function NewCaseStudyPage() {
           order: index
         })),
         totalPoints,
-        teacherId: user.uid
+        teacherId: user.uid,
+        archived: false
       };
 
       await createCaseStudy(caseStudyData);
@@ -267,6 +269,14 @@ export default function NewCaseStudyPage() {
                   onChange={(content) => setFormData(prev => ({ ...prev, description: content }))}
                   placeholder="Provide an overview of the case study..."
                   helperText="This description will be shown to students at the beginning of the session."
+                />
+                
+                <RichTextEditor
+                  label="Conclusion Guidance (Optional)"
+                  content={formData.conclusionGuidance}
+                  onChange={(content) => setFormData(prev => ({ ...prev, conclusionGuidance: content }))}
+                  placeholder="Provide guidance for AI-generated learning conclusions..."
+                  helperText="Optional: Guide the AI on what key themes, concepts, or learning objectives to emphasize in student conclusion summaries. Leave blank for general analysis."
                 />
               </CardContent>
             </Card>
@@ -440,59 +450,79 @@ export default function NewCaseStudyPage() {
                             </div>
 
                             {(question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && (
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                  Answer Options
-                                </label>
-                                <div className="space-y-2">
-                                  {question.type === 'multiple-choice-feedback' && (
-                                    <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                                      <p className="text-sm text-blue-800">
-                                        <strong>Feedback Question:</strong> All answers will be considered correct and earn full points. 
-                                        This is designed to gather student opinions and insights.
-                                      </p>
-                                    </div>
-                                  )}
-                                  {(question.options || []).map((option, optionIndex) => (
-                                    <div key={optionIndex} className="flex items-center gap-2">
-                                      {question.type === 'multiple-choice' && (
+                              <div className="space-y-4">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Answer Options
+                                  </label>
+                                  <div className="space-y-2">
+                                    {question.type === 'multiple-choice-feedback' && (
+                                      <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                        <p className="text-sm text-blue-800">
+                                          <strong>Feedback Question:</strong> All answers will be considered correct and earn full points. 
+                                          This is designed to gather student opinions and insights.
+                                        </p>
+                                      </div>
+                                    )}
+                                    {(question.options || []).map((option, optionIndex) => (
+                                      <div key={optionIndex} className="flex items-center gap-2">
+                                        {question.type === 'multiple-choice' && (
+                                          <input
+                                            type="radio"
+                                            name={`correct-${question.id}`}
+                                            checked={question.correctAnswer === optionIndex}
+                                            onChange={() => handleQuestionChange(section.id, question.id, 'correctAnswer', optionIndex)}
+                                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                          />
+                                        )}
                                         <input
-                                          type="radio"
-                                          name={`correct-${question.id}`}
-                                          checked={question.correctAnswer === optionIndex}
-                                          onChange={() => handleQuestionChange(section.id, question.id, 'correctAnswer', optionIndex)}
-                                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                                          type="text"
+                                          value={option}
+                                          onChange={(e) => updateOption(section.id, question.id, optionIndex, e.target.value)}
+                                          placeholder={`Option ${optionIndex + 1}`}
+                                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         />
-                                      )}
-                                      <input
-                                        type="text"
-                                        value={option}
-                                        onChange={(e) => updateOption(section.id, question.id, optionIndex, e.target.value)}
-                                        placeholder={`Option ${optionIndex + 1}`}
-                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      />
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => removeOption(section.id, question.id, optionIndex)}
-                                        className="text-red-600 hover:text-red-700"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </Button>
-                                    </div>
-                                  ))}
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => addOption(section.id, question.id)}
-                                    className="w-full"
-                                  >
-                                    <Plus className="w-4 h-4 mr-1" />
-                                    Add Option
-                                  </Button>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => removeOption(section.id, question.id, optionIndex)}
+                                          className="text-red-600 hover:text-red-700"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => addOption(section.id, question.id)}
+                                      className="w-full"
+                                    >
+                                      <Plus className="w-4 h-4 mr-1" />
+                                      Add Option
+                                    </Button>
+                                  </div>
                                 </div>
+
+                                {question.type === 'multiple-choice' && (
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                      Explanation for Correct Answer
+                                    </label>
+                                    <Textarea
+                                      value={question.correctAnswerExplanation || ''}
+                                      onChange={(e) => handleQuestionChange(section.id, question.id, 'correctAnswerExplanation', e.target.value)}
+                                      placeholder="Explain why this is the correct answer. This will be shown to students who answer incorrectly."
+                                      rows={3}
+                                      className="w-full"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      This explanation helps students understand their mistakes and learn from them.
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </CardContent>

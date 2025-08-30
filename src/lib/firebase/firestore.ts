@@ -24,7 +24,8 @@ import type {
   Response,
   StudentGrade,
   Teacher,
-  Course
+  Course,
+  Highlight
 } from '@/types';
 
 // Collections
@@ -35,7 +36,8 @@ export const COLLECTIONS = {
   RESPONSES: 'responses',
   STUDENT_GRADES: 'studentGrades',
   TEACHERS: 'teachers',
-  COURSES: 'courses'
+  COURSES: 'courses',
+  HIGHLIGHTS: 'highlights'
 } as const;
 
 // Case Studies
@@ -391,6 +393,53 @@ export const createResponse = async (response: Omit<Response, 'id' | 'submittedA
   // Update session activity when student submits response
   await updateSessionActivity(response.sessionId);
   
+  // Check for achievements after response submission
+  try {
+    // Import here to avoid circular dependencies
+    const AchievementChecker = (await import('./achievement-checker')).default;
+    const GradeBonusService = (await import('./grade-bonus')).default;
+    
+    // Get session details to find teacher/course info
+    const session = await getSession(response.sessionId);
+    if (session) {
+      const context = {
+        studentId: response.studentId,
+        sessionId: response.sessionId,
+        teacherId: session.teacherId,
+        courseId: undefined, // Would need to be passed in or derived
+        responseCount: 1 // This single response
+      };
+      
+      const unlockedAchievements = await AchievementChecker.onResponseSubmitted(context);
+      
+      // Apply any grade bonuses from new achievements
+      if (unlockedAchievements.length > 0 && context.courseId) {
+        const achievementsWithBonuses = unlockedAchievements
+          .map(ua => ({
+            studentId: response.studentId,
+            achievementId: ua.achievement.id,
+            achievementName: ua.achievement.name,
+            achievementIcon: ua.achievement.icon,
+            achievementRarity: ua.achievement.rarity,
+            unlockedAt: now,
+            bonusApplied: false,
+            bonusPoints: ua.bonusPoints || 0,
+            sessionId: response.sessionId,
+            xpAwarded: ua.xpAwarded
+          }));
+        
+        await GradeBonusService.applyAchievementBonuses(
+          response.studentId,
+          context.courseId,
+          achievementsWithBonuses
+        );
+      }
+    }
+  } catch (error) {
+    console.error('Error checking achievements after response submission:', error);
+    // Don't fail the response submission if achievement checking fails
+  }
+  
   return docRef.id;
 };
 
@@ -666,4 +715,36 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
     console.error('Error getting students with stats:', error);
     throw error;
   }
+};
+
+// Highlights functions for teachers
+export const getHighlightsBySession = async (sessionId: string): Promise<Highlight[]> => {
+  const q = query(
+    collection(db, COLLECTIONS.HIGHLIGHTS),
+    where('sessionId', '==', sessionId),
+    orderBy('createdAt', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .filter(highlight => !(highlight as any).deleted) as Highlight[]; // Filter out soft-deleted highlights
+};
+
+// Subscribe to real-time highlights for a session (teacher view)
+export const subscribeToSessionHighlights = (
+  sessionId: string,
+  callback: (highlights: Highlight[]) => void
+) => {
+  const q = query(
+    collection(db, COLLECTIONS.HIGHLIGHTS),
+    where('sessionId', '==', sessionId),
+    orderBy('createdAt', 'desc')
+  );
+  
+  return onSnapshot(q, (snapshot) => {
+    const highlights = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(highlight => !(highlight as any).deleted) as Highlight[]; // Filter out soft-deleted highlights
+    callback(highlights);
+  });
 };

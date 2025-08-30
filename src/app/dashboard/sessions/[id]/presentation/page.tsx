@@ -9,10 +9,20 @@ import {
   updateSessionActivity,
   releaseNextSection,
   getResponsesBySession,
-  getStudentsByIds
+  getStudentsByIds,
+  subscribeToSessionHighlights
 } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
-import type { Session, CaseStudy, Response, Student } from '@/types';
+import PopularHighlightsPanel from '@/components/teacher/PopularHighlightsPanel';
+import HighlightedContent from '@/components/teacher/HighlightedContent';
+import type { Session, CaseStudy, Response, Student, Highlight } from '@/types';
+import { 
+  aggregateHighlights, 
+  getPopularHighlightsForSection, 
+  getHighlightStatsBySection,
+  type PopularHighlight,
+  type SectionHighlightStats
+} from '@/lib/utils/highlightAnalysis';
 import { 
   QrCode, 
   Users, 
@@ -33,9 +43,14 @@ import {
   Eye,
   BarChart2,
   BookOpen,
-  FileText
+  FileText,
+  Highlighter,
+  Brain,
+  Loader2,
+  Sparkles
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
+import { cn } from '@/lib/utils';
 
 interface PresentationPageProps {
   params: Promise<{
@@ -51,6 +66,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   const [caseStudy, setCaseStudy] = useState<CaseStudy | null>(null);
   const [responses, setResponses] = useState<Response[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -58,6 +74,91 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   const [currentView, setCurrentView] = useState<'overview' | 'questions' | 'section'>('overview');
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
   const [showFullScreenQR, setShowFullScreenQR] = useState(false);
+  const [sectionPanelTab, setSectionPanelTab] = useState<'questions' | 'highlights'>('questions');
+  const [showInlineHighlights, setShowInlineHighlights] = useState(true);
+  const [aiSummaries, setAiSummaries] = useState<Record<string, {
+    summary: string;
+    keyThemes: string[];
+    insights: string[];
+    loading?: boolean;
+  }>>({});
+
+  // Generate AI summary for text question responses
+  const generateAISummary = async (questionId: string, questionText: string, responses: Array<{studentName: string, response: string}>) => {
+    if (responses.length === 0) return;
+    
+    setAiSummaries(prev => ({
+      ...prev,
+      [questionId]: { ...prev[questionId], loading: true }
+    }));
+
+    const requestBody = {
+      questionText,
+      responses,
+      context: caseStudy?.title ? `Case Study: ${caseStudy.title}` : undefined
+    };
+
+    try {
+      const response = await fetch('/api/summarize-responses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API returned ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      setAiSummaries(prev => ({
+        ...prev,
+        [questionId]: {
+          ...result,
+          loading: false
+        }
+      }));
+    } catch (error) {
+      console.error('Error generating AI summary:', error);
+      setAiSummaries(prev => ({
+        ...prev,
+        [questionId]: {
+          summary: 'Failed to generate AI summary. Please try again.',
+          keyThemes: ['Error'],
+          insights: [`AI summarization failed: ${error instanceof Error ? error.message : 'Unknown error'}`],
+          loading: false
+        }
+      }));
+    }
+  };
+
+  // Handle highlight jump functionality
+  const handleHighlightJump = (highlight: PopularHighlight) => {
+    // Find the element containing the highlighted text
+    const highlightElements = document.querySelectorAll('[data-tooltip]');
+    
+    for (const element of highlightElements) {
+      const tooltip = element.getAttribute('data-tooltip');
+      if (tooltip && tooltip.includes(`${highlight.studentIds.length} student`)) {
+        // Scroll to the element and add a visual pulse
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+        
+        // Add a temporary pulse animation
+        element.classList.add('animate-pulse');
+        setTimeout(() => {
+          element.classList.remove('animate-pulse');
+        }, 2000);
+        break;
+      }
+    }
+  };
 
   const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL}/session/${session?.sessionCode}`;
 
@@ -144,6 +245,12 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       }
     });
 
+    // Subscribe to highlights for real-time updates
+    const unsubscribeHighlights = subscribeToSessionHighlights(session.id, (sessionHighlights) => {
+      console.log('Presentation: Highlights updated:', sessionHighlights.length, 'highlights');
+      setHighlights(sessionHighlights);
+    });
+
     // Subscribe to student presence for real-time updates
     const unsubscribePresence = subscribeToStudentPresence(session.id, (presenceData: any) => {
       // Update presence information without overriding student data
@@ -168,6 +275,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       console.log('Cleaning up subscriptions for session:', session.id);
       unsubscribeResponses();
       unsubscribeSession();
+      unsubscribeHighlights();
       unsubscribePresence();
     };
   }, [session?.id]); // Only re-subscribe when session ID changes
@@ -337,6 +445,37 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         : 0
     };
   }, [studentProgress]);
+
+  // Process highlights for display
+  const highlightAnalysis = useMemo(() => {
+    if (!highlights.length) return {
+      popularHighlights: [],
+      sectionStats: [],
+      currentSectionHighlights: []
+    };
+
+    const popularHighlights = aggregateHighlights(highlights);
+    const sectionStats = getHighlightStatsBySection(highlights);
+    
+    // Get current section index for highlights
+    const releasedSections = session?.releasedSections || [];
+    const currentSectionIndex = releasedSections.length > 0 
+      ? Math.max(...releasedSections) 
+      : 0;
+    
+    const currentSectionHighlights = getPopularHighlightsForSection(
+      highlights, 
+      currentSectionIndex, 
+      10
+    );
+
+    return {
+      popularHighlights,
+      sectionStats,
+      currentSectionHighlights,
+      currentSectionIndex
+    };
+  }, [highlights, session?.releasedSections]);
 
   // Organize questions and responses for review
   const questionAnalysis = useMemo(() => {
@@ -672,6 +811,22 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                       className="bg-gradient-to-r from-green-400 to-green-500 h-2 rounded-full transition-all duration-1000"
                       style={{ width: `${metrics.averageProgress}%` }}
                     />
+                  </div>
+                </div>
+                
+                <div className="text-center p-6 rounded-3xl bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/20">
+                  <div className="text-6xl font-extralight text-purple-400 mb-1">
+                    {highlights.length}
+                  </div>
+                  <div className="text-lg text-gray-400 uppercase tracking-widest">
+                    Total Highlights
+                  </div>
+                  {/* Recent activity indicator */}
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                    <span className="text-sm text-purple-300">
+                      {highlightAnalysis.popularHighlights.reduce((sum, h) => sum + h.recentCount, 0)} recent
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1131,44 +1286,149 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                           ) : (
                             /* Text/Essay Question Responses */
                             questionAnalysis[selectedQuestionIndex].responses.length > 0 ? (
-                              <div className="space-y-4 max-h-[50vh] overflow-y-auto">
-                                {questionAnalysis[selectedQuestionIndex].responses.map((response, index) => (
-                                  <div 
-                                    key={`${response.studentId}-${index}`}
-                                    className="bg-gray-800/50 p-5 rounded-2xl border border-gray-700/30"
-                                  >
-                                    <div className="flex items-center justify-between mb-3">
-                                      <div className="flex items-center space-x-3">
-                                        <div className="flex flex-col">
-                                          <span className="font-medium text-white">
-                                            {response.studentName}
-                                          </span>
-                                          {response.actualStudentId && (
-                                            <span className="text-xs text-gray-500 font-mono">
-                                              ID: {response.actualStudentId}
+                              <div className="space-y-6">
+                                {/* AI Summary Section for Text Questions */}
+                                {questionAnalysis[selectedQuestionIndex].questionType === 'text' && questionAnalysis[selectedQuestionIndex].responses.length >= 2 && (
+                                  <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-2xl p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                      <div className="flex items-center gap-2">
+                                        <Brain className="w-5 h-5 text-purple-400" />
+                                        <h4 className="text-lg font-medium text-purple-300">Class Response Analysis</h4>
+                                        <Sparkles className="w-4 h-4 text-purple-400" />
+                                      </div>
+                                      {!aiSummaries[questionAnalysis[selectedQuestionIndex].questionId] && (
+                                        <button
+                                          onClick={() => {
+                                            const currentQuestion = questionAnalysis[selectedQuestionIndex];
+                                            const responsesForAI = currentQuestion.responses.map(r => ({
+                                              studentName: r.studentName,
+                                              response: r.response
+                                            }));
+                                            generateAISummary(currentQuestion.questionId, currentQuestion.questionText, responsesForAI);
+                                          }}
+                                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                                        >
+                                          <Brain className="w-4 h-4" />
+                                          Analyze Responses
+                                        </button>
+                                      )}
+                                    </div>
+                                    
+                                    {aiSummaries[questionAnalysis[selectedQuestionIndex].questionId]?.loading && (
+                                      <div className="flex items-center justify-center py-8">
+                                        <Loader2 className="w-6 h-6 animate-spin text-purple-400 mr-3" />
+                                        <span className="text-purple-300">Analyzing responses with AI...</span>
+                                      </div>
+                                    )}
+                                    
+                                    {aiSummaries[questionAnalysis[selectedQuestionIndex].questionId] && !aiSummaries[questionAnalysis[selectedQuestionIndex].questionId].loading && (
+                                      <div className="space-y-4">
+                                        {/* Summary */}
+                                        <div>
+                                          <div className="text-sm font-medium text-purple-400 mb-2">Class Overview</div>
+                                          <div className="text-gray-200 leading-relaxed text-base">
+                                            {aiSummaries[questionAnalysis[selectedQuestionIndex].questionId].summary}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Key Themes */}
+                                        <div>
+                                          <div className="text-sm font-medium text-purple-400 mb-2">Key Themes</div>
+                                          <div className="flex flex-wrap gap-2">
+                                            {aiSummaries[questionAnalysis[selectedQuestionIndex].questionId].keyThemes.map((theme, i) => (
+                                              <span key={i} className="px-3 py-1 bg-purple-600/20 text-purple-300 rounded-full text-sm">
+                                                {theme}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Insights */}
+                                        <div>
+                                          <div className="text-sm font-medium text-purple-400 mb-3">Key Observations</div>
+                                          <div className="space-y-3">
+                                            {aiSummaries[questionAnalysis[selectedQuestionIndex].questionId].insights.map((insight, i) => (
+                                              <div key={i} className="flex items-start gap-3">
+                                                <div className="w-2 h-2 rounded-full bg-purple-400 mt-2 flex-shrink-0"></div>
+                                                <div className="text-gray-200 text-sm leading-relaxed flex-1">
+                                                  {insight.includes('**') ? (
+                                                    <div 
+                                                      dangerouslySetInnerHTML={{ 
+                                                        __html: insight
+                                                          .replace(/\*\*(.*?)\*\*/g, '<strong class="text-purple-300 font-semibold">$1</strong>')
+                                                          .replace(/\n/g, '<br/>')
+                                                      }} 
+                                                    />
+                                                  ) : (
+                                                    insight
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Regenerate button */}
+                                        <div className="pt-2 border-t border-purple-500/20">
+                                          <button
+                                            onClick={() => {
+                                              const currentQuestion = questionAnalysis[selectedQuestionIndex];
+                                              const responsesForAI = currentQuestion.responses.map(r => ({
+                                                studentName: r.studentName,
+                                                response: r.response
+                                              }));
+                                              generateAISummary(currentQuestion.questionId, currentQuestion.questionText, responsesForAI);
+                                            }}
+                                            className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                                          >
+                                            Refresh Analysis
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {/* Individual Responses */}
+                                <div className="space-y-4 max-h-[50vh] overflow-y-auto">
+                                  {questionAnalysis[selectedQuestionIndex].responses.map((response, index) => (
+                                    <div 
+                                      key={`${response.studentId}-${index}`}
+                                      className="bg-gray-800/50 p-5 rounded-2xl border border-gray-700/30"
+                                    >
+                                      <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center space-x-3">
+                                          <div className="flex flex-col">
+                                            <span className="font-medium text-white">
+                                              {response.studentName}
+                                            </span>
+                                            {response.actualStudentId && (
+                                              <span className="text-xs text-gray-500 font-mono">
+                                                ID: {response.actualStudentId}
+                                              </span>
+                                            )}
+                                          </div>
+                                          
+                                          {typeof response.points === 'number' && (
+                                            <span className="text-sm bg-gray-700 text-gray-300 px-2 py-1 rounded">
+                                              {response.points}/{questionAnalysis[selectedQuestionIndex].maxPoints} pts
                                             </span>
                                           )}
                                         </div>
-                                        
-                                        {typeof response.points === 'number' && (
-                                          <span className="text-sm bg-gray-700 text-gray-300 px-2 py-1 rounded">
-                                            {response.points}/{questionAnalysis[selectedQuestionIndex].maxPoints} pts
-                                          </span>
-                                        )}
+                                        <div className="text-xs text-gray-500">
+                                          {response.submittedAt?.toDate?.()?.toLocaleTimeString([], { 
+                                            hour: '2-digit', 
+                                            minute: '2-digit' 
+                                          }) || 'Unknown time'}
+                                        </div>
                                       </div>
-                                      <div className="text-xs text-gray-500">
-                                        {response.submittedAt?.toDate?.()?.toLocaleTimeString([], { 
-                                          hour: '2-digit', 
-                                          minute: '2-digit' 
-                                        }) || 'Unknown time'}
+                                      
+                                      <div className="text-gray-300 leading-relaxed">
+                                        {response.response}
                                       </div>
                                     </div>
-                                    
-                                    <div className="text-gray-300 leading-relaxed">
-                                      {response.response}
-                                    </div>
-                                  </div>
-                                ))}
+                                  ))}
+                                </div>
                               </div>
                             ) : (
                               <div className="text-center py-12 text-gray-500">
@@ -1228,6 +1488,27 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                     <h2 className="text-4xl font-light text-white mb-4">
                       {currentSection.title}
                     </h2>
+                    
+                    {/* Highlight toggle and stats */}
+                    {highlightAnalysis.currentSectionHighlights.length > 0 && (
+                      <div className="flex items-center justify-center gap-4">
+                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                          <Highlighter className="w-4 h-4" />
+                          <span>{highlightAnalysis.currentSectionHighlights.length} popular passages</span>
+                        </div>
+                        <button
+                          onClick={() => setShowInlineHighlights(!showInlineHighlights)}
+                          className={cn(
+                            'px-3 py-1 rounded-full text-xs font-medium transition-colors',
+                            showInlineHighlights
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          )}
+                        >
+                          {showInlineHighlights ? 'Hide' : 'Show'} Highlights
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Section Content Based on Type */}
@@ -1243,64 +1524,97 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                               Reading Material
                             </h3>
                           </div>
-                          <div className="prose prose-invert prose-lg max-w-none [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1 [&_strong]:text-white [&_strong]:font-bold [&_b]:text-white [&_b]:font-bold" style={{ color: 'white' }}>
-                            <div 
-                              className="text-white leading-relaxed [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1 [&_strong]:text-white [&_strong]:font-bold [&_b]:text-white [&_b]:font-bold"
-                              style={{ color: 'white', fontSize: '1.125rem', lineHeight: '1.7' }}
-                              dangerouslySetInnerHTML={{ __html: currentSection.content }}
-                            />
-                          </div>
+                          <HighlightedContent
+                            content={currentSection.content}
+                            highlights={highlightAnalysis.currentSectionHighlights}
+                            className="text-white leading-relaxed"
+                            showHighlights={showInlineHighlights}
+                          />
                         </div>
                       </div>
 
-                      {/* Questions Panel */}
+                      {/* Questions & Highlights Panel */}
                       <div className="col-span-5">
                         <div className="bg-gray-800/50 rounded-3xl border border-gray-700/50 p-6">
-                          <h3 className="text-xl font-light text-white mb-6 flex items-center" style={{ color: 'white' }}>
-                            <MessageSquare className="w-5 h-5 mr-2" />
-                            Questions ({currentSection.questions.length})
-                          </h3>
+                          {/* Tab Header */}
+                          <div className="flex bg-gray-800/50 rounded-xl p-1 mb-6">
+                            <button
+                              onClick={() => setSectionPanelTab('questions')}
+                              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                sectionPanelTab === 'questions'
+                                  ? 'bg-blue-600 text-white'
+                                  : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                              Questions ({currentSection.questions.length})
+                            </button>
+                            <button
+                              onClick={() => setSectionPanelTab('highlights')}
+                              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                                sectionPanelTab === 'highlights'
+                                  ? 'bg-blue-600 text-white'
+                                  : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <Highlighter className="w-4 h-4" />
+                              Highlights ({highlightAnalysis.currentSectionHighlights.length})
+                            </button>
+                          </div>
                           
-                          {currentSection.questions.length > 0 ? (
-                            <div className="space-y-6">
-                              {currentSection.questions.map((question, index) => (
-                                <div 
-                                  key={question.id}
-                                  className="bg-gray-800/50 p-5 rounded-2xl border border-gray-700/30"
-                                >
-                                  <div className="mb-3">
-                                    <div className="text-sm text-gray-400 mb-2">
-                                      Question {index + 1} • {question.type.replace('-', ' ')} • {question.points} pts
+                          {/* Tab Content */}
+                          {sectionPanelTab === 'questions' ? (
+                            /* Questions Content */
+                            currentSection.questions.length > 0 ? (
+                              <div className="space-y-6">
+                                {currentSection.questions.map((question, index) => (
+                                  <div 
+                                    key={question.id}
+                                    className="bg-gray-800/50 p-5 rounded-2xl border border-gray-700/30"
+                                  >
+                                    <div className="mb-3">
+                                      <div className="text-sm text-gray-400 mb-2">
+                                        Question {index + 1} • {question.type.replace('-', ' ')} • {question.points} pts
+                                      </div>
+                                      <div className="text-base text-white leading-relaxed">
+                                        {question.text}
+                                      </div>
                                     </div>
-                                    <div className="text-base text-white leading-relaxed">
-                                      {question.text}
-                                    </div>
+                                    
+                                    {/* Multiple Choice Options - No answers revealed in Section display */}
+                                    {(question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && question.options && (
+                                      <div className="space-y-2 mt-4">
+                                        {question.options.map((option, optionIndex) => (
+                                          <div 
+                                            key={optionIndex}
+                                            className="p-3 rounded-lg border text-sm bg-gray-700/30 border-gray-600/30 text-gray-300"
+                                          >
+                                            <span className="font-mono text-gray-400 mr-2">
+                                              {String.fromCharCode(65 + optionIndex)}.
+                                            </span>
+                                            {option}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
-                                  
-                                  {/* Multiple Choice Options - No answers revealed in Section display */}
-                                  {(question.type === 'multiple-choice' || question.type === 'multiple-choice-feedback') && question.options && (
-                                    <div className="space-y-2 mt-4">
-                                      {question.options.map((option, optionIndex) => (
-                                        <div 
-                                          key={optionIndex}
-                                          className="p-3 rounded-lg border text-sm bg-gray-700/30 border-gray-600/30 text-gray-300"
-                                        >
-                                          <span className="font-mono text-gray-400 mr-2">
-                                            {String.fromCharCode(65 + optionIndex)}.
-                                          </span>
-                                          {option}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-gray-500">
+                                <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                <p>No questions for this section</p>
+                              </div>
+                            )
                           ) : (
-                            <div className="text-center py-8 text-gray-500">
-                              <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                              <p>No questions for this section</p>
-                            </div>
+                            /* Highlights Content */
+                            <PopularHighlightsPanel
+                              highlights={highlightAnalysis.popularHighlights}
+                              sectionStats={highlightAnalysis.sectionStats}
+                              currentSectionIndex={highlightAnalysis.currentSectionIndex || 0}
+                              className="!bg-transparent !border-none !p-0"
+                              onHighlightClick={handleHighlightJump}
+                            />
                           )}
                         </div>
                       </div>

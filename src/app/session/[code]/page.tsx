@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, use, useRef } from 'react';
+import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInAnonymously } from 'firebase/auth';
+import { Timestamp } from 'firebase/firestore';
 import { studentAuth } from '@/lib/firebase/student-config';
 import { 
   getSessionByCodeStudent as getSessionByCode, 
@@ -17,8 +18,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
-import type { Session, CaseStudy, Student, Section, Question, Response } from '@/types';
-import { User, CheckCircle, X, ArrowRight, ArrowLeft, BookOpen, Clock, MessageSquare } from 'lucide-react';
+import type { Session, CaseStudy, Student, Response, Highlight } from '@/types';
+import { User, CheckCircle, X, ArrowRight, BookOpen, Clock, MessageSquare, Settings, Award, HelpCircle, FileText } from 'lucide-react';
+import { DEFAULT_MILESTONES } from '@/lib/ai/assessment';
+import FloatingActionButton from '@/components/student/FloatingActionButton';
+import FeaturePanel from '@/components/student/FeaturePanel';
+import HighlightableContent from '@/components/student/HighlightableContent';
+import ReadingSettingsPanel from '@/components/student/ReadingSettingsPanel';
+import { 
+  createHighlightStudent, 
+  subscribeToHighlightsByStudentStudent, 
+  deleteHighlightStudent,
+  subscribeToPopularHighlightsBySessionStudent,
+  calculateAndUpdateOverallProgress
+} from '@/lib/firebase/student-firestore';
+import { normalizeStudentId } from '@/lib/utils';
 
 interface StudentSessionPageProps {
   params: Promise<{
@@ -34,7 +48,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   const [student, setStudent] = useState<Student | null>(null);
   const [responses, setResponses] = useState<Response[]>([]);
   
-  const [step, setStep] = useState<'join' | 'reading' | 'review' | 'waiting' | 'completed'>('join');
+  const [step, setStep] = useState<'join' | 'reading' | 'review' | 'waiting' | 'conclusion' | 'completed'>('join');
   const [currentSection, setCurrentSection] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -66,6 +80,17 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   const [newSectionAvailable, setNewSectionAvailable] = useState(false);
   const [newSectionIndex, setNewSectionIndex] = useState(-1);
   const [initialReleasedSections, setInitialReleasedSections] = useState<number[] | null>(null);
+  
+  // Feature panel state
+  const [isFeaturePanelOpen, setIsFeaturePanelOpen] = useState(false);
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  
+  // Popular highlights state
+  const [allSessionHighlights, setAllSessionHighlights] = useState<Highlight[]>([]);
+  const [showPopularHighlights, setShowPopularHighlights] = useState(false);
+  const [popularityOpacity, setPopularityOpacity] = useState(0.6);
+  const [minimumStudents, setMinimumStudents] = useState(2);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   // Storage key for this specific session
   const storageKey = `student-session-${resolvedParams.code}`;
@@ -301,6 +326,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     }
   }, [session]);
 
+
   // Handle student presence when component unmounts or page unloads
   useEffect(() => {
     if (!session || !student) return;
@@ -340,7 +366,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
   // Subscribe to session updates to detect when new sections are released
   useEffect(() => {
-    if (!session || !['reading', 'review', 'waiting'].includes(step)) return;
+    if (!session?.id || !['reading', 'review', 'waiting'].includes(step)) return;
     
     // Use Realtime Database for instant updates with zero polling
     const { subscribeToSessionStatusStudent } = require('@/lib/firebase/student-realtime');
@@ -350,52 +376,19 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         // Update local session state with latest released sections
         setSession(prev => prev ? {
           ...prev,
-          releasedSections: status.releasedSections,
-          currentReleasedSection: status.currentReleasedSection
-        } : prev);
-        
-        // Only show notifications for sections that are newly released (not already released when student joined)
-        if (initialReleasedSections !== null) {
-          const newlyReleasedSections = status.releasedSections.filter(
-            (sectionIndex: number) => !initialReleasedSections.includes(sectionIndex)
-          );
-          
-          if (newlyReleasedSections.length > 0) {
-            const maxNewlyReleasedSection = Math.max(...newlyReleasedSections);
-            const nextAvailableSection = currentSection + 1;
-            
-            // If we're in waiting step and next section is now available, auto-advance
-            if (step === 'waiting' && newlyReleasedSections.includes(nextAvailableSection)) {
-              setCurrentSection(nextAvailableSection);
-              setStep('reading');
-              setNewSectionAvailable(false);
-            }
-            // If we're reading/review and there are newly released sections available, show notification
-            else if ((step === 'reading' || step === 'review') && maxNewlyReleasedSection > currentSection) {
-              const isCurrentlyWorking = step === 'reading' && (
-                Object.keys(currentResponses).length > 0 || 
-                !hasReadSection ||
-                showQuestions
-              );
-              
-              // Only show notification if student isn't actively working on current section
-              // AND the new section is actually ahead of where they currently are
-              const targetNewSection = Math.min(maxNewlyReleasedSection, nextAvailableSection);
-              if (!isCurrentlyWorking && !newSectionAvailable && targetNewSection > currentSection) {
-                setNewSectionAvailable(true);
-                setNewSectionIndex(targetNewSection);
-              }
-            }
-            
-            // Update our tracking of initial sections to include the newly released ones
-            setInitialReleasedSections(prev => prev ? [...prev, ...newlyReleasedSections] : status.releasedSections);
-          }
+          releasedSections: status.releasedSections
+        } : null);
+
+        if (initialReleasedSections && status.releasedSections.length > initialReleasedSections.length) {
+          const newSection = status.releasedSections[status.releasedSections.length - 1];
+          setNewSectionIndex(newSection);
+          setNewSectionAvailable(true);
         }
       }
     });
 
-    return () => unsubscribe?.();
-  }, [session, step, currentSection, hasReadSection, showQuestions, currentResponses, newSectionAvailable, initialReleasedSections]);
+    return () => unsubscribe();
+  }, [session?.id, step, initialReleasedSections]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -420,6 +413,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         try {
           const studentId = await createStudent({
             studentId: studentInfo.studentId,
+            studentIdNormalized: normalizeStudentId(studentInfo.studentId),
             name: studentInfo.name,
             courseIds: [caseStudy.courseId]
           });
@@ -427,6 +421,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           studentData = {
             id: studentId,
             studentId: studentInfo.studentId,
+            studentIdNormalized: normalizeStudentId(studentInfo.studentId),
             name: studentInfo.name,
             courseIds: [caseStudy.courseId],
             createdAt: new Date() as any
@@ -636,6 +631,9 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       const updatedResponses = await getResponsesByStudent(student.id, session.id);
       setResponses(updatedResponses);
       
+      // Update overall progress asynchronously
+      calculateAndUpdateOverallProgress(student.id).catch(console.error);
+      
       // Show review state first so students can see their feedback
       setStep('review');
     } catch (error: any) {
@@ -754,6 +752,155 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     setNewSectionAvailable(false);
   };
 
+  // Subscribe to highlights in real-time
+  useEffect(() => {
+    if (student?.id && session?.id) {
+      const unsubscribe = subscribeToHighlightsByStudentStudent(
+        student.id,
+        session.id,
+        (highlightsData) => {
+          setHighlights(highlightsData);
+        }
+      );
+      return () => unsubscribe();
+    }
+  }, [student?.id, session?.id]);
+
+  // Subscribe to all session highlights for popular highlights feature
+  useEffect(() => {
+    if (session?.id && showPopularHighlights) {
+      try {
+        const unsubscribe = subscribeToPopularHighlightsBySessionStudent(
+          session.id,
+          (allHighlightsData) => {
+            setAllSessionHighlights(allHighlightsData);
+          }
+        );
+        return () => unsubscribe();
+      } catch (error) {
+        console.error('Failed to subscribe to popular highlights:', error);
+        setAllSessionHighlights([]);
+      }
+    } else {
+      // Clear highlights when feature is disabled
+      setAllSessionHighlights([]);
+    }
+  }, [session?.id, showPopularHighlights]);
+
+  const handleHighlightCreateForSection = useCallback(async (highlight: { id: string; text: string; color: string; note?: string; startOffset: number; endOffset: number; createdAt: Date }, sectionIndex: number) => {
+    if (!student || !session || !caseStudy) return;
+
+    const user = studentAuth.currentUser;
+    if (!user) {
+      console.error('No authenticated user found for creating highlight.');
+      return;
+    }
+
+    // Get section data - handle description section (-1) and regular sections
+    const sectionData = sectionIndex === -1 
+      ? { title: 'Introduction' }
+      : caseStudy.sections[sectionIndex];
+    
+    if (!sectionData && sectionIndex !== -1) {
+      console.error('Invalid section index:', sectionIndex);
+      return;
+    }
+    
+    try {
+      const highlightData = {
+        studentId: student.id,
+        authorUid: user.uid, // Add the secure auth UID
+        sessionId: session.id,
+        sectionIndex: sectionIndex,
+        sectionTitle: sectionData.title,
+        text: highlight.text,
+        startOffset: highlight.startOffset,
+        endOffset: highlight.endOffset,
+        color: highlight.color,
+        note: highlight.note || '' // Ensure note is not undefined
+      };
+      
+      console.log('📝 Creating highlight with this data:', highlightData);
+      
+      const highlightId = await createHighlightStudent(highlightData);
+      
+      // Add to local state immediately for better UX
+      const newHighlight: Highlight = { 
+        ...highlightData, 
+        id: highlightId, 
+        createdAt: Timestamp.now(),
+      };
+      setHighlights(prev => [...prev, newHighlight]);
+    } catch (error) {
+      console.error('Failed to create highlight:', error);
+    }
+  }, [student, session, caseStudy]);
+
+  const handleHighlightDelete = useCallback(async (highlightId: string) => {
+    try {
+      await deleteHighlightStudent(highlightId);
+      // Real-time listener will handle UI updates
+    } catch (error) {
+      console.error('Failed to delete highlight:', error);
+    }
+  }, []);
+
+  const handleHighlightJump = useCallback((highlightId: string) => {
+    // Find the highlight in our data to get its section
+    const highlight = highlights.find(h => h.id === highlightId);
+    if (!highlight) {
+      console.warn('Highlight not found:', highlightId);
+      return;
+    }
+
+    const highlightSection = highlight.sectionIndex ?? 0;
+    
+    // Function to actually scroll to the highlight
+    const scrollToHighlight = () => {
+      const highlightElement = document.querySelector(`[data-highlight-id="${highlightId}"]`);
+      if (highlightElement) {
+        highlightElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+        
+        // Add a brief highlight animation
+        highlightElement.classList.add('animate-pulse');
+        setTimeout(() => {
+          highlightElement.classList.remove('animate-pulse');
+        }, 2000);
+      } else {
+        console.warn('Highlight element not found in DOM:', highlightId);
+      }
+    };
+
+    // Check if we're already on the correct section
+    if (highlightSection === currentSection) {
+      // We're on the right section, scroll immediately
+      scrollToHighlight();
+    } else {
+      // Navigate to the correct section first
+      console.log(`Jumping from section ${currentSection} to section ${highlightSection} for highlight ${highlightId}`);
+      handleNavigateToSection(highlightSection);
+      
+      // Wait for the section to render, then scroll to the highlight
+      setTimeout(() => {
+        scrollToHighlight();
+      }, 500); // Give time for the new section to render
+    }
+  }, [highlights, currentSection, handleNavigateToSection]);
+
+  // Helper function to count highlights per section
+  const getHighlightCountForSection = useCallback((sectionIndex: number) => {
+    return highlights.filter(h => {
+      if (sectionIndex === -1) {
+        return h.sectionIndex === -1; // Introduction highlights
+      }
+      return h.sectionIndex === sectionIndex;
+    }).length;
+  }, [highlights]);
+
 
   if (loading) {
     return (
@@ -800,12 +947,14 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           console.log('QUICK JOIN: Creating student...');
           const studentId = await createStudent({
             studentId: rememberedStudent.studentId,
+            studentIdNormalized: normalizeStudentId(rememberedStudent.studentId),
             name: rememberedStudent.name,
             courseIds: [caseStudy.courseId]
           });
           studentData = {
             id: studentId,
             studentId: rememberedStudent.studentId,
+            studentIdNormalized: normalizeStudentId(rememberedStudent.studentId),
             name: rememberedStudent.name,
             courseIds: [caseStudy.courseId],
             createdAt: new Date() as any
@@ -815,14 +964,19 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         setStudent(studentData);
         
         console.log('QUICK JOIN: Joining session...');
-        await joinSession(session.id, studentData.id);
+        if (studentData) {
+          await joinSession(session.id, studentData.id);
+        }
         
         console.log('QUICK JOIN: Getting responses...');
-        const existingResponses = await getResponsesByStudent(studentData.id, session.id);
-        setResponses(existingResponses);
+        let existingResponses: Response[] = [];
+        if (studentData) {
+          existingResponses = await getResponsesByStudent(studentData.id, session.id);
+          setResponses(existingResponses);
+        }
         
         // Determine starting section for returning students
-        const completedSections = new Set(existingResponses.map(r => {
+        const completedSections = new Set(existingResponses.map((r: Response) => {
           const sectionIndex = caseStudy?.sections.findIndex(s => s.id === r.sectionId) ?? -1;
           return sectionIndex;
         }));
@@ -852,7 +1006,9 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         setCurrentSection(targetSection);
         
         // Save session to localStorage for persistence
-        saveStudentSession(studentData, session);
+        if (studentData) {
+          saveStudentSession(studentData, session);
+        }
         
         setStep('reading');
         console.log('QUICK JOIN: Success!');
@@ -1019,8 +1175,8 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     const handleContinueAfterReview = () => {
       // Check if this is the last section of the entire case study
       if (currentSection >= caseStudy.sections.length - 1) {
-        setStep('completed');
-        clearStoredSession();
+        setStep('conclusion');
+        // Don't clear session yet - wait until after conclusion
       } else {
         // Check if next section is released
         const nextSectionIndex = currentSection + 1;
@@ -1084,7 +1240,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                     <div className="flex-shrink-0 w-10 h-10 border-2 border-gray-900 text-gray-900 rounded-full flex items-center justify-center text-sm font-semibold">
                       {index + 1}
                     </div>
-                    <h3 className="text-xl font-light text-gray-900 leading-relaxed">
+                    <h3 className="text-xl font-light text-gray-900 leading-tight" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
                       {question.text}
                     </h3>
                   </div>
@@ -1101,7 +1257,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                       </div>
                       <span className="text-sm font-medium text-blue-800">Your Response</span>
                     </div>
-                    <div className="text-base text-gray-800 leading-relaxed">
+                    <div className="text-lg text-gray-800 leading-relaxed" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
                       {(() => {
                         const response = responses.find(r => r.questionId === question.id);
                         return response?.response || 'No response recorded';
@@ -1171,11 +1327,21 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                         
                         if (!isCorrect && question.options && question.correctAnswer !== undefined) {
                           return (
-                            <div className="bg-white/70 rounded-lg p-4 border border-red-200/60">
-                              <p className="text-sm text-gray-600 mb-2 font-medium">The correct answer was:</p>
-                              <p className="text-base text-gray-800 leading-relaxed">
-                                {question.options[question.correctAnswer]}
-                              </p>
+                            <div className="bg-white/70 rounded-lg p-4 border border-red-200/60 space-y-3">
+                              <div>
+                                <p className="text-sm text-gray-600 mb-2 font-medium">The correct answer was:</p>
+                                <p className="text-lg text-gray-800 leading-relaxed" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
+                                  {question.options[question.correctAnswer]}
+                                </p>
+                              </div>
+                              {question.correctAnswerExplanation && (
+                                <div>
+                                  <p className="text-sm text-gray-600 mb-2 font-medium">Explanation:</p>
+                                  <p className="text-base text-gray-700 leading-relaxed" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
+                                    {question.correctAnswerExplanation}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           );
                         }
@@ -1202,7 +1368,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                       </div>
                       <div className="bg-white/70 rounded-lg p-4 border border-blue-200/60">
                         <p className="text-sm text-gray-600 mb-2 font-medium">Your response helps us understand different perspectives on this topic.</p>
-                        <p className="text-base text-gray-800 leading-relaxed">
+                        <p className="text-lg text-gray-800 leading-relaxed" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
                           All responses are valuable for learning and discussion.
                         </p>
                       </div>
@@ -1245,7 +1411,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
               className="px-8 py-3 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-lg"
             >
               {currentSection >= caseStudy.sections.length - 1 ? (
-                'Complete Case Study'
+                'View Learning Summary'
               ) : (
                 (() => {
                   const nextSectionIndex = currentSection + 1;
@@ -1321,6 +1487,384 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     );
   }
 
+  // Conclusion step - comprehensive summary and learning consolidation
+  if (step === 'conclusion') {
+    if (!caseStudy || !student || !session) return null;
+
+    // Calculate performance metrics
+    const totalPossiblePoints = caseStudy.sections.reduce((total, section) => 
+      total + section.questions.reduce((sectionTotal, question) => sectionTotal + question.points, 0), 0
+    );
+    const earnedPoints = responses.reduce((total, response) => total + (response.points || 0), 0);
+    const percentageScore = totalPossiblePoints > 0 ? Math.round((earnedPoints / totalPossiblePoints) * 100) : 0;
+    
+    // Calculate completion metrics
+    const totalQuestions = caseStudy.sections.reduce((total, section) => total + section.questions.length, 0);
+    const answeredQuestions = responses.length;
+    const completionRate = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 100;
+    
+    // State for AI-generated conclusion data
+    const [conclusionData, setConclusionData] = useState<{
+      keyInsights: string[];
+      learningMilestones: any;
+      reflectionPrompts: string[];
+    } | null>(null);
+    const [loadingConclusion, setLoadingConclusion] = useState(true);
+
+    // Generate AI-powered conclusion when component mounts
+    useEffect(() => {
+      const generateConclusion = async () => {
+        try {
+          setLoadingConclusion(true);
+          
+          // Prepare response data for AI analysis
+          const responseData = responses.map(response => {
+            const question = caseStudy.sections
+              .flatMap(section => section.questions.map(q => ({ ...q, sectionTitle: section.title })))
+              .find(q => q.id === response.questionId);
+            
+            return {
+              questionText: question?.text || 'Question not found',
+              studentResponse: response.response,
+              points: response.points || 0,
+              maxPoints: response.maxPoints,
+              sectionTitle: question?.sectionTitle || 'Unknown Section'
+            };
+          });
+
+          // Call the API endpoint to generate AI conclusion
+          const response = await fetch('/api/generate-conclusion', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              caseStudyTitle: caseStudy.title,
+              caseStudyDescription: caseStudy.description,
+              responses: responseData,
+              performance: {
+                totalScore: earnedPoints,
+                maxScore: totalPossiblePoints,
+                percentageScore,
+                completionRate
+              },
+              studentName: student.name,
+              teacherGuidance: caseStudy.conclusionGuidance
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`API request failed: ${response.status}`);
+          }
+
+          const apiResult = await response.json();
+          
+          if (!apiResult.success) {
+            throw new Error(apiResult.error || 'Failed to generate conclusion');
+          }
+
+          const aiConclusion = apiResult.result;
+
+          setConclusionData(aiConclusion);
+        } catch (error) {
+          console.error('Error generating AI conclusion:', error);
+          // Fallback to basic conclusion
+          setConclusionData({
+            keyInsights: [
+              "You engaged thoughtfully with the case study material and demonstrated learning progress.",
+              "Your responses showed effort and engagement with the key concepts presented.",
+              "This learning experience has provided you with valuable insights to build upon."
+            ],
+            learningMilestones: Object.keys(DEFAULT_MILESTONES).reduce((acc, key) => {
+              acc[key] = {
+                name: DEFAULT_MILESTONES[key].name,
+                achieved: percentageScore >= 70,
+                progress: Math.min(1, percentageScore / 100),
+                evidence: "Assessment based on overall performance",
+                confidence: 0.7
+              };
+              return acc;
+            }, {} as any),
+            reflectionPrompts: [
+              "What was the most important concept you learned from this case study?",
+              "How might you apply these insights in real-world situations?",
+              "What questions do you still have about this topic?"
+            ]
+          });
+        } finally {
+          setLoadingConclusion(false);
+        }
+      };
+
+      generateConclusion();
+    }, [caseStudy, student, responses, earnedPoints, totalPossiblePoints, percentageScore, completionRate]);
+
+    // Show loading state while generating conclusion
+    if (loadingConclusion || !conclusionData) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <h2 className="text-xl font-light text-gray-900 mb-2">
+              Generating Your Learning Summary
+            </h2>
+            <p className="text-gray-600">
+              Our AI is analyzing your responses to create personalized insights...
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    const { keyInsights, learningMilestones, reflectionPrompts } = conclusionData;
+
+    // Performance level determination
+    const getPerformanceLevel = (score: number) => {
+      if (score >= 90) return { level: 'Excellent', color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' };
+      if (score >= 80) return { level: 'Proficient', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' };
+      if (score >= 70) return { level: 'Developing', color: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200' };
+      return { level: 'Beginning', color: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' };
+    };
+
+    const performance = getPerformanceLevel(percentageScore);
+
+    const handleFinishCaseStudy = () => {
+      setStep('completed');
+      clearStoredSession();
+    };
+
+    const handleDownloadSummary = () => {
+      // Create a downloadable summary with AI-generated content
+      const summaryText = `
+Case Study Completion Summary
+============================
+
+Case Study: ${caseStudy.title}
+Student: ${student.name}
+Completed: ${new Date().toLocaleDateString()}
+
+Performance Summary:
+- Score: ${earnedPoints}/${totalPossiblePoints} points (${percentageScore}%)
+- Questions Answered: ${answeredQuestions}/${totalQuestions} (${completionRate}%)
+- Performance Level: ${performance.level}
+
+Learning Milestones (AI-Assessed):
+${Object.entries(learningMilestones).map(([key, milestone]: [string, any]) => 
+  `- ${milestone.name || DEFAULT_MILESTONES[key]?.name}: ${milestone.achieved ? '✓ Achieved' : '○ In Progress'} (${Math.round(milestone.progress * 100)}%)
+  Evidence: ${milestone.evidence || 'No specific evidence recorded'}`
+).join('\n')}
+
+Key Insights (AI-Generated):
+${keyInsights.map(insight => `- ${insight}`).join('\n')}
+
+Reflection Questions (Personalized):
+${reflectionPrompts.map((prompt, index) => `${index + 1}. ${prompt}`).join('\n')}
+
+---
+This summary was generated using AI analysis of your responses and performance.
+      `.trim();
+
+      const blob = new Blob([summaryText], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${caseStudy.title.replace(/[^a-z0-9]/gi, '_')}_Summary.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-100 sticky top-0 z-20">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+            <div className="text-center">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-full text-sm font-medium mb-4">
+                <CheckCircle className="h-4 w-4" />
+                Case Study Completed
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-light text-gray-900 mb-2">
+                {caseStudy.title}
+              </h1>
+              <p className="text-gray-600">
+                Congratulations on completing this learning journey!
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+          <div className="space-y-8">
+            {/* Performance Overview */}
+            <Card className={`${performance.bg} ${performance.border} border-2`}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3">
+                  <Award className={`h-6 w-6 ${performance.color}`} />
+                  <span className={performance.color}>Performance Summary</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="text-center">
+                    <div className={`text-3xl font-bold ${performance.color} mb-2`}>
+                      {percentageScore}%
+                    </div>
+                    <div className="text-sm text-gray-600">Overall Score</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {earnedPoints} of {totalPossiblePoints} points
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className={`text-3xl font-bold ${performance.color} mb-2`}>
+                      {completionRate}%
+                    </div>
+                    <div className="text-sm text-gray-600">Completion Rate</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {answeredQuestions} of {totalQuestions} questions
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className={`text-2xl font-bold ${performance.color} mb-2`}>
+                      {performance.level}
+                    </div>
+                    <div className="text-sm text-gray-600">Performance Level</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Based on your responses
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Learning Milestones */}
+            {Object.keys(learningMilestones).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-3">
+                    <BookOpen className="h-6 w-6 text-blue-600" />
+                    Learning Milestones
+                  </CardTitle>
+                  <CardDescription>
+                    AI-powered analysis of your progress on key learning objectives
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {Object.entries(learningMilestones).map(([key, milestone]: [string, any]) => (
+                      <div key={key} className="p-4 bg-gray-50 rounded-lg">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                              milestone.achieved ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'
+                            }`}>
+                              {milestone.achieved ? <CheckCircle className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900">{milestone.name || DEFAULT_MILESTONES[key]?.name}</div>
+                              <div className="text-sm text-gray-600">
+                                {milestone.achieved ? 'Achieved' : 'In Progress'} • {Math.round(milestone.progress * 100)}% demonstrated
+                              </div>
+                            </div>
+                          </div>
+                          <div className="w-24 bg-gray-200 rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full ${milestone.achieved ? 'bg-green-500' : 'bg-blue-500'}`}
+                              style={{ width: `${milestone.progress * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        {milestone.evidence && (
+                          <div className="text-sm text-gray-700 bg-white p-3 rounded border-l-4 border-blue-200">
+                            <span className="font-medium text-blue-800">Evidence: </span>
+                            {milestone.evidence}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Key Insights */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3">
+                  <MessageSquare className="h-6 w-6 text-purple-600" />
+                  Key Insights
+                </CardTitle>
+                <CardDescription>
+                  Highlights from your learning journey
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {keyInsights.map((insight, index) => (
+                    <div key={index} className="flex items-start gap-3 p-3 bg-purple-50 rounded-lg">
+                      <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-purple-600 text-sm font-medium">{index + 1}</span>
+                      </div>
+                      <p className="text-gray-700 leading-relaxed">{insight}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Reflection Questions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3">
+                  <HelpCircle className="h-6 w-6 text-orange-600" />
+                  Reflection Questions
+                </CardTitle>
+                <CardDescription>
+                  Personalized questions based on your learning journey
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {reflectionPrompts.map((prompt, index) => (
+                    <div key={index} className="p-4 bg-orange-50 rounded-lg border-l-4 border-orange-400">
+                      <p className="font-medium text-gray-900 mb-2">{prompt}</p>
+                      <p className="text-sm text-gray-600">
+                        {index === 0 && "Consider the key insights that will stay with you beyond this session."}
+                        {index === 1 && "Think about practical applications of what you've learned."}
+                        {index === 2 && "Identify areas for continued learning and exploration."}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <Button
+                onClick={handleDownloadSummary}
+                variant="outline"
+                className="flex-1 h-12 text-sm font-medium border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Download Learning Summary
+              </Button>
+              <Button
+                onClick={handleFinishCaseStudy}
+                className="flex-1 h-12 text-sm font-medium bg-green-600 hover:bg-green-700 text-white"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Finish Case Study
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Completed step
   if (step === 'completed') {
     return (
@@ -1382,6 +1926,18 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   const currentSectionData = caseStudy.sections[currentSection];
   const progress = ((currentSection + 1) / caseStudy.sections.length) * 100;
 
+  // Safety check for currentSectionData
+  if (!currentSectionData) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading section...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
       {/* Collapsible Progress Header */}
@@ -1394,7 +1950,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           <div className={`flex flex-col transition-all duration-300 ease-in-out ${
             isHeaderCollapsed ? 'gap-2' : 'gap-4'
           }`}>
-            <div className="text-center">
+            <div className="relative text-center">
               <h1 className={`font-light text-gray-900 mb-2 transition-all duration-300 ease-in-out ${
                 isHeaderCollapsed 
                   ? 'text-base sm:text-lg' 
@@ -1405,6 +1961,15 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                   caseStudy.title
                 }
               </h1>
+              
+              {/* Settings Button - positioned absolutely in top right */}
+              <button
+                onClick={() => setShowSettingsPanel(true)}
+                className="absolute top-0 right-0 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                title="Reading Settings"
+              >
+                <Settings className="h-4 w-4 text-gray-500" />
+              </button>
               {!isHeaderCollapsed && (
                 <p className="text-sm text-gray-500 transition-opacity duration-300">
                   Section {currentSection + 1} of {caseStudy.sections.length}
@@ -1489,6 +2054,8 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                 const isCompleted = isSectionCompleted(index);
                 const isCurrent = index === currentSection;
                 
+                const highlightCount = getHighlightCountForSection(index);
+                
                 return (
                   <button
                     key={section.id}
@@ -1503,11 +2070,18 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                         ? 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                         : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
                     }`}
-                    title={`Section ${index + 1}: ${section.title}${!isReleased ? ' (Not released)' : ''}`}
+                    title={`Section ${index + 1}: ${section.title}${!isReleased ? ' (Not released)' : ''}${highlightCount > 0 ? ` • ${highlightCount} highlight${highlightCount !== 1 ? 's' : ''}` : ''}`}
                   >
                     <span className="text-xs sm:text-sm font-medium">
                       {index + 1}
                     </span>
+                    
+                    {/* Highlight count badge */}
+                    {highlightCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 text-white text-xs rounded-full flex items-center justify-center font-bold shadow-sm">
+                        {highlightCount > 9 ? '9+' : highlightCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -1580,11 +2154,22 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           {/* Case Study Description - Only show before first section */}
           {currentSection === 0 && caseStudy.description && (
             <div className="mb-12 sm:mb-16">
-              <div 
+              <HighlightableContent
+                key="case-study-description"
+                htmlContent={caseStudy.description}
                 className="[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1"
-                dangerouslySetInnerHTML={{ 
-                  __html: caseStudy.description 
-                }} 
+                onHighlightCreate={(highlight) => {
+                  // Handle description highlights with sectionIndex -1
+                  handleHighlightCreateForSection(highlight, -1);
+                }}
+                onHighlightDelete={handleHighlightDelete}
+                highlights={highlights.filter(h => h.sectionIndex === -1)}
+                allSessionHighlights={allSessionHighlights}
+                currentStudentId={student?.id || ''}
+                currentSectionIndex={-1}
+                showPopularHighlights={showPopularHighlights}
+                popularityOpacity={popularityOpacity}
+                minimumStudents={minimumStudents}
               />
               {/* Divider between description and first section */}
               <div className="w-full h-px bg-gray-200 my-12 sm:my-16"></div>
@@ -1592,21 +2177,25 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           )}
           
           {/* Section Content */}
-          <div 
+          <HighlightableContent
+            key="section-content"
+            htmlContent={
+              currentSectionData.type === 'discussion' 
+                ? currentSectionData.discussionPrompt || ''
+                : currentSectionData.type === 'activity'
+                ? currentSectionData.activityInstructions || ''
+                : currentSectionData.content || ''
+            }
             className="[&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1"
-            dangerouslySetInnerHTML={{ 
-              __html: (() => {
-                switch (currentSectionData.type) {
-                  case 'discussion':
-                    return currentSectionData.discussionPrompt || '';
-                  case 'activity':
-                    return currentSectionData.activityInstructions || '';
-                  case 'reading':
-                  default:
-                    return currentSectionData.content || '';
-                }
-              })()
-            }} 
+            onHighlightCreate={(highlight) => handleHighlightCreateForSection(highlight, currentSection)}
+            onHighlightDelete={handleHighlightDelete}
+            highlights={highlights.filter(h => h.sectionIndex === currentSection)}
+            allSessionHighlights={allSessionHighlights}
+            currentStudentId={student?.id || ''}
+            currentSectionIndex={currentSection}
+            showPopularHighlights={showPopularHighlights}
+            popularityOpacity={popularityOpacity}
+            minimumStudents={minimumStudents}
           />
         </div>
 
@@ -1673,11 +2262,11 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                         {index + 1}
                       </div>
                       <div className="flex-1 min-w-0">
-                                          <h3 className="text-lg sm:text-xl md:text-2xl font-light text-gray-900 leading-relaxed mb-3">
-                    {question.text}
-                  </h3>
+                        <h3 className="text-xl sm:text-2xl font-light text-gray-900 leading-tight mb-4" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
+                          {question.text}
+                        </h3>
                         <div className="flex items-center gap-4">
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-gray-600 font-medium">
                             {question.points} {question.points === 1 ? 'point' : 'points'}
                           </p>
                           {isQuestionAnswered(question.id) && (
@@ -1700,7 +2289,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                             <label 
                               key={optionIndex}
                               htmlFor={`${question.id}-option-${optionIndex}`}
-                              className="group flex items-start gap-4 py-5 px-6 rounded-xl border border-gray-200 cursor-pointer hover:border-gray-300 hover:bg-gray-50/50 transition-all duration-200 min-h-[60px] sm:min-h-[auto] sm:py-4"
+                              className="group flex items-start gap-4 py-6 px-6 rounded-lg border border-gray-200 cursor-pointer hover:border-gray-300 hover:bg-gray-50/80 transition-all duration-200 min-h-[60px] sm:min-h-[auto] sm:py-5"
                             >
                               <input
                                 type="radio"
@@ -1711,20 +2300,21 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                                 onChange={(e) => handleResponseChange(question.id, e.target.value)}
                                 className="h-5 w-5 text-gray-900 focus:ring-2 focus:ring-gray-900 border-gray-300 mt-1 flex-shrink-0"
                               />
-                              <span className="text-lg sm:text-lg text-gray-800 leading-relaxed font-normal group-hover:text-gray-900 transition-colors">
+                              <span className="text-lg sm:text-xl text-gray-800 leading-relaxed font-normal group-hover:text-gray-900 transition-colors" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
                                 {option}
                               </span>
                             </label>
                           ))}
                         </div>
                       ) : (
-                        <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                        <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
                           <Textarea
                             value={currentResponses[question.id] || ''}
                             onChange={(e) => handleResponseChange(question.id, e.target.value)}
                             placeholder="Share your thoughts here..."
                             rows={question.type === 'essay' ? 8 : 5}
-                            className="w-full text-base sm:text-lg leading-relaxed resize-none border-0 focus:ring-0 focus:outline-none p-6 bg-transparent placeholder-gray-400"
+                            className="w-full text-lg sm:text-xl leading-relaxed resize-none border-0 focus:ring-0 focus:outline-none p-6 bg-transparent placeholder-gray-400"
+                            style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}
                           />
                         </div>
                       )}
@@ -1741,7 +2331,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                           </div>
                           <span className="text-sm font-medium text-blue-800">Your Response</span>
                         </div>
-                        <div className="text-base text-gray-800 leading-relaxed">
+                        <div className="text-lg text-gray-800 leading-relaxed" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
                           {(() => {
                             const response = responses.find(r => r.questionId === question.id);
                             return response?.response || 'No response recorded';
@@ -1811,11 +2401,21 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                             
                             if (!isCorrect && question.options && question.correctAnswer !== undefined) {
                               return (
-                                <div className="bg-white/70 rounded-lg p-4 border border-red-200/60">
-                                  <p className="text-sm text-gray-600 mb-2 font-medium">The correct answer was:</p>
-                                  <p className="text-base text-gray-800 leading-relaxed">
-                                    {question.options[question.correctAnswer]}
-                                  </p>
+                                <div className="bg-white/70 rounded-lg p-4 border border-red-200/60 space-y-3">
+                                  <div>
+                                    <p className="text-sm text-gray-600 mb-2 font-medium">The correct answer was:</p>
+                                    <p className="text-lg text-gray-800 leading-relaxed" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
+                                      {question.options[question.correctAnswer]}
+                                    </p>
+                                  </div>
+                                  {question.correctAnswerExplanation && (
+                                    <div>
+                                      <p className="text-sm text-gray-600 mb-2 font-medium">Explanation:</p>
+                                      <p className="text-base text-gray-700 leading-relaxed" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
+                                        {question.correctAnswerExplanation}
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             }
@@ -1842,7 +2442,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                           </div>
                           <div className="bg-white/70 rounded-lg p-4 border border-blue-200/60">
                             <p className="text-sm text-gray-600 mb-2 font-medium">Your response helps us understand different perspectives on this topic.</p>
-                            <p className="text-base text-gray-800 leading-relaxed">
+                            <p className="text-lg text-gray-800 leading-relaxed" style={{ fontFamily: "Charter, 'Bitstream Charter', 'Sitka Text', Cambria, 'Times New Roman', serif" }}>
                               All responses are valuable for learning and discussion.
                             </p>
                           </div>
@@ -1995,6 +2595,38 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
             </div>
           </div>
         )}
+
+        {/* Floating Action Button */}
+        <FloatingActionButton onClick={() => setIsFeaturePanelOpen(true)} />
+
+        {/* Feature Panel */}
+        <FeaturePanel
+          isOpen={isFeaturePanelOpen}
+          onClose={() => setIsFeaturePanelOpen(false)}
+          studentId={student?.id}
+          sessionId={session?.id}
+          caseStudy={caseStudy}
+          highlights={highlights}
+          currentSectionIndex={currentSection}
+          totalSections={caseStudy?.sections.length || 1}
+          totalPoints={responses.reduce((total, response) => total + (response.points || 0), 0)}
+          maxPoints={caseStudy?.sections.slice(0, currentSection + 1).reduce((total, section) => 
+            total + section.questions.reduce((sectionTotal, question) => sectionTotal + question.points, 0), 0
+          ) || 0}
+          onHighlightJump={handleHighlightJump}
+        />
+
+        {/* Reading Settings Panel for Popular Highlights */}
+        <ReadingSettingsPanel
+          isOpen={showSettingsPanel}
+          onClose={() => setShowSettingsPanel(false)}
+          showPopularHighlights={showPopularHighlights}
+          onTogglePopularHighlights={setShowPopularHighlights}
+          popularityOpacity={popularityOpacity}
+          onOpacityChange={setPopularityOpacity}
+          minimumStudents={minimumStudents}
+          onMinimumStudentsChange={setMinimumStudents}
+        />
       </div>
     </div>
   );
