@@ -398,6 +398,10 @@ export const createResponse = async (response: Omit<Response, 'id' | 'submittedA
     // Import here to avoid circular dependencies
     const AchievementChecker = (await import('./achievement-checker')).default;
     const GradeBonusService = (await import('./grade-bonus')).default;
+    const { updateSessionMetricsStudent } = await import('./student-firestore');
+    
+    // Update session metrics for achievement tracking
+    await updateSessionMetricsStudent(response.studentId, response.sessionId);
     
     // Get session details to find teacher/course info
     const session = await getSession(response.sessionId);

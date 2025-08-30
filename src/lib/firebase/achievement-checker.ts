@@ -161,7 +161,7 @@ export class AchievementChecker {
   static async onResponseSubmitted(context: Omit<AchievementCheckContext, 'triggerEvent'>): Promise<UnlockedAchievementNotification[]> {
     return this.checkSpecificAchievements(
       { ...context, triggerEvent: 'response_submitted' },
-      ['response_count', 'points_earned', 'perfect_score']
+      ['response_count', 'points_earned', 'perfect_score', 'correct_answers', 'response_effort']
     );
   }
 
@@ -182,6 +182,16 @@ export class AchievementChecker {
     return this.checkSpecificAchievements(
       { ...context, triggerEvent: 'streak_updated' },
       ['streak_days']
+    );
+  }
+
+  /**
+   * Check achievements when a highlight is created
+   */
+  static async onHighlightCreated(context: Omit<AchievementCheckContext, 'triggerEvent'>): Promise<UnlockedAchievementNotification[]> {
+    return this.checkSpecificAchievements(
+      { ...context, triggerEvent: 'section_completed' },
+      ['highlights_created']
     );
   }
 

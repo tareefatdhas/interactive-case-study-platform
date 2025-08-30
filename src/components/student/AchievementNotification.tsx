@@ -94,11 +94,16 @@ export default function AchievementNotification({
       {/* Notification Card */}
       <div
         className={cn(
-          'relative max-w-sm w-full bg-white border-2 rounded-2xl p-6 transform transition-all duration-300',
+          'relative max-w-sm w-full bg-white border-2 rounded-2xl p-6 transform transition-all duration-500 animate-pulse',
           rarityInfo.color,
           rarityInfo.glow,
-          isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+          isVisible ? 'scale-100 opacity-100 animate-bounce' : 'scale-95 opacity-0',
+          achievement.rarity === 'legendary' && 'animate-pulse'
         )}
+        style={{
+          animationDuration: achievement.rarity === 'legendary' ? '0.6s' : '0.4s',
+          animationIterationCount: achievement.rarity === 'legendary' ? '3' : '2'
+        }}
       >
         {/* Close Button */}
         <button
@@ -170,6 +175,14 @@ export default function AchievementNotification({
              achievement.rarity === 'epic' ? '🌟 Amazing work! This is a rare accomplishment!' :
              achievement.rarity === 'rare' ? '✨ Great job! Keep up the excellent work!' :
              '👍 Well done! Every achievement counts!'}
+          </div>
+
+          {/* Motivational Message */}
+          <div className="mt-3 text-xs text-gray-600 font-medium">
+            {achievement.rarity === 'legendary' ? 'Your dedication is truly inspiring!' :
+             achievement.rarity === 'epic' ? 'You\'re making excellent progress!' :
+             achievement.rarity === 'rare' ? 'Keep building those great habits!' :
+             'Small steps lead to big achievements!'}
           </div>
         </div>
       </div>
@@ -288,6 +301,32 @@ export function useAchievementNotifications() {
     type: 'modal' | 'toast' = achievement.rarity === 'legendary' || achievement.rarity === 'epic' ? 'modal' : 'toast'
   ) => {
     const id = `${achievement.id}-${Date.now()}`;
+    
+    // Play achievement sound based on rarity
+    try {
+      const audio = new Audio();
+      switch (achievement.rarity) {
+        case 'legendary':
+          // Epic fanfare sound (you could add actual sound files)
+          console.log('🎵 Playing legendary achievement sound');
+          break;
+        case 'epic':
+          // Strong achievement sound
+          console.log('🎵 Playing epic achievement sound');
+          break;
+        case 'rare':
+          // Medium achievement sound
+          console.log('🎵 Playing rare achievement sound');
+          break;
+        default:
+          // Simple achievement sound
+          console.log('🎵 Playing common achievement sound');
+      }
+    } catch (error) {
+      // Silently fail if audio not supported
+      console.log('Audio not supported or failed to play');
+    }
+    
     setNotifications(prev => [...prev, {
       id,
       achievement,

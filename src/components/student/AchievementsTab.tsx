@@ -181,7 +181,11 @@ function AchievementCard({ achievement, studentAchievement, progress, isUnlocked
         
         {studentAchievement && (
           <div className="text-gray-500">
-            {new Date(studentAchievement.unlockedAt.toDate()).toLocaleDateString()}
+            {new Date(
+              studentAchievement.unlockedAt?.toDate?.() || 
+              studentAchievement.unlockedAt?.seconds * 1000 || 
+              studentAchievement.unlockedAt
+            ).toLocaleDateString()}
           </div>
         )}
       </div>
@@ -251,10 +255,14 @@ export default function AchievementsTab({
 
   useEffect(() => {
     const loadData = async () => {
-      if (!studentId || !teacherId) return;
+      if (!studentId || !teacherId) {
+        console.log('AchievementsTab: Missing required props', { studentId, teacherId });
+        return;
+      }
       
       try {
         setLoading(true);
+        console.log('AchievementsTab: Loading data for', { studentId, teacherId, sessionId, courseId });
         
         // Load all data in parallel
         const [
@@ -263,11 +271,18 @@ export default function AchievementsTab({
           sessionProgressData,
           overallProgressData
         ] = await Promise.all([
-          getAvailableAchievementsForStudent(teacherId, courseId),
+          getAvailableAchievementsForStudent(teacherId, courseId || undefined),
           getStudentAchievements(studentId),
           sessionId ? getStudentProgressStudent(studentId, sessionId) : null,
           getStudentOverallProgressStudent(studentId)
         ]);
+        
+        console.log('AchievementsTab: Data loaded', {
+          availableAchievements: availableAchievements.length,
+          studentAchievements: studentAchievementsData.length,
+          sessionProgress: !!sessionProgressData,
+          overallProgress: !!overallProgressData
+        });
         
         setAchievements(availableAchievements);
         setStudentAchievements(studentAchievementsData);

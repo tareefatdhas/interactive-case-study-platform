@@ -175,6 +175,33 @@ export const createHighlightStudent = async (highlight: Omit<Highlight, 'id' | '
     ...highlight,
     createdAt: now
   });
+  
+  // Check for highlight-based achievements
+  try {
+    // Update session metrics to include new highlight count
+    await updateSessionMetricsStudent(highlight.studentId, highlight.sessionId);
+    
+    // Import achievement checker and trigger highlight achievements
+    const AchievementChecker = (await import('./achievement-checker')).default;
+    
+    // Get session details to find teacher info
+    const { getSession } = await import('./firestore');
+    const session = await getSession(highlight.sessionId);
+    
+    if (session) {
+      const context = {
+        studentId: highlight.studentId,
+        sessionId: highlight.sessionId,
+        teacherId: session.teacherId,
+        courseId: undefined // Would need to be passed in or derived
+      };
+      
+      await AchievementChecker.onHighlightCreated(context);
+    }
+  } catch (error) {
+    console.error('Error checking achievements after highlight creation:', error);
+  }
+  
   return docRef.id;
 };
 
@@ -280,6 +307,9 @@ export const updateStudentProgressStudent = async (
       xp: 0,
       streak: 0,
       timeSpentReading: 0,
+      correctAnswers: 0,
+      highlightsCreated: 0,
+      totalUniqueWords: 0,
       lastActive: now,
       ...updates
     });
@@ -328,6 +358,64 @@ export const getLeaderboardStudent = async (sessionId: string, limit: number = 1
     }));
 };
 
+/**
+ * Calculate and update session-level metrics for achievements
+ */
+export const updateSessionMetricsStudent = async (
+  studentId: string,
+  sessionId: string
+) => {
+  try {
+    // Get all responses for this student in this session
+    const responsesQuery = query(
+      collection(studentDb, 'responses'),
+      where('studentId', '==', studentId),
+      where('sessionId', '==', sessionId)
+    );
+    const responsesSnapshot = await getDocs(responsesQuery);
+    const sessionResponses = responsesSnapshot.docs.map(doc => doc.data());
+    
+    // Calculate correct answers for this session
+    const correctAnswers = sessionResponses.filter(r => 
+      r.points !== undefined && r.maxPoints !== undefined && r.points === r.maxPoints
+    ).length;
+    
+    // Calculate unique words for this session
+    const { countUniqueWordsInResponses } = await import('@/lib/utils/textAnalysis');
+    const responseTexts = sessionResponses.map(r => r.response || '').filter(text => text.trim().length > 0);
+    const totalUniqueWords = countUniqueWordsInResponses(responseTexts);
+    
+    // Get highlights count for this session
+    const highlightsQuery = query(
+      collection(studentDb, COLLECTIONS.HIGHLIGHTS),
+      where('studentId', '==', studentId),
+      where('sessionId', '==', sessionId)
+    );
+    const highlightsSnapshot = await getDocs(highlightsQuery);
+    const highlightsCreated = highlightsSnapshot.docs.length;
+    
+    // Update the session progress with new metrics
+    await updateStudentProgressStudent(studentId, sessionId, {
+      correctAnswers,
+      highlightsCreated,
+      totalUniqueWords
+    });
+    
+    return {
+      correctAnswers,
+      highlightsCreated,
+      totalUniqueWords
+    };
+  } catch (error) {
+    console.error('Error updating session metrics:', error);
+    return {
+      correctAnswers: 0,
+      highlightsCreated: 0,
+      totalUniqueWords: 0
+    };
+  }
+};
+
 // Overall Progress Functions
 export const updateStudentOverallProgressStudent = async (
   studentId: string,
@@ -355,6 +443,8 @@ export const updateStudentOverallProgressStudent = async (
       averageScore: 0,
       sessionsCompleted: 0,
       totalHighlights: 0,
+      totalCorrectAnswers: 0,
+      totalUniqueWordsUsed: 0,
       firstSessionDate: now,
       lastActive: now,
       ...updates
@@ -396,6 +486,24 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
   );
   const highlightsSnapshot = await getDocs(highlightsQuery);
   const totalHighlights = highlightsSnapshot.docs.length;
+
+  // Get all responses for this student to calculate correct answers and unique words
+  const responsesQuery = query(
+    collection(studentDb, 'responses'),
+    where('studentId', '==', studentId)
+  );
+  const responsesSnapshot = await getDocs(responsesQuery);
+  const allResponses = responsesSnapshot.docs.map(doc => doc.data());
+  
+  // Calculate total correct answers (where points === maxPoints)
+  const totalCorrectAnswers = allResponses.filter(r => 
+    r.points !== undefined && r.maxPoints !== undefined && r.points === r.maxPoints
+  ).length;
+  
+  // Calculate total unique words used across all responses
+  const { countUniqueWordsInResponses } = await import('@/lib/utils/textAnalysis');
+  const responseTexts = allResponses.map(r => r.response || '').filter(text => text.trim().length > 0);
+  const totalUniqueWordsUsed = countUniqueWordsInResponses(responseTexts);
   
   // Calculate overall statistics
   const totalSessions = allProgress.length;
@@ -435,6 +543,8 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
     averageScore: Math.round(averageScore * 10) / 10,
     sessionsCompleted,
     totalHighlights,
+    totalCorrectAnswers,
+    totalUniqueWordsUsed,
     firstSessionDate
   };
   

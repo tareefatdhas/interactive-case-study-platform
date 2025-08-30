@@ -511,10 +511,10 @@ export default function ProgressTab({
             <Star className="h-6 w-6 text-purple-600" />
             <div>
               <p className="text-sm font-medium text-purple-900">
-                Achievement system coming soon!
+                Start earning achievements!
               </p>
               <p className="text-xs text-purple-600">
-                Earn badges for reading milestones, perfect scores, and more
+                Complete sections, answer questions, and highlight text to unlock badges
               </p>
             </div>
           </div>

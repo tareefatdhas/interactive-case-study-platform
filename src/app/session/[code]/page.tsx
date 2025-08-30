@@ -25,6 +25,7 @@ import FloatingActionButton from '@/components/student/FloatingActionButton';
 import FeaturePanel from '@/components/student/FeaturePanel';
 import HighlightableContent from '@/components/student/HighlightableContent';
 import ReadingSettingsPanel from '@/components/student/ReadingSettingsPanel';
+import AchievementNotification, { AchievementToast, useAchievementNotifications } from '@/components/student/AchievementNotification';
 import { 
   createHighlightStudent, 
   subscribeToHighlightsByStudentStudent, 
@@ -91,6 +92,37 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   const [popularityOpacity, setPopularityOpacity] = useState(0.6);
   const [minimumStudents, setMinimumStudents] = useState(2);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+
+  // Achievement notifications
+  const { notifications, showAchievementNotification, closeNotification } = useAchievementNotifications();
+
+  // Function to check for achievements and show notifications
+  const checkAndShowAchievements = useCallback(async () => {
+    if (!student || !session) return;
+
+    try {
+      // Import achievement checker
+      const { default: AchievementChecker } = await import('@/lib/firebase/achievement-checker');
+      
+      const context = {
+        studentId: student.id,
+        sessionId: session.id,
+        teacherId: session.teacherId,
+        courseId: undefined // Would need to be passed in or derived
+      };
+
+      // Check for newly unlocked achievements
+      const unlockedAchievements = await AchievementChecker.checkAndUnlockAchievements(context);
+      
+      // Show notifications for each newly unlocked achievement
+      unlockedAchievements.forEach(({ achievement, xpAwarded, bonusPoints }) => {
+        showAchievementNotification(achievement, xpAwarded, bonusPoints);
+      });
+      
+    } catch (error) {
+      console.error('Error checking achievements:', error);
+    }
+  }, [student, session, showAchievementNotification]);
 
   // Storage key for this specific session
   const storageKey = `student-session-${resolvedParams.code}`;
@@ -634,6 +666,12 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       // Update overall progress asynchronously
       calculateAndUpdateOverallProgress(student.id).catch(console.error);
       
+      // Check for achievements after submitting responses
+      // Add a small delay to ensure all database updates are complete
+      setTimeout(() => {
+        checkAndShowAchievements();
+      }, 1000);
+      
       // Show review state first so students can see their feedback
       setStep('review');
     } catch (error: any) {
@@ -831,6 +869,12 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         createdAt: Timestamp.now(),
       };
       setHighlights(prev => [...prev, newHighlight]);
+      
+      // Check for highlight-based achievements
+      // Small delay to ensure database updates are complete
+      setTimeout(() => {
+        checkAndShowAchievements();
+      }, 500);
     } catch (error) {
       console.error('Failed to create highlight:', error);
     }
@@ -2614,6 +2658,7 @@ This summary was generated using AI analysis of your responses and performance.
             total + section.questions.reduce((sectionTotal, question) => sectionTotal + question.points, 0), 0
           ) || 0}
           onHighlightJump={handleHighlightJump}
+          teacherId={session?.teacherId}
         />
 
         {/* Reading Settings Panel for Popular Highlights */}
@@ -2627,6 +2672,29 @@ This summary was generated using AI analysis of your responses and performance.
           minimumStudents={minimumStudents}
           onMinimumStudentsChange={setMinimumStudents}
         />
+
+        {/* Achievement Notifications */}
+        {notifications.map((notification) => (
+          notification.type === 'modal' ? (
+            <AchievementNotification
+              key={notification.id}
+              achievement={notification.achievement}
+              xpAwarded={notification.xpAwarded}
+              bonusPoints={notification.bonusPoints}
+              onClose={() => closeNotification(notification.id)}
+              isVisible={true}
+            />
+          ) : (
+            <AchievementToast
+              key={notification.id}
+              achievement={notification.achievement}
+              xpAwarded={notification.xpAwarded}
+              bonusPoints={notification.bonusPoints}
+              onClose={() => closeNotification(notification.id)}
+              isVisible={true}
+            />
+          )
+        ))}
       </div>
     </div>
   );

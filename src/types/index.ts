@@ -197,6 +197,9 @@ export interface StudentProgress {
   timeSpentReading: number; // in minutes
   lastActive: Timestamp;
   rank?: number; // Calculated field for leaderboard
+  correctAnswers?: number; // Number of correct answers in this session
+  highlightsCreated?: number; // Number of highlights created in this session
+  totalUniqueWords?: number; // Total unique words used in responses for this session
 }
 
 export interface StudentOverallProgress {
@@ -216,6 +219,8 @@ export interface StudentOverallProgress {
   firstSessionDate: Timestamp;
   lastActive: Timestamp;
   rank?: number; // Overall rank across all students
+  totalCorrectAnswers?: number; // Total correct answers across all sessions
+  totalUniqueWordsUsed?: number; // Total unique words used in all responses
 }
 
 export type UserRole = 'teacher' | 'student';
@@ -232,7 +237,7 @@ export type AchievementCategory = 'reading' | 'excellence' | 'participation' | '
 export type AchievementRarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export interface AchievementRequirement {
-  type: 'sections_completed' | 'perfect_score' | 'streak_days' | 'session_count' | 'points_earned' | 'first_to_complete' | 'response_count' | 'attendance_rate';
+  type: 'sections_completed' | 'perfect_score' | 'streak_days' | 'session_count' | 'points_earned' | 'first_to_complete' | 'response_count' | 'attendance_rate' | 'correct_answers' | 'highlights_created' | 'response_effort';
   value: number;
   scope?: 'session' | 'overall'; // Whether requirement applies to single session or overall progress
   timeframe?: number; // For time-based requirements (days)

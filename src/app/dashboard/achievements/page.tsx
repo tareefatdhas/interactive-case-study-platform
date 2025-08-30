@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
@@ -12,7 +12,8 @@ import {
   createAchievement,
   updateAchievement,
   toggleAchievementEnabled,
-  seedDefaultAchievements
+  seedDefaultAchievements,
+  replaceDefaultAchievements
 } from '@/lib/firebase/achievements';
 import { 
   Plus, 
@@ -181,6 +182,12 @@ function formatRequirement(achievement: Achievement): string {
       return `Submit ${req.value} response${req.value !== 1 ? 's' : ''} ${req.scope === 'session' ? 'in one session' : 'overall'}`;
     case 'attendance_rate':
       return `Maintain ${req.value}% attendance rate`;
+    case 'correct_answers':
+      return `Get ${req.value} answer${req.value !== 1 ? 's' : ''} correct ${req.scope === 'session' ? 'in one session' : 'overall'}`;
+    case 'highlights_created':
+      return `Create ${req.value} highlight${req.value !== 1 ? 's' : ''} ${req.scope === 'session' ? 'in one session' : 'overall'}`;
+    case 'response_effort':
+      return `Use ${req.value} unique word${req.value !== 1 ? 's' : ''} in responses ${req.scope === 'session' ? 'in one session' : 'overall'}`;
     default:
       return 'Custom requirement';
   }
@@ -341,6 +348,9 @@ function CreateAchievementDialog({ isOpen, onClose, onSave, editingAchievement }
                 <option value="response_count">Response Count</option>
                 <option value="first_to_complete">First to Complete</option>
                 <option value="attendance_rate">Attendance Rate</option>
+                <option value="correct_answers">Correct Answers</option>
+                <option value="highlights_created">Highlights Created</option>
+                <option value="response_effort">Response Effort (Unique Words)</option>
               </select>
             </div>
             
@@ -362,7 +372,7 @@ function CreateAchievementDialog({ isOpen, onClose, onSave, editingAchievement }
                 value={formData.requirementScope}
                 onChange={(e) => setFormData(prev => ({ ...prev, requirementScope: e.target.value as 'session' | 'overall' }))}
                 className="w-full border border-gray-300 rounded-md px-3 py-2"
-                disabled={['first_to_complete', 'streak_days', 'attendance_rate'].includes(formData.requirementType)}
+                disabled={['first_to_complete', 'streak_days', 'attendance_rate', 'session_count'].includes(formData.requirementType)}
               >
                 <option value="session">Single Session</option>
                 <option value="overall">Overall Progress</option>
@@ -443,7 +453,7 @@ export default function AchievementsPage() {
   const [editingAchievement, setEditingAchievement] = useState<Achievement | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<AchievementCategory | 'all'>('all');
 
-  const loadAchievements = async () => {
+  const loadAchievements = useCallback(async () => {
     if (!user) return;
     
     try {
@@ -455,11 +465,11 @@ export default function AchievementsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     loadAchievements();
-  }, [user, loadAchievements]);
+  }, [loadAchievements]);
 
   const handleCreateAchievement = async (achievementData: Omit<Achievement, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user) return;
@@ -511,6 +521,22 @@ export default function AchievementsPage() {
     }
   };
 
+  const handleReplaceDefaults = async () => {
+    if (!user) return;
+    
+    if (!confirm('This will replace all existing default achievements with the new enhanced set. Custom achievements will be preserved. Continue?')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await replaceDefaultAchievements(user.uid);
+      loadAchievements();
+    } catch (error) {
+      console.error('Failed to replace default achievements:', error);
+    }
+  };
+
   const filteredAchievements = selectedCategory === 'all' 
     ? achievements 
     : achievements.filter(a => a.category === selectedCategory);
@@ -537,11 +563,22 @@ export default function AchievementsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {achievements.length === 0 && (
+                {achievements.length === 0 ? (
                   <Button variant="outline" onClick={handleSeedDefaults}>
                     <Settings className="h-4 w-4 mr-2" />
                     Add Default Achievements
                   </Button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleSeedDefaults}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add New Defaults
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleReplaceDefaults}>
+                      <Settings className="h-4 w-4 mr-2" />
+                      Update All Defaults
+                    </Button>
+                  </div>
                 )}
                 <Button onClick={() => setShowCreateDialog(true)}>
                   <Plus className="h-4 w-4 mr-2" />
