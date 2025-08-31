@@ -504,23 +504,7 @@ export default function ProgressTab({
         </div>
       </div>
 
-      {/* Achievement Preview */}
-      <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Achievements</h3>
-        <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <Star className="h-6 w-6 text-purple-600" />
-            <div>
-              <p className="text-sm font-medium text-purple-900">
-                Start earning achievements!
-              </p>
-              <p className="text-xs text-purple-600">
-                Complete sections, answer questions, and highlight text to unlock badges
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 }

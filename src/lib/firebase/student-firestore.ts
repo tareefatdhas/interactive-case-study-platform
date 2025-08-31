@@ -357,8 +357,24 @@ export const getLeaderboardStudent = async (sessionId: string, limit: number = 1
     ...doc.data()
   })) as StudentProgress[];
   
+  // Deduplicate by studentId - keep the entry with the highest points for each student
+  const deduplicatedProgress = progress.reduce((acc, current) => {
+    const existing = acc.find(p => p.studentId === current.studentId);
+    if (!existing) {
+      acc.push(current);
+    } else {
+      // Replace if current has higher points, or same points but more sections completed
+      if (current.totalPoints > existing.totalPoints || 
+          (current.totalPoints === existing.totalPoints && current.sectionsCompleted > existing.sectionsCompleted)) {
+        const index = acc.findIndex(p => p.studentId === current.studentId);
+        acc[index] = current;
+      }
+    }
+    return acc;
+  }, [] as StudentProgress[]);
+  
   // Sort by total points descending, then by sections completed
-  return progress
+  return deduplicatedProgress
     .sort((a, b) => {
       if (b.totalPoints !== a.totalPoints) {
         return b.totalPoints - a.totalPoints;
@@ -578,7 +594,24 @@ export const getOverallLeaderboardStudent = async (limit: number = 10): Promise<
     ...doc.data()
   })) as StudentOverallProgress[];
   
-  return progress
+  // Note: Overall progress should be unique by studentId by design since each student 
+  // has only one overall progress document, but we'll add deduplication for safety
+  const deduplicatedProgress = progress.reduce((acc, current) => {
+    const existing = acc.find(p => p.studentId === current.studentId);
+    if (!existing) {
+      acc.push(current);
+    } else {
+      // Replace if current has higher points, or same points but more sections completed
+      if (current.totalPointsEarned > existing.totalPointsEarned || 
+          (current.totalPointsEarned === existing.totalPointsEarned && current.totalSectionsCompleted > existing.totalSectionsCompleted)) {
+        const index = acc.findIndex(p => p.studentId === current.studentId);
+        acc[index] = current;
+      }
+    }
+    return acc;
+  }, [] as StudentOverallProgress[]);
+  
+  return deduplicatedProgress
     .slice(0, limit)
     .map((student, index) => ({
       ...student,
