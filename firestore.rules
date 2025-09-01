@@ -106,7 +106,7 @@ service cloud.firestore {
       allow create: if isAuthenticated(); // Anonymous users can create progress records
       allow update: if isAuthenticated() && (
         isTeacher() || // Teachers can update any progress
-        (isAnonymous() && resource.data.studentId == request.auth.uid) // Anonymous users can update their own progress
+        (isAnonymous() && resource.data.authorUid == request.auth.uid) // Anonymous users can update their own progress
       );
     }
     
@@ -116,7 +116,7 @@ service cloud.firestore {
       allow create: if isAuthenticated(); // Anonymous users can create overall progress records
       allow update: if isAuthenticated() && (
         isTeacher() || // Teachers can update any overall progress
-        isAnonymous() // Anonymous users can update overall progress
+        (isAnonymous() && resource.data.authorUid == request.auth.uid) // Anonymous users can update their own progress
       );
     }
     

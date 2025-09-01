@@ -29,6 +29,7 @@
     "clsx": "^2.1.1",
     "dotenv": "^17.2.1",
     "firebase": "^12.1.0",
+    "jspdf": "^3.0.2",
     "lucide-react": "^0.541.0",
     "next": "15.5.0",
     "qr-scanner": "^1.4.2",

@@ -622,6 +622,67 @@ div[class*="activity-content"] {
   cursor: text;
 }
 
+/* Mobile-specific highlight improvements */
+@media (max-width: 768px) {
+  /* Ensure highlight popover is touch-friendly */
+  .highlight-popover {
+    padding: 8px 12px !important;
+    min-height: 44px; /* iOS touch target size */
+  }
+  
+  .highlight-popover button {
+    min-width: 32px;
+    min-height: 32px;
+    margin: 0 2px;
+  }
+  
+  /* Improve text selection on mobile */
+  .highlightable-content {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    -webkit-touch-callout: default; /* Allow text selection menu */
+  }
+  
+  /* Ensure proper touch interaction */
+  .reading-content {
+    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
+  }
+  
+  /* Prevent zoom on double-tap */
+  .highlightable-content * {
+    touch-action: manipulation;
+  }
+}
+
+/* Safe area support for mobile devices */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Feature panel mobile improvements */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .feature-panel-header {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+}
+
+/* Ensure feature panel appears above sticky headers on mobile */
+@media (max-width: 768px) {
+  /* Increase z-index for panels on mobile to ensure they're above sticky headers */
+  .fixed[class*="z-[100]"] {
+    z-index: 100 !important;
+  }
+  
+  /* Add extra padding to account for mobile browser UI */
+  .feature-panel-header {
+    padding-top: max(1.5rem, env(safe-area-inset-top, 24px));
+  }
+}
+
 /* Improve text selection experience */
 ::selection {
   background: #bee3f8;

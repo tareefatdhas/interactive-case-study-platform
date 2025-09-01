@@ -6,11 +6,7 @@ import { cn } from '@/lib/utils';
 import type { StudentProgress, StudentOverallProgress } from '@/types';
 import { 
   getStudentProgressStudent,
-  getLeaderboardStudent,
-  updateStudentProgressStudent,
-  getStudentOverallProgressStudent,
-  calculateAndUpdateOverallProgress,
-  getOverallLeaderboardStudent
+  getLeaderboardStudent
 } from '@/lib/firebase/student-firestore';
 
 interface ProgressTabProps {
@@ -120,6 +116,7 @@ interface LeaderboardEntryProps {
   isCurrentUser?: boolean;
   isOverall?: boolean;
   totalSessions?: number;
+  studentName?: string;
 }
 
 interface ViewToggleProps {
@@ -133,15 +130,14 @@ function ViewToggle({ view, onViewChange }: ViewToggleProps) {
       <button
         onClick={() => onViewChange('session')}
         className={cn(
-          'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md font-medium transition-all duration-200',
-          view === 'session'
-            ? 'bg-white text-blue-600 shadow-sm'
-            : 'text-gray-600 hover:text-gray-800'
+          'w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md font-medium transition-all duration-200',
+          'bg-white text-blue-600 shadow-sm' // Always active since it's the only option
         )}
       >
         <Clock className="h-4 w-4" />
-        This Session
+        Session Progress
       </button>
+      {/* Overall tab temporarily disabled
       <button
         onClick={() => onViewChange('overall')}
         className={cn(
@@ -154,11 +150,12 @@ function ViewToggle({ view, onViewChange }: ViewToggleProps) {
         <Globe className="h-4 w-4" />
         Overall
       </button>
+      */}
     </div>
   );
 }
 
-function LeaderboardEntry({ rank, studentId, totalPoints, sectionsCompleted, isCurrentUser, isOverall, totalSessions }: LeaderboardEntryProps) {
+function LeaderboardEntry({ rank, studentId, totalPoints, sectionsCompleted, isCurrentUser, isOverall, totalSessions, studentName }: LeaderboardEntryProps) {
   const getRankIcon = () => {
     switch (rank) {
       case 1:
@@ -193,7 +190,7 @@ function LeaderboardEntry({ rank, studentId, totalPoints, sectionsCompleted, isC
             'font-medium text-sm truncate',
             isCurrentUser ? 'text-blue-900' : 'text-gray-900'
           )}>
-            {isCurrentUser ? 'You' : `Student ${studentId.slice(-4)}`}
+            {isCurrentUser ? 'You' : (studentName || `Student ${studentId.slice(-4)}`)}
           </span>
           {isCurrentUser && (
             <Star className="h-3 w-3 text-blue-600" />
@@ -229,7 +226,7 @@ export default function ProgressTab({
   maxPoints = 0,
   highlights = []
 }: ProgressTabProps) {
-  const [view, setView] = useState<'session' | 'overall'>('session');
+  const [view, setView] = useState<'session' | 'overall'>('session'); // Overall disabled, always session
   const [studentProgress, setStudentProgress] = useState<StudentProgress | null>(null);
   const [studentOverallProgress, setStudentOverallProgress] = useState<StudentOverallProgress | null>(null);
   const [leaderboard, setLeaderboard] = useState<StudentProgress[]>([]);
@@ -248,37 +245,28 @@ export default function ProgressTab({
     try {
       setLoading(true);
       
-      // Load all data in parallel
-      const [progressData, leaderboardData, overallProgressData, overallLeaderboardData] = await Promise.all([
-        getStudentProgressStudent(studentId, sessionId),
-        getLeaderboardStudent(sessionId, 10),
-        getStudentOverallProgressStudent(studentId),
-        getOverallLeaderboardStudent(10)
+      // Load session data only (overall functionality temporarily disabled)
+      const [progressData, leaderboardData] = await Promise.all([
+        getStudentProgressStudent(studentId, sessionId).catch(error => {
+          console.error('Failed to load session progress:', error);
+          return null;
+        }),
+        getLeaderboardStudent(sessionId, 10).catch(error => {
+          console.error('Failed to load session leaderboard:', error);
+          return [];
+        })
       ]);
 
       setStudentProgress(progressData);
       setLeaderboard(leaderboardData);
-      setStudentOverallProgress(overallProgressData);
-      setOverallLeaderboard(overallLeaderboardData);
+      // Overall data setting removed (functionality temporarily disabled)
+      setStudentOverallProgress(null);
+      setOverallLeaderboard([]);
       
-      // Update session progress if we have current data
-      if (progressData) {
-        const updatedProgress = {
-          sectionsCompleted: currentSectionIndex,
-          totalPoints,
-          maxPoints,
-          questionsAnswered: progressData.questionsAnswered || 0,
-          currentLevel: calculateLevel(totalPoints),
-          xp: totalPoints * 10, // Simple XP calculation
-        };
-        
-        await updateStudentProgressStudent(studentId, sessionId, updatedProgress);
-      }
+      // Note: Progress updates should happen when actual actions occur (answering questions, etc.)
+      // not when viewing the progress tab. This component is read-only.
 
-      // Update overall progress asynchronously
-      if (studentId) {
-        calculateAndUpdateOverallProgress(studentId).catch(console.error);
-      }
+      // Overall progress calculation disabled (functionality temporarily disabled)
     } catch (error) {
       console.error('Failed to load progress data:', error);
     } finally {
@@ -297,6 +285,7 @@ export default function ProgressTab({
   };
 
   const getSectionProgress = (): number => {
+    // Calculate section-based progress for this session
     if (totalSections === 0) return 0;
     return Math.min(((currentSectionIndex + 1) / totalSections) * 100, 100);
   };
@@ -318,20 +307,34 @@ export default function ProgressTab({
         points: studentOverallProgress.totalPointsEarned,
         maxPoints: studentOverallProgress.totalMaxPoints,
         sections: studentOverallProgress.totalSectionsCompleted,
-        totalSections: studentOverallProgress.totalSessions * 5, // Rough estimate
+        totalSections: studentOverallProgress.totalSectionsCompleted, // Total sections across all their sessions
         progress: studentOverallProgress.totalMaxPoints > 0 ? 
           (studentOverallProgress.totalPointsEarned / studentOverallProgress.totalMaxPoints) * 100 : 0,
         highlights: studentOverallProgress.totalHighlights,
         xp: studentOverallProgress.totalXP
       };
+    } else if (view === 'overall' && !studentOverallProgress) {
+      // Overall view but no overall data available - show minimal/loading state
+      return {
+        level: 1,
+        points: 0,
+        maxPoints: 0,
+        sections: 0,
+        totalSections: 0,
+        progress: 0,
+        highlights: 0,
+        xp: 0
+      };
     } else {
+      // Session progress: show actual completed sections in THIS session
+      const sectionsCompleted = studentProgress?.sectionsCompleted || Math.max(currentSectionIndex, 0);
       return {
         level: calculateLevel(totalPoints),
         points: totalPoints,
         maxPoints,
-        sections: currentSectionIndex + 1,
+        sections: sectionsCompleted, // Sections completed in this session
         totalSections,
-        progress: getSectionProgress(),
+        progress: getSectionProgress(), // For session view, section progress is more intuitive than points
         highlights: highlights.length,
         xp: totalPoints * 10
       };
@@ -390,13 +393,13 @@ export default function ProgressTab({
             />
             
             <StatCard
-              icon={view === 'overall' ? <Calendar className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
-              label={view === 'overall' ? 'Sessions' : 'Sections'}
+              icon={view === 'overall' ? <Target className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+              label={view === 'overall' ? 'Sections' : 'Sections'}
               value={view === 'overall' ? 
-                `${studentOverallProgress?.totalSessions || 0}` :
+                `${studentOverallProgress?.totalSectionsCompleted || 0}` :
                 `${displayData.sections}/${displayData.totalSections}`
               }
-              subtext={view === 'overall' ? 'participated' : 'completed'}
+              subtext={view === 'overall' ? 'total completed' : 'completed'}
               color="blue"
             />
             
@@ -417,13 +420,23 @@ export default function ProgressTab({
             />
             
             {view === 'overall' && studentOverallProgress && (
-              <StatCard
-                icon={<TrendingUp className="h-5 w-5" />}
-                label="Average"
-                value={`${Math.round(studentOverallProgress.averageScore)}%`}
-                subtext="score"
-                color="green"
-              />
+              <>
+                <StatCard
+                  icon={<Calendar className="h-5 w-5" />}
+                  label="Sessions"
+                  value={`${studentOverallProgress.totalSessions}`}
+                  subtext="participated"
+                  color="purple"
+                />
+                
+                <StatCard
+                  icon={<TrendingUp className="h-5 w-5" />}
+                  label="Average"
+                  value={`${Math.round(studentOverallProgress.averageScore)}%`}
+                  subtext="score"
+                  color="green"
+                />
+              </>
             )}
           </div>
         </div>
@@ -439,7 +452,15 @@ export default function ProgressTab({
         </div>
         
         <div className="space-y-1">
-          {(view === 'overall' ? overallLeaderboard : leaderboard).length === 0 ? (
+          {view === 'overall' && !studentOverallProgress ? (
+            <div className="text-center py-8 text-gray-500">
+              <Trophy className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Overall progress data unavailable</p>
+              <p className="text-xs">
+                Trying to load overall progress data...
+              </p>
+            </div>
+          ) : (view === 'overall' ? overallLeaderboard : leaderboard).length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Trophy className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">No rankings available yet</p>
@@ -471,6 +492,7 @@ export default function ProgressTab({
                     (entry as StudentOverallProgress).totalSessions : 
                     undefined
                   }
+                  studentName={entry.studentName}
                 />
               ))}
               
@@ -495,6 +517,10 @@ export default function ProgressTab({
                     totalSessions={view === 'overall' ? 
                       (studentOverallProgress?.totalSessions || 0) : 
                       undefined
+                    }
+                    studentName={view === 'overall' ? 
+                      studentOverallProgress?.studentName : 
+                      studentProgress?.studentName
                     }
                   />
                 </>

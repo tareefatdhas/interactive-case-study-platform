@@ -12,7 +12,7 @@ import {
   onSnapshot,
   Timestamp,
 } from 'firebase/firestore';
-import { studentDb } from './student-config';
+import { studentDb, studentAuth } from './student-config';
 import type {
   CaseStudy,
   Session,
@@ -309,10 +309,11 @@ export const updateStudentProgressStudent = async (
     ...updates,
     lastActive: now
   }).catch(async () => {
-    // Document doesn't exist, create it
-    await addDoc(collection(studentDb, COLLECTIONS.STUDENT_PROGRESS), {
+    // Document doesn't exist, create it with the specific ID to prevent duplicates
+    await setDoc(docRef, {
       studentId,
       sessionId,
+      authorUid: studentAuth.currentUser?.uid, // Store Firebase Auth UID for security rules
       sectionsCompleted: 0,
       questionsAnswered: 0,
       totalPoints: 0,
@@ -342,8 +343,22 @@ export const getStudentProgressStudent = async (studentId: string, sessionId: st
     return null;
   }
   
-  const doc = querySnapshot.docs[0];
-  return { ...doc.data() } as StudentProgress;
+  const progressDoc = querySnapshot.docs[0];
+  const progress = { ...progressDoc.data() } as StudentProgress;
+  
+  // Fetch student name if not already included
+  if (!progress.studentName) {
+    try {
+      const student = await getStudentByStudentIdStudent(studentId);
+      if (student) {
+        progress.studentName = student.name || student.studentId;
+      }
+    } catch (error) {
+      console.error('Failed to fetch student name for progress:', error);
+    }
+  }
+  
+  return progress;
 };
 
 export const getLeaderboardStudent = async (sessionId: string, limit: number = 10): Promise<StudentProgress[]> => {
@@ -374,7 +389,7 @@ export const getLeaderboardStudent = async (sessionId: string, limit: number = 1
   }, [] as StudentProgress[]);
   
   // Sort by total points descending, then by sections completed
-  return deduplicatedProgress
+  const sortedProgress = deduplicatedProgress
     .sort((a, b) => {
       if (b.totalPoints !== a.totalPoints) {
         return b.totalPoints - a.totalPoints;
@@ -386,6 +401,55 @@ export const getLeaderboardStudent = async (sessionId: string, limit: number = 1
       ...student,
       rank: index + 1
     }));
+
+  // Fetch student names for all students in the leaderboard
+  const studentIds = sortedProgress.map(p => p.studentId);
+  const studentNames = new Map<string, string>();
+  
+  if (studentIds.length > 0) {
+    try {
+      // Batch fetch student documents - try both document IDs and studentId fields
+      const batchSize = 10;
+      for (let i = 0; i < studentIds.length; i += batchSize) {
+        const batch = studentIds.slice(i, i + batchSize);
+        
+        // First try to get by document ID
+        const docPromises = batch.map(id => getDoc(doc(studentDb, COLLECTIONS.STUDENTS, id)));
+        const docResults = await Promise.all(docPromises);
+        
+        const remainingIds: string[] = [];
+        docResults.forEach((docSnap, index) => {
+          if (docSnap.exists()) {
+            const studentData = docSnap.data() as Student;
+            studentNames.set(batch[index], studentData.name || studentData.studentId || batch[index]);
+          } else {
+            remainingIds.push(batch[index]);
+          }
+        });
+        
+        // For IDs not found as document IDs, try to find by studentId field
+        if (remainingIds.length > 0) {
+          const q = query(
+            collection(studentDb, COLLECTIONS.STUDENTS),
+            where('studentId', 'in', remainingIds)
+          );
+          const querySnapshot = await getDocs(q);
+          querySnapshot.docs.forEach(doc => {
+            const studentData = doc.data() as Student;
+            studentNames.set(studentData.studentId, studentData.name || studentData.studentId);
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch student names for leaderboard:', error);
+    }
+  }
+  
+  // Add student names to the progress data
+  return sortedProgress.map(progress => ({
+    ...progress,
+    studentName: studentNames.get(progress.studentId) || `Student ${progress.studentId.slice(-4)}`
+  }));
 };
 
 /**
@@ -461,6 +525,7 @@ export const updateStudentOverallProgressStudent = async (
     // Document doesn't exist, create it
     await setDoc(docRef, {
       studentId,
+      authorUid: studentAuth.currentUser?.uid, // Store Firebase Auth UID for security rules
       totalSessions: 0,
       totalSectionsCompleted: 0,
       totalQuestionsAnswered: 0,
@@ -490,16 +555,31 @@ export const getStudentOverallProgressStudent = async (studentId: string): Promi
     return null;
   }
   
-  return { ...docSnap.data() } as StudentOverallProgress;
+  const progress = { ...docSnap.data() } as StudentOverallProgress;
+  
+  // Fetch student name if not already included
+  if (!progress.studentName) {
+    try {
+      const student = await getStudentByStudentIdStudent(studentId);
+      if (student) {
+        progress.studentName = student.name || student.studentId;
+      }
+    } catch (error) {
+      console.error('Failed to fetch student name for overall progress:', error);
+    }
+  }
+  
+  return progress;
 };
 
 export const calculateAndUpdateOverallProgress = async (studentId: string) => {
-  // Get all progress records for this student across all sessions
-  const q = query(
-    collection(studentDb, COLLECTIONS.STUDENT_PROGRESS),
-    where('studentId', '==', studentId)
-  );
-  const querySnapshot = await getDocs(q);
+  try {
+    // Get all progress records for this student across all sessions
+    const q = query(
+      collection(studentDb, COLLECTIONS.STUDENT_PROGRESS),
+      where('studentId', '==', studentId)
+    );
+    const querySnapshot = await getDocs(q);
   
   const allProgress = querySnapshot.docs.map(doc => ({
     ...doc.data()
@@ -508,57 +588,161 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
   if (allProgress.length === 0) {
     return;
   }
-  
-  // Get all highlights for this student
-  const highlightsQuery = query(
-    collection(studentDb, COLLECTIONS.HIGHLIGHTS),
-    where('studentId', '==', studentId)
-  );
-  const highlightsSnapshot = await getDocs(highlightsQuery);
-  const totalHighlights = highlightsSnapshot.docs.length;
 
-  // Get all responses for this student to calculate correct answers and unique words
-  const responsesQuery = query(
-    collection(studentDb, 'responses'),
-    where('studentId', '==', studentId)
-  );
-  const responsesSnapshot = await getDocs(responsesQuery);
-  const allResponses = responsesSnapshot.docs.map(doc => doc.data());
+  // FIRST: Deduplicate progress records by sessionId and studentId
+  // Keep the record with the highest totalPoints for each session
+  const deduplicatedProgress = allProgress.reduce((acc, current) => {
+    const key = `${current.sessionId}_${current.studentId}`;
+    const existing = acc.get(key);
+    
+    if (!existing) {
+      acc.set(key, current);
+    } else {
+      // Keep the record with higher points, or more recent lastActive if points are equal
+      if (current.totalPoints > existing.totalPoints || 
+          (current.totalPoints === existing.totalPoints && 
+           current.lastActive.seconds > existing.lastActive.seconds)) {
+        acc.set(key, current);
+      }
+    }
+    return acc;
+  }, new Map<string, StudentProgress>());
   
-  // Calculate total correct answers (where points === maxPoints)
-  const totalCorrectAnswers = allResponses.filter(r => 
-    r.points !== undefined && r.maxPoints !== undefined && r.points === r.maxPoints
-  ).length;
+  const uniqueProgress = Array.from(deduplicatedProgress.values());
   
-  // Calculate total unique words used across all responses
-  const { countUniqueWordsInResponses } = await import('@/lib/utils/textAnalysis');
-  const responseTexts = allResponses.map(r => r.response || '').filter(text => text.trim().length > 0);
-  const totalUniqueWordsUsed = countUniqueWordsInResponses(responseTexts);
+  // Get unique session IDs from deduplicated progress
+  const sessionIds = [...new Set(uniqueProgress.map(p => p.sessionId))];
   
-  // Calculate overall statistics
-  const totalSessions = allProgress.length;
-  const totalSectionsCompleted = allProgress.reduce((sum, p) => sum + p.sectionsCompleted, 0);
-  const totalQuestionsAnswered = allProgress.reduce((sum, p) => sum + p.questionsAnswered, 0);
-  const totalPointsEarned = allProgress.reduce((sum, p) => sum + p.totalPoints, 0);
-  const totalMaxPoints = allProgress.reduce((sum, p) => sum + p.maxPoints, 0);
-  const totalXP = allProgress.reduce((sum, p) => sum + p.xp, 0);
-  const longestStreak = Math.max(...allProgress.map(p => p.streak));
-  const totalTimeSpent = allProgress.reduce((sum, p) => sum + p.timeSpentReading, 0);
+  // Check which sessions are still active using student Firebase context
+  // If we can't check session status due to permissions, we'll use all progress data
+  let filteredProgress = uniqueProgress;
+  
+  try {
+    const sessionStatuses = await Promise.all(
+      sessionIds.map(async (sessionId) => {
+        try {
+          const sessionRef = doc(studentDb, 'sessions', sessionId);
+          const sessionSnap = await getDoc(sessionRef);
+          
+          if (sessionSnap.exists()) {
+            const sessionData = sessionSnap.data();
+            return { sessionId, active: sessionData.active ?? false };
+          } else {
+            return { sessionId, active: false }; // Session doesn't exist
+          }
+        } catch (error) {
+          console.warn(`Failed to get session ${sessionId} status:`, error);
+          return { sessionId, active: true }; // Assume active if can't fetch to be conservative
+        }
+      })
+    );
+    
+    const activeSessionIds = new Set(
+      sessionStatuses.filter(s => s.active).map(s => s.sessionId)
+    );
+    
+    // Filter deduplicated progress to only include active sessions
+    filteredProgress = uniqueProgress.filter(p => activeSessionIds.has(p.sessionId));
+    
+    console.log(`Filtered progress: ${filteredProgress.length} active sessions out of ${uniqueProgress.length} total`);
+  } catch (error) {
+    console.warn('Failed to check session statuses, using all progress data:', error);
+    // Use all deduplicated progress if we can't check session status
+    filteredProgress = uniqueProgress;
+  }
+  
+  if (filteredProgress.length === 0) {
+    // No active sessions with progress, but don't delete overall progress
+    // Just update with minimal data
+    const minimalProgress: Partial<StudentOverallProgress> = {
+      totalSessions: 0,
+      totalSectionsCompleted: 0,
+      totalQuestionsAnswered: 0,
+      totalPointsEarned: 0,
+      totalMaxPoints: 0,
+      overallLevel: 1,
+      totalXP: 0,
+      averageScore: 0,
+      sessionsCompleted: 0,
+      totalHighlights: 0,
+      totalCorrectAnswers: 0,
+      totalUniqueWordsUsed: 0
+    };
+    
+    await updateStudentOverallProgressStudent(studentId, minimalProgress);
+    return minimalProgress;
+  }
+  
+  // Get highlights for this student, filtered by active sessions
+  let totalHighlights = 0;
+  try {
+    const highlightsQuery = query(
+      collection(studentDb, COLLECTIONS.HIGHLIGHTS),
+      where('studentId', '==', studentId)
+    );
+    const highlightsSnapshot = await getDocs(highlightsQuery);
+    const allHighlights = highlightsSnapshot.docs.map(doc => doc.data());
+    const activeHighlights = allHighlights.filter(h => activeSessionIds.has((h as any).sessionId));
+    totalHighlights = activeHighlights.length;
+  } catch (error) {
+    console.warn('Failed to fetch highlights for overall progress, using count from filtered progress:', error);
+    // Fallback: estimate from progress records
+    totalHighlights = filteredProgress.reduce((sum, p) => sum + (p.highlightsCreated || 0), 0);
+  }
+
+  // Get responses for this student, filtered by active sessions
+  let totalCorrectAnswers = 0;
+  let totalUniqueWordsUsed = 0;
+  
+  try {
+    const responsesQuery = query(
+      collection(studentDb, 'responses'),
+      where('studentId', '==', studentId)
+    );
+    const responsesSnapshot = await getDocs(responsesQuery);
+    const allResponses = responsesSnapshot.docs.map(doc => doc.data());
+    const activeResponses = allResponses.filter(r => activeSessionIds.has((r as any).sessionId));
+    
+    // Calculate total correct answers from active sessions only
+    totalCorrectAnswers = activeResponses.filter(r => 
+      r.points !== undefined && r.maxPoints !== undefined && r.points === r.maxPoints
+    ).length;
+    
+    // Calculate total unique words used across active session responses
+    const { countUniqueWordsInResponses } = await import('@/lib/utils/textAnalysis');
+    const responseTexts = activeResponses.map(r => r.response || '').filter(text => text.trim().length > 0);
+    totalUniqueWordsUsed = countUniqueWordsInResponses(responseTexts);
+  } catch (error) {
+    console.warn('Failed to fetch responses for overall progress, using counts from filtered progress:', error);
+    // Fallback: estimate from progress records
+    totalCorrectAnswers = filteredProgress.reduce((sum, p) => sum + (p.correctAnswers || 0), 0);
+    totalUniqueWordsUsed = filteredProgress.reduce((sum, p) => sum + (p.totalUniqueWords || 0), 0);
+  }
+  
+  // Calculate overall statistics from active sessions only
+  const totalSessions = filteredProgress.length;
+  const totalSectionsCompleted = filteredProgress.reduce((sum, p) => sum + p.sectionsCompleted, 0);
+  const totalQuestionsAnswered = filteredProgress.reduce((sum, p) => sum + p.questionsAnswered, 0);
+  const totalPointsEarned = filteredProgress.reduce((sum, p) => sum + p.totalPoints, 0);
+  const totalMaxPoints = filteredProgress.reduce((sum, p) => sum + p.maxPoints, 0);
+  const totalXP = filteredProgress.reduce((sum, p) => sum + p.xp, 0);
+  const longestStreak = Math.max(...filteredProgress.map(p => p.streak));
+  const totalTimeSpent = filteredProgress.reduce((sum, p) => sum + p.timeSpentReading, 0);
   
   // Calculate average score
   const averageScore = totalMaxPoints > 0 ? (totalPointsEarned / totalMaxPoints) * 100 : 0;
   
-  // Calculate overall level (every 500 points = 1 level)
-  const overallLevel = Math.floor(totalPointsEarned / 500) + 1;
+  // Calculate overall level (every 100 points = 1 level, consistent with session level calculation)
+  const overallLevel = Math.floor(totalPointsEarned / 100) + 1;
   
-  // Count completed sessions (sessions where student completed all available sections)
+  // Count completed sessions from active sessions only
   // This would need more complex logic to determine if all released sections were completed
-  const sessionsCompleted = allProgress.filter(p => p.sectionsCompleted > 0).length;
+  const sessionsCompleted = filteredProgress.filter(p => p.sectionsCompleted > 0).length;
   
-  // Find first session date
-  const firstSessionDate = allProgress.reduce((earliest, p) => {
+  // Find first session date from active sessions
+  const firstSessionDate = filteredProgress.reduce((earliest, p) => {
     return p.lastActive.seconds < earliest.seconds ? p.lastActive : earliest;
-  }, allProgress[0].lastActive);
+  }, filteredProgress[0].lastActive);
   
   const overallProgress: Partial<StudentOverallProgress> = {
     totalSessions,
@@ -578,17 +762,36 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
     firstSessionDate
   };
   
-  await updateStudentOverallProgressStudent(studentId, overallProgress);
-  return overallProgress;
+    await updateStudentOverallProgressStudent(studentId, overallProgress);
+    return overallProgress;
+  } catch (error) {
+    console.error('Failed to calculate and update overall progress:', error);
+    // Return a minimal progress object so the UI doesn't break
+    return {
+      totalSessions: 0,
+      totalSectionsCompleted: 0,
+      totalQuestionsAnswered: 0,
+      totalPointsEarned: 0,
+      totalMaxPoints: 0,
+      overallLevel: 1,
+      totalXP: 0,
+      averageScore: 0,
+      sessionsCompleted: 0,
+      totalHighlights: 0,
+      totalCorrectAnswers: 0,
+      totalUniqueWordsUsed: 0
+    };
+  }
 };
 
 export const getOverallLeaderboardStudent = async (limit: number = 10): Promise<StudentOverallProgress[]> => {
-  const q = query(
-    collection(studentDb, COLLECTIONS.STUDENT_OVERALL_PROGRESS),
-    orderBy('totalPointsEarned', 'desc'),
-    orderBy('totalSectionsCompleted', 'desc')
-  );
-  const querySnapshot = await getDocs(q);
+  try {
+    const q = query(
+      collection(studentDb, COLLECTIONS.STUDENT_OVERALL_PROGRESS),
+      orderBy('totalPointsEarned', 'desc'),
+      orderBy('totalSectionsCompleted', 'desc')
+    );
+    const querySnapshot = await getDocs(q);
   
   const progress = querySnapshot.docs.map(doc => ({
     ...doc.data()
@@ -611,10 +814,64 @@ export const getOverallLeaderboardStudent = async (limit: number = 10): Promise<
     return acc;
   }, [] as StudentOverallProgress[]);
   
-  return deduplicatedProgress
+  const sortedProgress = deduplicatedProgress
     .slice(0, limit)
     .map((student, index) => ({
       ...student,
       rank: index + 1
     }));
+
+  // Fetch student names for all students in the overall leaderboard
+  const studentIds = sortedProgress.map(p => p.studentId);
+  const studentNames = new Map<string, string>();
+  
+  if (studentIds.length > 0) {
+    try {
+      // Batch fetch student documents - try both document IDs and studentId fields
+      const batchSize = 10;
+      for (let i = 0; i < studentIds.length; i += batchSize) {
+        const batch = studentIds.slice(i, i + batchSize);
+        
+        // First try to get by document ID
+        const docPromises = batch.map(id => getDoc(doc(studentDb, COLLECTIONS.STUDENTS, id)));
+        const docResults = await Promise.all(docPromises);
+        
+        const remainingIds: string[] = [];
+        docResults.forEach((docSnap, index) => {
+          if (docSnap.exists()) {
+            const studentData = docSnap.data() as Student;
+            studentNames.set(batch[index], studentData.name || studentData.studentId || batch[index]);
+          } else {
+            remainingIds.push(batch[index]);
+          }
+        });
+        
+        // For IDs not found as document IDs, try to find by studentId field
+        if (remainingIds.length > 0) {
+          const q = query(
+            collection(studentDb, COLLECTIONS.STUDENTS),
+            where('studentId', 'in', remainingIds)
+          );
+          const querySnapshot = await getDocs(q);
+          querySnapshot.docs.forEach(doc => {
+            const studentData = doc.data() as Student;
+            studentNames.set(studentData.studentId, studentData.name || studentData.studentId);
+          });
+        }
+      }
+      } catch (error) {
+        console.error('Failed to fetch student names for overall leaderboard:', error);
+      }
+    }
+    
+    // Add student names to the progress data
+    return sortedProgress.map(progress => ({
+      ...progress,
+      studentName: studentNames.get(progress.studentId) || `Student ${progress.studentId.slice(-4)}`
+    }));
+  } catch (error) {
+    console.error('Failed to get overall leaderboard:', error);
+    // Return empty array so the UI doesn't break
+    return [];
+  }
 };

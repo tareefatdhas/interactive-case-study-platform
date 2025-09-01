@@ -10,7 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
 import type { CaseStudy } from '@/types';
-import { BookOpen, Plus, Play, Edit, Calendar, Users, Clock, Award, FileText, HelpCircle, Copy, Archive, MoreVertical, Sparkles } from 'lucide-react';
+import { BookOpen, Plus, Play, Edit, Calendar, Users, Clock, Award, FileText, HelpCircle, Copy, Archive, MoreVertical, Sparkles, Download } from 'lucide-react';
+import CaseStudyPDFExport from '@/components/teacher/CaseStudyPDFExport';
 
 export default function CaseStudiesPage() {
   const { user } = useAuth();
@@ -263,6 +264,12 @@ export default function CaseStudiesPage() {
                                   <Copy className="w-4 h-4 mr-3" />
                                   {actionLoading === `duplicate-${caseStudy.id}` ? 'Duplicating...' : 'Duplicate'}
                                 </button>
+                                <div className="px-4 py-2">
+                                  <CaseStudyPDFExport 
+                                    caseStudy={caseStudy} 
+                                    className="w-full justify-start text-left text-sm font-normal h-auto p-0 text-gray-700 hover:bg-transparent"
+                                  />
+                                </div>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();

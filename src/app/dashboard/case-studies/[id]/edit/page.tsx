@@ -14,6 +14,7 @@ import Textarea from '@/components/ui/Textarea';
 import RichTextEditor from '@/components/ui/RichTextEditor';
 import type { Section, Question, CaseStudy, SectionType } from '@/types';
 import { Plus, Trash2, Save, ArrowLeft, BookOpen, MessageSquare, Activity, GripVertical } from 'lucide-react';
+import CaseStudyPDFExport from '@/components/teacher/CaseStudyPDFExport';
 import {
   DndContext,
   closestCenter,
@@ -812,20 +813,27 @@ export default function EditCaseStudyPage() {
       <DashboardLayout>
         <div className="p-6 lg:p-8 max-w-4xl">
           <div className="mb-6">
-            <div className="flex items-center gap-4 mb-4">
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/dashboard/case-studies')}
-                className="p-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Edit Case Study</h1>
-                <p className="text-gray-600 mt-1">
-                  Update your interactive case study with sections and questions.
-                </p>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => router.push('/dashboard/case-studies')}
+                  className="p-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Edit Case Study</h1>
+                  <p className="text-gray-600 mt-1">
+                    Update your interactive case study with sections and questions.
+                  </p>
+                </div>
               </div>
+              
+              {/* Export Button - only show if case study is loaded */}
+              {caseStudy && (
+                <CaseStudyPDFExport caseStudy={caseStudy} />
+              )}
             </div>
           </div>
 

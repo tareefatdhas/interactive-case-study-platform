@@ -140,7 +140,7 @@ export default function FeaturePanel({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end">
+    <div className="fixed inset-0 z-[100] flex items-end">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -154,10 +154,11 @@ export default function FeaturePanel({
           'relative w-full bg-white rounded-t-3xl shadow-2xl',
           'transition-transform duration-300 ease-out',
           'flex flex-col',
+          'max-h-[90vh]', // Reduced to ensure space at top
           isOpen ? 'translate-y-0' : 'translate-y-full'
         )}
         style={{
-          height: '85vh',
+          height: 'min(85vh, calc(100vh - env(safe-area-inset-top) - 60px))', // Dynamic height accounting for safe area
           transform: `translateY(${currentY}px)`,
         }}
         onTouchStart={handleTouchStart}
@@ -165,16 +166,17 @@ export default function FeaturePanel({
         onTouchEnd={handleTouchEnd}
       >
         {/* Drag Handle */}
-        <div className="flex justify-center py-3">
+        <div className="flex justify-center py-3 relative z-10">
           <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
         </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pb-4">
-          <h2 className="text-xl font-semibold text-gray-900">Student Features</h2>
+        {/* Header with improved mobile layout */}
+        <div className="flex items-center justify-between px-4 sm:px-6 pb-4 feature-panel-header relative z-10">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Student Features</h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-full hover:bg-gray-100 transition-colors -mr-2 sm:mr-0 min-w-[44px] min-h-[44px] flex items-center justify-center bg-white border border-gray-200"
+            aria-label="Close panel"
           >
             <X className="h-5 w-5 text-gray-500" />
           </button>

@@ -187,6 +187,7 @@ export interface Highlight {
 export interface StudentProgress {
   studentId: string;
   sessionId: string;
+  authorUid?: string; // Firebase Auth UID for security rules
   sectionsCompleted: number;
   questionsAnswered: number;
   totalPoints: number;
@@ -200,10 +201,12 @@ export interface StudentProgress {
   correctAnswers?: number; // Number of correct answers in this session
   highlightsCreated?: number; // Number of highlights created in this session
   totalUniqueWords?: number; // Total unique words used in responses for this session
+  studentName?: string; // Student name for display purposes (not stored in progress, populated on query)
 }
 
 export interface StudentOverallProgress {
   studentId: string;
+  authorUid?: string; // Firebase Auth UID for security rules
   totalSessions: number;
   totalSectionsCompleted: number;
   totalQuestionsAnswered: number;
@@ -214,6 +217,7 @@ export interface StudentOverallProgress {
   longestStreak: number;
   totalTimeSpent: number; // in minutes
   averageScore: number; // percentage
+  studentName?: string; // Student name for display purposes (not stored in progress, populated on query)
   sessionsCompleted: number; // sessions where all released sections were completed
   totalHighlights: number;
   firstSessionDate: Timestamp;

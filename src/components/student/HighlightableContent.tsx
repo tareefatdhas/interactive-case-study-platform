@@ -60,6 +60,7 @@ function HighlightPopover({ x, y, onHighlight, onClose }: HighlightPopoverProps)
       className="highlight-popover fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 px-2 py-1.5"
       style={{ left: x, top: y }}
       onMouseDown={(e) => e.preventDefault()} // Prevent text selection from being cleared
+      onTouchStart={(e) => e.stopPropagation()} // Prevent touch event bubbling on mobile
     >
       <div className="flex items-center gap-1">
         {HIGHLIGHT_COLORS.map((color) => (
@@ -105,6 +106,7 @@ function DeletePopover({ x, y, onDelete, onClose }: DeletePopoverProps) {
       className="fixed z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-4 min-w-[200px] backdrop-blur-sm"
       style={{ left: x, top: y }}
       onMouseDown={(e) => e.preventDefault()}
+      onTouchStart={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
@@ -373,9 +375,21 @@ export default function HighlightableContent({
     // Keep horizontally on screen
     x = Math.max(10, Math.min(x, window.innerWidth - toolbarWidth - 10));
     
-    // If not enough room above, position at top of viewport
-    if (y < window.scrollY + 10) {
-      y = window.scrollY + 10;
+    // For mobile devices, adjust position to account for keyboard and viewport
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      // Position the popover higher on mobile to avoid keyboard interference
+      y = rect.top + window.scrollY - toolbarHeight - (offset * 2);
+      
+      // Ensure it's visible in the viewport
+      const viewportTop = window.scrollY;
+      const minY = viewportTop + 60; // Leave space for status bar
+      y = Math.max(minY, y);
+    } else {
+      // If not enough room above on desktop, position at top of viewport
+      if (y < window.scrollY + 10) {
+        y = window.scrollY + 10;
+      }
     }
     
     setPopoverPosition({ x, y });
@@ -443,7 +457,7 @@ export default function HighlightableContent({
     let selectionCheckTimeout: NodeJS.Timeout | null = null;
 
     // Handle existing highlight clicks for deletion
-    const handleClick = (e: MouseEvent) => {
+    const handleClick = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement;
       const highlightSpan = target.closest<HTMLElement>('[data-highlight-id]');
 
@@ -462,7 +476,7 @@ export default function HighlightableContent({
       }
     };
 
-    // Check for selection after mouse interaction completes
+    // Check for selection after mouse/touch interaction completes
     const checkForSelection = () => {
       if (selectionCheckTimeout) clearTimeout(selectionCheckTimeout);
       
@@ -481,7 +495,7 @@ export default function HighlightableContent({
             handleSelection();
           }
         }
-      }, 1000); // Wait 1 second after user stops selecting
+      }, 500); // Reduced timeout for better mobile responsiveness
     };
 
     // Only check for selection after mouse up (selection complete)
@@ -491,6 +505,17 @@ export default function HighlightableContent({
       if (!target.closest('[data-highlight-id]')) {
         checkForSelection();
       }
+    };
+
+    // Handle touch end for mobile devices
+    const handleTouchEnd = (e: TouchEvent) => {
+      // Small delay to allow text selection to complete on mobile
+      setTimeout(() => {
+        const target = e.target as HTMLElement;
+        if (!target.closest('[data-highlight-id]')) {
+          checkForSelection();
+        }
+      }, 100);
     };
 
     // Handle keyboard shortcut to show highlight toolbar
@@ -508,12 +533,14 @@ export default function HighlightableContent({
 
     container.addEventListener('click', handleClick);
     container.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('touchend', handleTouchEnd);
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
       if (selectionCheckTimeout) clearTimeout(selectionCheckTimeout);
       container.removeEventListener('click', handleClick);
       container.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('touchend', handleTouchEnd);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleSelection, showPopover]);
