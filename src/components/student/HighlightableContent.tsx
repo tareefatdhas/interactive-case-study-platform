@@ -523,7 +523,11 @@ export default function HighlightableContent({
     const checkForSelection = (immediate = false) => {
       if (selectionCheckTimeout) clearTimeout(selectionCheckTimeout);
       
-      const delay = immediate ? 0 : 300; // Reduced delay for better responsiveness
+      // Use longer delay to allow users time to expand selection
+      // Desktop users typically need less time than mobile users
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const baseDelay = isMobile ? 800 : 600; // 800ms for mobile, 600ms for desktop
+      const delay = immediate ? 250 : baseDelay; // Even immediate checks have small delay
       
       selectionCheckTimeout = setTimeout(() => {
         const selection = window.getSelection();
@@ -548,25 +552,21 @@ export default function HighlightableContent({
     };
 
     // Handle selection changes (including expansion/contraction)
-    let selectionChangeTimeout: NodeJS.Timeout | null = null;
     const handleSelectionChange = () => {
-      // Throttle selection change events to avoid excessive calls
-      if (selectionChangeTimeout) clearTimeout(selectionChangeTimeout);
-      
-      selectionChangeTimeout = setTimeout(() => {
-        // Check if the selection is within our container
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const isInContainer = container.contains(range.commonAncestorContainer) ||
-                               container.contains(range.startContainer) ||
-                               container.contains(range.endContainer);
-          
-          if (isInContainer) {
-            checkForSelection(true); // Immediate check for selection changes
-          }
+      // Check if the selection is within our container
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const isInContainer = container.contains(range.commonAncestorContainer) ||
+                             container.contains(range.startContainer) ||
+                             container.contains(range.endContainer);
+        
+        if (isInContainer && selection.toString().trim().length > 0) {
+          // Cancel any existing timeout and restart it
+          // This gives users more time to expand their selection
+          checkForSelection(false); // Use standard delay, not immediate
         }
-      }, 150); // Throttle to 150ms for better performance
+      }
     };
 
     // Only check for selection after mouse up (selection complete)
@@ -580,13 +580,11 @@ export default function HighlightableContent({
 
     // Handle touch end for mobile devices
     const handleTouchEnd = (e: TouchEvent) => {
-      // Small delay to allow text selection to complete on mobile
-      setTimeout(() => {
-        const target = e.target as HTMLElement;
-        if (!target.closest('[data-highlight-id]')) {
-          checkForSelection();
-        }
-      }, 100);
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-highlight-id]')) {
+        // Check for selection with standard delay
+        checkForSelection();
+      }
     };
 
     // Handle keyboard shortcut to show highlight toolbar
@@ -612,7 +610,6 @@ export default function HighlightableContent({
 
     return () => {
       if (selectionCheckTimeout) clearTimeout(selectionCheckTimeout);
-      if (selectionChangeTimeout) clearTimeout(selectionChangeTimeout);
       container.removeEventListener('click', handleClick);
       container.removeEventListener('mouseup', handleMouseUp);
       container.removeEventListener('touchend', handleTouchEnd);
