@@ -773,6 +773,17 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     setNewSectionAvailable(false);
   };
 
+  // Auto-dismiss notification after 15 seconds
+  useEffect(() => {
+    if (newSectionAvailable) {
+      const timer = setTimeout(() => {
+        setNewSectionAvailable(false);
+      }, 15000); // 15 seconds
+
+      return () => clearTimeout(timer);
+    }
+  }, [newSectionAvailable]);
+
   // Subscribe to highlights in real-time
   useEffect(() => {
     if (student?.id && session?.id) {
@@ -2113,40 +2124,43 @@ This summary was generated using AI analysis of your responses and performance.
 
       {/* New Section Available Notification */}
       {newSectionAvailable && (
-        <div 
-          className="sticky z-10 mx-auto max-w-3xl px-4 sm:px-6 mb-4 transition-all duration-300 ease-in-out"
-          style={{ 
-            top: isHeaderCollapsed ? '4rem' : '6rem'
-          }}
-        >
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex-shrink-0">
-                  <ArrowRight className="h-5 w-5 text-blue-600" />
+        <div className="fixed top-0 left-0 right-0 z-[60] pointer-events-none">
+          <div 
+            className="mx-auto max-w-3xl px-4 sm:px-6 pt-4 pb-2 transition-all duration-500 ease-out animate-in slide-in-from-top-2"
+            style={{ 
+              paddingTop: `calc(${isHeaderCollapsed ? '4rem' : '6rem'} + env(safe-area-inset-top, 0px) + 0.5rem)`
+            }}
+          >
+            <div className="notification-container bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl p-4 shadow-xl pointer-events-auto border border-blue-500/20 backdrop-blur-sm notification-slide-in">
+              <div className="notification-content flex items-center justify-between sm:flex-row flex-col">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <div className="flex-shrink-0 bg-white/20 rounded-full p-2">
+                    <ArrowRight className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-white">
+                      🎉 New Section Available!
+                    </p>
+                    <p className="text-xs text-blue-100 mt-0.5">
+                      Section {newSectionIndex + 1} has been released and is ready to read.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-blue-900">
-                    New Section Available!
-                  </p>
-                  <p className="text-xs text-blue-700">
-                    Section {newSectionIndex + 1} has been released and is ready to read.
-                  </p>
+                <div className="notification-actions flex items-center gap-2 ml-0 sm:ml-4 w-full sm:w-auto">
+                  <Button
+                    onClick={handleGoToNewSection}
+                    className="notification-button bg-white text-blue-600 hover:bg-blue-50 text-xs px-3 py-2 h-auto font-medium shadow-sm border-0 flex-1 sm:flex-none"
+                  >
+                    Go to Section {newSectionIndex + 1}
+                  </Button>
+                  <button
+                    onClick={handleDismissNewSection}
+                    className="notification-button text-white/80 hover:text-white hover:bg-white/10 p-2 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    aria-label="Dismiss notification"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleGoToNewSection}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 h-auto"
-                >
-                  Go to Section {newSectionIndex + 1}
-                </Button>
-                <button
-                  onClick={handleDismissNewSection}
-                  className="text-blue-500 hover:text-blue-700 p-1"
-                >
-                  <X className="h-4 w-4" />
-                </button>
               </div>
             </div>
           </div>

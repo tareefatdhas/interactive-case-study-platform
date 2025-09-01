@@ -683,6 +683,63 @@ div[class*="activity-content"] {
   }
 }
 
+/* New Section Notification Enhancements */
+.notification-slide-in {
+  animation: slideInFromTop 0.5s ease-out forwards, notificationPulse 2s ease-in-out 2s 3;
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes notificationPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 20px 35px -5px rgba(59, 130, 246, 0.3), 0 10px 20px -5px rgba(59, 130, 246, 0.1);
+  }
+}
+
+/* Mobile-specific notification improvements */
+@media (max-width: 768px) {
+  /* Ensure notification buttons are touch-friendly */
+  .notification-button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+  
+  /* Improve notification layout on mobile */
+  .notification-content {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .notification-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+  
+  /* Reduce notification padding on very small screens */
+  @media (max-width: 480px) {
+    .notification-container {
+      margin: 0 8px;
+      padding: 12px;
+    }
+  }
+}
+
 /* Improve text selection experience */
 ::selection {
   background: #bee3f8;
