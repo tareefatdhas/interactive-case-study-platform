@@ -640,6 +640,17 @@ div[class*="activity-content"] {
   .highlightable-content {
     -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
     -webkit-touch-callout: default; /* Allow text selection menu */
+    -webkit-user-select: text; /* Ensure text is selectable */
+    user-select: text;
+  }
+  
+  /* Improve selection handles on iOS */
+  .highlightable-content::selection {
+    background: rgba(59, 130, 246, 0.3);
+  }
+  
+  .highlightable-content::-moz-selection {
+    background: rgba(59, 130, 246, 0.3);
   }
   
   /* Ensure proper touch interaction */

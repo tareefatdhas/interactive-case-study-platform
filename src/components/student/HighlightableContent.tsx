@@ -344,7 +344,49 @@ export default function HighlightableContent({
       return;
     }
 
-    // Immediately create a temporary blue highlight (like browser selection)
+    // If there's already a temp highlight and popover showing, update it
+    if (tempHighlight && showPopover) {
+      const updatedTempHighlight: LocalHighlight = {
+        ...tempHighlight,
+        text: text,
+        startOffset: range.startOffset,
+        endOffset: range.endOffset,
+      };
+      
+      setTempHighlight(updatedTempHighlight);
+      setSavedRange(range.cloneRange());
+      setSelectedText(text);
+      
+      // Update popover position for new selection
+      const rect = range.getBoundingClientRect();
+      const toolbarWidth = 200;
+      const toolbarHeight = 40;
+      const offset = 15;
+      
+      let x = rect.left + (rect.width / 2) - (toolbarWidth / 2);
+      let y = rect.top + window.scrollY - toolbarHeight - offset;
+      
+      x = Math.max(10, Math.min(x, window.innerWidth - toolbarWidth - 10));
+      
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        y = rect.top + window.scrollY - toolbarHeight - (offset * 2);
+        const viewportTop = window.scrollY;
+        const minY = viewportTop + 60;
+        y = Math.max(minY, y);
+      } else {
+        if (y < window.scrollY + 10) {
+          y = window.scrollY + 10;
+        }
+      }
+      
+      setPopoverPosition({ x, y });
+      
+      console.log('🔄 Updated temp highlight and popover position:', { text, color: 'temp' });
+      return;
+    }
+
+    // Create new temporary highlight
     const tempHighlightData: LocalHighlight = {
       id: generateId(),
       text: text,
@@ -396,7 +438,7 @@ export default function HighlightableContent({
     setShowPopover(true);
     
     console.log('✅ Temp highlight created and popover shown:', { text, color: 'temp' });
-  }, []);
+  }, [tempHighlight, showPopover]);
 
   const handleHighlight = (color: string) => {
     if (!tempHighlight || !savedRange) return;
@@ -455,6 +497,7 @@ export default function HighlightableContent({
     if (!container) return;
 
     let selectionCheckTimeout: NodeJS.Timeout | null = null;
+    let lastSelectionText = '';
 
     // Handle existing highlight clicks for deletion
     const handleClick = (e: MouseEvent | TouchEvent) => {
@@ -477,8 +520,10 @@ export default function HighlightableContent({
     };
 
     // Check for selection after mouse/touch interaction completes
-    const checkForSelection = () => {
+    const checkForSelection = (immediate = false) => {
       if (selectionCheckTimeout) clearTimeout(selectionCheckTimeout);
+      
+      const delay = immediate ? 0 : 300; // Reduced delay for better responsiveness
       
       selectionCheckTimeout = setTimeout(() => {
         const selection = window.getSelection();
@@ -490,12 +535,38 @@ export default function HighlightableContent({
                                container.contains(range.startContainer) ||
                                container.contains(range.endContainer);
           
-          if (isInContainer && !showPopover) {
+          // Only show popover if selection changed and we're not already showing one
+          if (isInContainer && !showPopover && text !== lastSelectionText) {
             console.log('Auto-showing popover for selection:', text);
+            lastSelectionText = text;
             handleSelection();
           }
+        } else {
+          lastSelectionText = '';
         }
-      }, 500); // Reduced timeout for better mobile responsiveness
+      }, delay);
+    };
+
+    // Handle selection changes (including expansion/contraction)
+    let selectionChangeTimeout: NodeJS.Timeout | null = null;
+    const handleSelectionChange = () => {
+      // Throttle selection change events to avoid excessive calls
+      if (selectionChangeTimeout) clearTimeout(selectionChangeTimeout);
+      
+      selectionChangeTimeout = setTimeout(() => {
+        // Check if the selection is within our container
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const isInContainer = container.contains(range.commonAncestorContainer) ||
+                               container.contains(range.startContainer) ||
+                               container.contains(range.endContainer);
+          
+          if (isInContainer) {
+            checkForSelection(true); // Immediate check for selection changes
+          }
+        }
+      }, 150); // Throttle to 150ms for better performance
     };
 
     // Only check for selection after mouse up (selection complete)
@@ -535,13 +606,18 @@ export default function HighlightableContent({
     container.addEventListener('mouseup', handleMouseUp);
     container.addEventListener('touchend', handleTouchEnd);
     document.addEventListener('keydown', handleKeyDown);
+    
+    // Listen for selection changes globally
+    document.addEventListener('selectionchange', handleSelectionChange);
 
     return () => {
       if (selectionCheckTimeout) clearTimeout(selectionCheckTimeout);
+      if (selectionChangeTimeout) clearTimeout(selectionChangeTimeout);
       container.removeEventListener('click', handleClick);
       container.removeEventListener('mouseup', handleMouseUp);
       container.removeEventListener('touchend', handleTouchEnd);
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('selectionchange', handleSelectionChange);
     };
   }, [handleSelection, showPopover]);
 
