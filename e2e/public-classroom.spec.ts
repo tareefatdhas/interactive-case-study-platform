@@ -12,8 +12,15 @@ test('instructor can reach account recovery from sign in', async ({ page }) => {
   await page.goto('/login');
 
   await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible();
+  const googleButton = page.getByRole('button', { name: 'Continue with Google' });
+  await expect(googleButton).toBeVisible();
+  await expect(page.getByText('Or continue with email')).toBeVisible();
   await expect(page.getByLabel('Email')).toBeVisible();
   await expect(page.getByLabel('Password')).toBeVisible();
+
+  const googleBox = await googleButton.boundingBox();
+  const emailBox = await page.getByLabel('Email').boundingBox();
+  expect(googleBox?.y).toBeLessThan(emailBox?.y ?? 0);
 
   await page.getByRole('link', { name: 'Forgot your password?' }).click();
   await expect(page).toHaveURL(/\/forgot-password$/);
@@ -24,6 +31,19 @@ test('instructor can reach account recovery from sign in', async ({ page }) => {
   await page.getByRole('button', { name: 'Send reset link' }).click();
   await expect(page.getByRole('heading', { name: 'Check your inbox.' })).toBeVisible();
   await expect(page.getByText('instructor@example.edu')).toBeVisible();
+});
+
+test('instructor signup offers Google before the email form', async ({ page }) => {
+  await page.goto('/signup');
+
+  await expect(page.getByRole('heading', { name: 'Create your instructor account.' })).toBeVisible();
+  const googleButton = page.getByRole('button', { name: 'Continue with Google' });
+  await expect(googleButton).toBeVisible();
+  await expect(page.getByText('Or continue with email')).toBeVisible();
+
+  const googleBox = await googleButton.boundingBox();
+  const nameBox = await page.getByLabel('Name').boundingBox();
+  expect(googleBox?.y).toBeLessThan(nameBox?.y ?? 0);
 });
 
 test('student join collects attendance identity without requiring a display name', async ({ page }) => {

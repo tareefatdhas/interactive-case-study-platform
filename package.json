@@ -12,6 +12,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
+    "test:live-contract": "node scripts/verify-live-firebase-contract.mjs",
     "check": "npm run typecheck && npm run lint && npm run build && npm run test:e2e",
     "ready:classroom": "node scripts/check-live-readiness.mjs"
   },

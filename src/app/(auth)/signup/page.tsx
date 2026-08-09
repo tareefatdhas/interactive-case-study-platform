@@ -3,8 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signUpTeacher } from '@/lib/firebase/auth';
+import {
+  getGoogleSignInErrorMessage,
+  signInTeacherWithGoogle,
+  signUpTeacher,
+} from '@/lib/firebase/auth';
 import Button from '@/components/ui/Button';
+import GoogleSignInButton from '@/components/ui/GoogleSignInButton';
 import Input from '@/components/ui/Input';
 import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
 
@@ -17,9 +22,22 @@ export default function SignUpPage() {
     confirmPassword: '',
   });
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setError('');
 
+    try {
+      await signInTeacherWithGoogle();
+      router.push('/dashboard');
+    } catch (error: unknown) {
+      setError(getGoogleSignInErrorMessage(error));
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,8 +59,9 @@ export default function SignUpPage() {
     try {
       await signUpTeacher(formData.email, formData.password, formData.name);
       router.push('/dashboard');
-    } catch (error: any) {
-      setError(error.message || 'We could not create your account. Check the details and try again.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '';
+      setError(message || 'We could not create your account. Check the details and try again.');
     } finally {
       setLoading(false);
     }
@@ -58,6 +77,20 @@ export default function SignUpPage() {
   return (
     <SeminarAuthShell eyebrow="Instructor account" title="Create your instructor account." description="Add your course after this, then prepare your first live classroom session.">
       <div className="rounded-2xl border border-[#e3e5ed] bg-white p-6 shadow-[0_18px_50px_rgba(16,26,56,0.06)] sm:p-7">
+            <GoogleSignInButton
+              disabled={loading}
+              loading={googleLoading}
+              onClick={handleGoogleSignIn}
+            />
+
+            <div className="my-5 flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-[#e3e5ed]" />
+              <span className="text-xs font-medium uppercase tracking-[0.12em] text-[#8a90a2]">
+                Or continue with email
+              </span>
+              <span className="h-px flex-1 bg-[#e3e5ed]" />
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 label="Name"
@@ -109,6 +142,7 @@ export default function SignUpPage() {
               <Button
                 type="submit"
                 loading={loading}
+                disabled={googleLoading}
                 className="w-full"
               >
                 Create account

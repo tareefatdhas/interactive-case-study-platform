@@ -3,8 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signInTeacher } from '@/lib/firebase/auth';
+import {
+  getGoogleSignInErrorMessage,
+  signInTeacher,
+  signInTeacherWithGoogle,
+} from '@/lib/firebase/auth';
 import Button from '@/components/ui/Button';
+import GoogleSignInButton from '@/components/ui/GoogleSignInButton';
 import Input from '@/components/ui/Input';
 import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
 
@@ -15,7 +20,22 @@ export default function LoginPage() {
     password: '',
   });
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setError('');
+
+    try {
+      await signInTeacherWithGoogle();
+      router.push('/dashboard');
+    } catch (error: unknown) {
+      setError(getGoogleSignInErrorMessage(error, 'We could not sign you in with Google. Please try again.'));
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +63,20 @@ export default function LoginPage() {
   return (
     <SeminarAuthShell eyebrow="Instructor sign in" title="Welcome back." description="Sign in to prepare a lesson, open your classroom display, or continue a live class.">
       <div className="rounded-2xl border border-[#e3e5ed] bg-white p-6 shadow-[0_18px_50px_rgba(16,26,56,0.06)] sm:p-7">
+            <GoogleSignInButton
+              disabled={loading}
+              loading={googleLoading}
+              onClick={handleGoogleSignIn}
+            />
+
+            <div className="my-5 flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-[#e3e5ed]" />
+              <span className="text-xs font-medium uppercase tracking-[0.12em] text-[#8a90a2]">
+                Or continue with email
+              </span>
+              <span className="h-px flex-1 bg-[#e3e5ed]" />
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 label="Email"
@@ -72,7 +106,7 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <Button type="submit" loading={loading} className="w-full">Sign in</Button>
+              <Button type="submit" loading={loading} disabled={googleLoading} className="w-full">Sign in</Button>
             </form>
 
             <div className="mt-6 text-center">

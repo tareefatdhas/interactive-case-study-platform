@@ -19,7 +19,8 @@ This document is an engineering and product checklist. It is not legal advice or
 | Poll, quiz, and written responses | Run the lesson and review understanding | Instructor; projector only when deliberately shared | Realtime Database |
 | Wellbeing pulse | Adjust pace or teaching support | Instructor can access individual records; projector receives totals | Realtime Database |
 | Question votes | Prioritise classroom questions | Instructor and the student who voted | Realtime Database |
-| Reward ledger | Student feedback and course rewards | Student device | Browser local storage in the current pilot |
+| Points and local reward balance | Student feedback and course rewards | Student only | Browser local storage in the current pilot |
+| Reward redemption request | Review and fulfil a student-selected reward | Student who requested it and the course instructor | Firestore `rewardRequests` |
 | Instructor lesson material | Draft interaction questions | Instructor and configured AI provider | Sent in the generation request; not added to student data |
 
 ## Product safeguards now implemented
@@ -43,14 +44,15 @@ Do not treat a required classroom checkbox as freely given consent.
 
 ## Retention
 
-Pilot target: delete live classroom and attendance data within 90 days after the course ends, unless the institution documents a shorter period or a legal obligation to keep a specific record longer.
+Live classroom records are deleted 90 days after their last recorded update, unless an instructor deletes the session sooner. The institution must separately document how long formal attendance and reward-redemption records need to be kept for each course.
 
 Current enforcement:
 
 - An instructor can delete a session and its live data immediately.
 - A daily server-side job deletes live classroom, attendance, response, vote, presence, and join-code data 90 days after its last recorded update.
 - Each retention run writes an audit record with the policy window, deletion count, classroom owner, session identifier, and source timestamp. It does not copy student numbers or responses into the audit log.
-- Local reward data stays on the student's device until browser storage is cleared. A visible reset/export control should be added before rewards are used for formal credit.
+- Local points and reward balance stay on the student's device until browser storage is cleared.
+- Reward redemption requests are stored in Firestore so the student and course instructor can review their status. They are not included in the automatic live-classroom cleanup. The institution must set their deletion schedule before rewards are used for formal credit.
 
 ## Student rights workflow
 
@@ -79,8 +81,8 @@ Cross-device self-service rights require verified student accounts. LINE Login o
 - [ ] Explicit wellbeing choice or unlinkable aggregate design approved
 - [ ] Firebase region and cross-border safeguards approved
 - [ ] Firebase and AI data-processing terms approved
-- [ ] Realtime Database and Firestore rules deployed and tested
-- [ ] Automatic retention job and deletion audit log deployed and observed successfully
+- [x] Realtime Database and Firestore rules deployed and tested
+- [x] Automatic retention job and deletion audit log deployed and observed successfully
 - [ ] Verified student identity enabled for cross-device access and rights requests
 - [ ] Local owner-scoped Firestore rules deployed and verified against the legacy module
 - [ ] Incident-response owner and PDPC notification process documented

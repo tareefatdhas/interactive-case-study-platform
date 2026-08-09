@@ -35,7 +35,7 @@ const sections = [
   {
     icon: Trash2,
     title: 'Retention and deletion',
-    content: 'Your university or instructor sets the course retention period. Instructors can delete a session and its live attendance, response, vote, and presence data. The pilot target is deletion within 90 days after the course ends unless a shorter period or legal obligation applies.',
+    content: 'Classfully runs a daily cleanup that removes live classroom data 90 days after its last recorded update. Instructors can delete a session and its live attendance, response, vote, and presence data sooner. Reward requests follow the course retention period set by your university or instructor.',
   },
   {
     icon: Scale,
