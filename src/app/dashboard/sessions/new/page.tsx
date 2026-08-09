@@ -492,14 +492,21 @@ function NewSessionContent() {
                   </section>
                 )}
 
-                <section className="mt-6 rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-5" aria-labelledby="lesson-material-title">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <details className="group mt-6 rounded-2xl border border-[#e3e5ed] bg-[#faf9fc] open:bg-[#f7f6ff]">
+                  <summary className="seminar-focus flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl p-5 marker:content-none">
                     <div>
-                      <p className="seminar-eyebrow mb-2">Lesson material</p>
-                      <h3 id="lesson-material-title" className="seminar-display text-2xl text-[#101a38]">Draft questions from this class</h3>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-[#697087]">Paste a lesson outline, slides, reading excerpt, or upload a plain-text file. The drafts are added to your plan for review. Nothing is saved until you save the session.</p>
-                      <div className="mt-4 flex max-w-2xl items-start gap-2 rounded-xl border border-[#dcd8ff] bg-[#f6f4ff] p-3 text-xs leading-5 text-[#555d73]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#5146e5]" /><span>Use teaching material only. Do not upload student names, numbers, grades, health information, or private submissions. This text is sent to the configured AI service to draft questions.</span></div>
+                      <p className="text-sm font-semibold text-[#101a38]">Draft activities with AI</p>
+                      <p className="mt-1 text-xs leading-5 text-[#697087]">Optional: turn lesson notes into editable question drafts.</p>
                     </div>
+                    <Plus className="h-5 w-5 shrink-0 text-[#5146e5] transition-transform duration-150 group-open:rotate-45" />
+                  </summary>
+                  <div className="border-t border-[#dcd8ff] p-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h3 className="seminar-display text-2xl text-[#101a38]">Draft questions from this class</h3>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#697087]">Paste a lesson outline, slides, reading excerpt, or upload a plain-text file. Every draft can be reviewed before you save.</p>
+                        <div className="mt-4 flex max-w-2xl items-start gap-2 rounded-xl border border-[#dcd8ff] bg-[#f6f4ff] p-3 text-xs leading-5 text-[#555d73]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#5146e5]" /><span>Use teaching material only. Do not upload student names, numbers, grades, health information, or private submissions. This text is sent to the configured AI service to draft questions.</span></div>
+                      </div>
                     <input
                       ref={lessonFileInputRef}
                       type="file"
@@ -538,7 +545,8 @@ function NewSessionContent() {
                       <Sparkles className="h-4 w-4" /> Draft activities
                     </Button>
                   </div>
-                </section>
+                  </div>
+                </details>
 
                 <div className="mt-2 divide-y divide-[#e3e5ed]">
                   {interactions.map((interaction, index) => {
