@@ -109,7 +109,7 @@ export default function SessionsPage() {
     const refreshSessions = async () => {
       try {
         // Check for inactive sessions and timeout if needed
-        await checkAndTimeoutInactiveSessions();
+        await checkAndTimeoutInactiveSessions(user.uid);
         
         // Then refresh the sessions list
         const sessionsData = await getSessionsByTeacher(user.uid);
@@ -208,12 +208,6 @@ export default function SessionsPage() {
         sections: session.sections,
       });
 
-      if (session.sessionType === 'standalone') {
-        const { createLiveSession } = await import('@/lib/firebase/realtime');
-        await createLiveSession(duplicateId, {
-          status: { active: false, currentSection: -1, releasedSections: [] },
-        });
-      }
       router.push(`/dashboard/sessions/${duplicateId}`);
     } catch (duplicateError) {
       console.error('Could not duplicate session:', duplicateError);

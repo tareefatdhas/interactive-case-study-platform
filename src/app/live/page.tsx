@@ -44,6 +44,7 @@ import {
   Smartphone,
   Square,
   ThumbsUp,
+  Timer,
   TimerReset,
   Users,
   X,
@@ -87,14 +88,18 @@ function InstructorInteractionStage({
   interaction,
   results,
   onReveal,
+  onAdvanceModule,
   onShareResponse,
 }: {
   interaction: LiveInteraction;
   results: InteractionResults;
   onReveal: () => void;
+  onAdvanceModule: () => void;
   onShareResponse: (responseId: string) => void;
 }) {
   const hasChoices = Boolean(interaction.options?.length);
+  const isPeerLearning = interaction.type === 'peer-learning';
+  const isClock = interaction.type === 'timer';
 
   return (
     <section className="live-interaction-stage" aria-live="polite">
@@ -108,10 +113,12 @@ function InstructorInteractionStage({
               ? 'Written responses stay on your screen until you choose one to share.'
               : 'The class distribution updates as responses arrive.'}</p>
         </div>
-        <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>responses</span></div>
+        {!isClock && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{interaction.type === 'group-work' ? 'groups' : 'responses'}</span></div>}
       </header>
 
-      {hasChoices ? (
+      {isClock ? (
+        <div className="written-response-review"><div className="written-response-summary"><Timer size={21} /><span><strong>The shared clock is running</strong><small>Students see this prompt and the same time remaining on their phones.</small></span></div></div>
+      ) : hasChoices ? (
         <div className="live-choice-results">
           {interaction.options?.map((option, index) => {
             const count = results.optionCounts[index] ?? 0;
@@ -126,12 +133,16 @@ function InstructorInteractionStage({
               </article>
             );
           })}
-          {interaction.resultVisibility === 'after-reveal' && !results.revealed && (
+          {isPeerLearning && !results.revealed ? (
+            <button className="reveal-result-button" type="button" onClick={onAdvanceModule} disabled={results.phase !== 'discuss' && !results.responseCount}>
+              <ArrowRight size={18} /> {results.phase === 'respond' ? 'Start partner discussion' : results.phase === 'discuss' ? 'Ask the question again' : 'Show the shift'}
+            </button>
+          ) : interaction.resultVisibility === 'after-reveal' && !results.revealed && (
             <button className="reveal-result-button" type="button" onClick={onReveal} disabled={!results.responseCount}>
               <CheckCircle2 size={18} /> {interaction.type === 'quiz' ? 'Reveal answer and explanation' : 'Reveal class result'}
             </button>
           )}
-          {interaction.type === 'quiz' && results.revealed && interaction.explanation && (
+          {(interaction.type === 'quiz' || interaction.type === 'peer-learning') && results.revealed && interaction.explanation && (
             <div className="quiz-explanation"><CheckCircle2 size={18} /><span><strong>Why this answer</strong>{interaction.explanation}</span></div>
           )}
         </div>
@@ -243,7 +254,7 @@ export default function LiveLessonPrototype() {
 
   const displayState = useMemo<LessonDisplayState>(() => {
     let publicInteraction = activeInteraction;
-    if (activeInteraction?.type === 'quiz' && !interactionResults?.revealed) {
+    if ((activeInteraction?.type === 'quiz' || activeInteraction?.type === 'peer-learning') && !interactionResults?.revealed) {
       const safeInteraction: LiveInteraction = { ...activeInteraction };
       delete safeInteraction.correctOptionIndex;
       delete safeInteraction.explanation;
@@ -389,7 +400,7 @@ export default function LiveLessonPrototype() {
       questionId?: number;
       voterId?: string;
       voted?: boolean;
-      command?: 'launch' | 'toggle-responses' | 'reveal' | 'finish';
+      command?: 'launch' | 'toggle-responses' | 'reveal' | 'advance-module' | 'finish';
       interactionId?: string;
     }>) => {
       if (event.data?.type === 'display-ready' || event.data?.type === 'display-heartbeat') {
@@ -455,6 +466,10 @@ export default function LiveLessonPrototype() {
             receivedResponseIdsRef.current.clear();
             setInteractionResults(createInteractionResults(interaction));
             setActiveNav(interaction.label);
+            if (interaction.type === 'timer' || interaction.type === 'group-work') {
+              const durationSeconds = (interaction.durationMinutes || 5) * 60;
+              setLiveTimer({ id: `timer-${Date.now()}`, label: interaction.type === 'group-work' ? 'Group work' : interaction.title, durationSeconds, endsAt: Date.now() + durationSeconds * 1000 });
+            }
           }
         }
         if (event.data.command === 'toggle-responses') {
@@ -462,6 +477,26 @@ export default function LiveLessonPrototype() {
         }
         if (event.data.command === 'reveal') {
           setInteractionResults((current) => current ? { ...current, open: false, revealed: true } : current);
+        }
+        if (event.data.command === 'advance-module') {
+          const interaction = activeInteractionRef.current;
+          if (interaction?.type === 'peer-learning') {
+            setInteractionResults((current) => {
+              if (!current) return current;
+              if (current.phase === 'respond') {
+                const durationSeconds = (interaction.discussionMinutes || 2) * 60;
+                setLiveTimer({ id: `peer-discussion-${Date.now()}`, label: 'Partner discussion', durationSeconds, endsAt: Date.now() + durationSeconds * 1000 });
+                return { ...current, open: false, phase: 'discuss', firstResponseCount: current.responseCount, firstOptionCounts: current.optionCounts };
+              }
+              if (current.phase === 'discuss') {
+                receivedResponseIdsRef.current.clear();
+                setLiveTimer(null);
+                return { ...current, runId: `${interaction.id}-${Date.now()}-again`, open: true, responseCount: 0, optionCounts: interaction.options?.map(() => 0) || [], writtenResponses: [], phase: 'respond-again' };
+              }
+              setLiveTimer(null);
+              return { ...current, open: false, revealed: true, phase: 'complete' };
+            });
+          }
         }
         if (event.data.command === 'finish') {
           setActiveInteraction(null);
@@ -690,6 +725,15 @@ export default function LiveLessonPrototype() {
     setActiveInteraction(interaction);
     receivedResponseIdsRef.current.clear();
     setInteractionResults(createInteractionResults(interaction));
+    if (interaction.type === 'timer' || interaction.type === 'group-work') {
+      const durationSeconds = (interaction.durationMinutes || 5) * 60;
+      setLiveTimer({
+        id: `timer-${Date.now()}`,
+        label: interaction.type === 'group-work' ? 'Group work' : interaction.title,
+        durationSeconds,
+        endsAt: Date.now() + durationSeconds * 1000,
+      });
+    }
     setActiveNav(interaction.label);
     if (!displayConnected) openClassroomDisplay();
     setToast(`${interaction.title} is ready on the classroom display`);
@@ -697,6 +741,7 @@ export default function LiveLessonPrototype() {
   };
 
   const returnToSlides = () => {
+    if (activeInteraction?.type === 'timer' || activeInteraction?.type === 'group-work' || activeInteraction?.type === 'peer-learning') setLiveTimer(null);
     setActiveInteraction(null);
     setInteractionResults(null);
     setToast('Interaction closed. Return to your presentation when ready.');
@@ -705,6 +750,25 @@ export default function LiveLessonPrototype() {
   const revealInteractionResults = () => {
     setInteractionResults((current) => current ? { ...current, open: false, revealed: true } : current);
     setToast('The class result is now visible on the projector');
+  };
+
+  const advanceModule = () => {
+    if (activeInteraction?.type !== 'peer-learning') return;
+    setInteractionResults((current) => {
+      if (!current) return current;
+      if (current.phase === 'respond') {
+        const durationSeconds = (activeInteraction.discussionMinutes || 2) * 60;
+        setLiveTimer({ id: `peer-discussion-${Date.now()}`, label: 'Partner discussion', durationSeconds, endsAt: Date.now() + durationSeconds * 1000 });
+        return { ...current, open: false, phase: 'discuss', firstResponseCount: current.responseCount, firstOptionCounts: current.optionCounts };
+      }
+      if (current.phase === 'discuss') {
+        receivedResponseIdsRef.current.clear();
+        setLiveTimer(null);
+        return { ...current, runId: `${activeInteraction.id}-${Date.now()}-again`, open: true, responseCount: 0, optionCounts: activeInteraction.options?.map(() => 0) || [], writtenResponses: [], phase: 'respond-again' };
+      }
+      setLiveTimer(null);
+      return { ...current, open: false, revealed: true, phase: 'complete' };
+    });
   };
 
   const toggleInteractionResponses = () => {
@@ -947,6 +1011,7 @@ export default function LiveLessonPrototype() {
             interaction={activeInteraction}
             results={interactionResults}
             onReveal={revealInteractionResults}
+            onAdvanceModule={advanceModule}
             onShareResponse={shareWrittenResponse}
           />
         ) : (
@@ -1347,6 +1412,7 @@ export default function LiveLessonPrototype() {
           onLaunch={launchInteraction}
           onToggleResponses={toggleInteractionResponses}
           onReveal={revealInteractionResults}
+          onAdvanceModule={advanceModule}
           onFinish={returnToSlides}
           onOpenDisplay={openClassroomDisplay}
           onOpenConsole={() => window.focus()}

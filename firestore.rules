@@ -58,10 +58,11 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentsJoined', 'lastActivityAt'])
         && request.resource.data.studentsJoined is list
         && (
-          (!resource.data.keys().hasAny(['studentsJoined']) && request.resource.data.studentsJoined.size() == 1)
+          (!resource.data.keys().hasAny(['studentsJoined']) && request.resource.data.studentsJoined.size() <= 1)
           || (
             resource.data.keys().hasAny(['studentsJoined'])
-            && request.resource.data.studentsJoined.size() == resource.data.studentsJoined.size() + 1
+            && request.resource.data.studentsJoined.size() >= resource.data.studentsJoined.size()
+            && request.resource.data.studentsJoined.size() <= resource.data.studentsJoined.size() + 1
             && request.resource.data.studentsJoined.hasAll(resource.data.studentsJoined)
           )
         )

@@ -1473,3 +1473,14 @@ body:has(.student-welcome-shell) {
     transition-duration: 0.01ms !important;
   }
 }
+
+.student-peer-moment { background: linear-gradient(180deg, #f7f5ff, #fff); }
+.student-peer-cues { display: grid; gap: 8px; margin-top: 18px; }
+.student-peer-cues span { padding: 11px 13px; border: 1px solid #dedaff; border-radius: 12px; color: #453bc4; background: white; font-size: 12px; font-weight: 750; }
+.student-peer-cues i { width: 1px; height: 9px; margin: -4px auto; background: #c9c5ef; }
+
+.student-clock-module { animation: student-step-in 300ms ease both; }
+.student-clock-module > h1 { margin-top: 14px; }
+.student-clock-module > p { margin-top: 10px; color: var(--student-muted); line-height: 1.6; }
+.student-clock-module .student-timer-banner { margin-top: 26px; }
+.student-clock-note { display: flex; align-items: center; gap: 9px; margin-top: 18px; padding: 12px 13px; border-radius: 12px; color: #596177; background: #f6f5fa; font-size: 11px; line-height: 1.5; }

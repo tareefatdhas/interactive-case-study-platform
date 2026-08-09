@@ -16,13 +16,11 @@ import {
   ArrowUp,
   BarChart3,
   BookOpen,
-  CalendarDays,
   Check,
   CircleHelp,
   Clock3,
   FileText,
   HeartPulse,
-  Laptop,
   ListChecks,
   LoaderCircle,
   MessageCircle,
@@ -30,8 +28,10 @@ import {
   Save,
   ShieldCheck,
   Sparkles,
+  Repeat2,
   Trash2,
   Upload,
+  UsersRound,
   X,
 } from 'lucide-react';
 
@@ -45,6 +45,9 @@ const interactionOptions: Array<{
   { type: 'poll', label: 'Opinion poll', description: 'Open a discussion with the room’s starting view.', icon: BarChart3 },
   { type: 'quiz', label: 'Knowledge check', description: 'Reveal a misconception while there is time to reteach it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', description: 'Gather questions or a brief reflection for review.', icon: MessageCircle },
+  { type: 'peer-learning', label: 'Peer learning', description: 'Let students answer, discuss, then answer again.', icon: Repeat2 },
+  { type: 'group-work', label: 'Group work', description: 'Give small groups a shared task, clock, and submission.', icon: UsersRound },
+  { type: 'timer', label: 'Clock', description: 'Put focused thinking or working time into the session flow.', icon: Clock3 },
   { type: 'case-study', label: 'Case material', description: 'Open a prepared decision or reading.', icon: BookOpen },
 ];
 
@@ -76,6 +79,9 @@ const defaultPrompt: Record<SessionInteractionType, string> = {
   poll: 'Which option best matches your view?',
   quiz: 'Choose the best answer.',
   'open-response': 'What question is still unresolved?',
+  'peer-learning': 'Choose the best answer. You will discuss it with a partner, then answer again.',
+  'group-work': 'Work together on this prompt. Choose one note-taker to submit for your group.',
+  timer: 'Use this time to think, write, or complete the task on screen.',
   reflection: 'What will you take from this discussion?',
   'case-study': 'Open the case and review the first decision point.',
 };
@@ -191,16 +197,18 @@ function NewSessionContent() {
         title: caseStudy?.title || option?.label || 'Class activity',
         prompt: defaultPrompt[type],
         plannedTime: 'During class',
-        durationMinutes: type === 'case-study' ? 15 : 3,
+        durationMinutes: type === 'case-study' ? 15 : type === 'group-work' ? 8 : type === 'timer' ? 5 : 3,
+        discussionMinutes: type === 'peer-learning' ? 2 : undefined,
+        groupSize: type === 'group-work' ? 4 : undefined,
         caseStudyId: caseStudy?.id,
         options: type === 'pulse'
           ? ['Very low', 'Low', 'Steady', 'High', 'Very high']
-          : type === 'poll' || type === 'quiz'
+          : type === 'poll' || type === 'quiz' || type === 'peer-learning'
             ? ['Option 1', 'Option 2', 'Option 3', 'Option 4']
             : undefined,
-        correctOptionIndex: type === 'quiz' ? 0 : undefined,
-        explanation: type === 'quiz' ? 'Explain why this answer is correct.' : undefined,
-        resultVisibility: type === 'quiz' ? 'after-reveal' : type === 'open-response' ? 'instructor-only' : 'live',
+        correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
+        explanation: type === 'quiz' || type === 'peer-learning' ? 'Explain why this answer is correct.' : undefined,
+        resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live',
       },
     ]);
     setAddMenuOpen(false);
@@ -360,7 +368,6 @@ function NewSessionContent() {
         courseId: selectedCourse?.id,
         courseCode: courseCode.trim(),
         courseName: courseName.trim(),
-        scheduledFor: scheduledFor || undefined,
         presentationMode: 'external',
         interactions,
         teacherId: user.uid,
@@ -369,11 +376,6 @@ function NewSessionContent() {
         releasedSections: [],
         currentReleasedSection: -1,
         sections: [],
-      });
-
-      const { createLiveSession } = await import('@/lib/firebase/realtime');
-      await createLiveSession(sessionId, {
-        status: { active: false, currentSection: -1, releasedSections: [] },
       });
 
       router.push(`/dashboard/sessions/${sessionId}`);
@@ -404,32 +406,33 @@ function NewSessionContent() {
             <ArrowLeft className="h-4 w-4" /> {selectedCourse ? `Back to ${selectedCourse.code}` : 'Back to sessions'}
           </button>
 
-          <div className="mb-9 max-w-3xl">
-            <p className="seminar-eyebrow mb-3">Presentation companion</p>
-            <h1 className="seminar-display text-4xl leading-tight text-[#101a38] sm:text-5xl">{editingSessionId ? 'Refine the moments between your slides.' : 'Prepare the moments between your slides.'}</h1>
-            <p className="mt-4 max-w-2xl text-lg leading-8 text-[#697087]">Keep your presentation in PowerPoint, Keynote, or Google Slides. Plan the activities here, then bring each one onto the projector when the class needs it.</p>
+          <div className="mb-8 max-w-3xl">
+            <p className="seminar-eyebrow mb-3">Session plan</p>
+            <h1 className="seminar-display text-4xl leading-tight text-[#101a38] sm:text-5xl">{editingSessionId ? 'Refine this session.' : 'Plan the moments between your slides.'}</h1>
+            <p className="mt-4 max-w-2xl text-lg leading-8 text-[#697087]">Name the session, then add only the activities you expect to use.</p>
           </div>
-
-          <section className="mb-8 flex items-start gap-4 rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-5 sm:items-center" aria-label="How companion mode works">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#5146e5]"><Laptop className="h-5 w-5" /></span>
-            <div className="flex-1"><p className="font-semibold text-[#101a38]">Your presentation stays where it is.</p><p className="mt-1 text-sm leading-6 text-[#697087]">Open the classroom display once. Launch a prepared activity when you need it, discuss the result, then switch back to your slides.</p></div>
-            <span className="hidden rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5] sm:inline">Companion mode</span>
-          </section>
 
           <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-8">
               <section className="rounded-2xl border border-[#e3e5ed] bg-white p-6 sm:p-7" aria-labelledby="class-details-title">
                 <div className="mb-6 flex items-center gap-3">
-                  <CalendarDays className="h-5 w-5 text-[#5146e5]" />
-                  <h2 id="class-details-title" className="seminar-display text-2xl text-[#101a38]">Class and session</h2>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0efff] text-[#5146e5]"><ListChecks className="h-5 w-5" /></span>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#697087]">{selectedCourse ? 'Planning for' : 'Session details'}</p>
+                    <h2 id="class-details-title" className="mt-0.5 text-base font-semibold text-[#101a38]">{selectedCourse ? `${selectedCourse.code} · ${selectedCourse.name}` : 'Name the class and session'}</h2>
+                  </div>
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <Input label="Class code" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="ECON 302" disabled={Boolean(selectedCourse)} />
-                  <Input label="Class name" value={courseName} onChange={(event) => setCourseName(event.target.value)} placeholder="Intermediate Microeconomics" disabled={Boolean(selectedCourse)} />
+                  {!selectedCourse && (
+                    <>
+                      <Input label="Class code" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="ECON 302" />
+                      <Input label="Class name" value={courseName} onChange={(event) => setCourseName(event.target.value)} placeholder="Intermediate Microeconomics" />
+                    </>
+                  )}
                   <div className="sm:col-span-2">
-                    <Input label="Session title" value={sessionTitle} onChange={(event) => setSessionTitle(event.target.value)} placeholder="Week 6 · Platform strategy" />
+                    <Input label="Session title" value={sessionTitle} onChange={(event) => setSessionTitle(event.target.value)} placeholder="Session 6 · Platform strategy" />
+                    <p className="mt-2 text-xs leading-5 text-[#697087]">Use the name students will recognize when you review this class later.</p>
                   </div>
-                  <Input label="Date and time" type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} />
                 </div>
               </section>
 
@@ -551,13 +554,13 @@ function NewSessionContent() {
                           {interaction.options && (
                             <div className="rounded-xl border border-[#e3e5ed] bg-[#faf9fc] p-3.5">
                               <div className="mb-3 flex items-center justify-between gap-3">
-                                <p className="text-xs font-semibold text-[#4f576d]">{interaction.type === 'quiz' ? 'Answer choices and correct answer' : 'Response choices'}</p>
+                                <p className="text-xs font-semibold text-[#4f576d]">{interaction.type === 'quiz' || interaction.type === 'peer-learning' ? 'Answer choices and correct answer' : 'Response choices'}</p>
                                 {interaction.options.length < 6 && <button type="button" onClick={() => addOption(interaction.id)} className="seminar-focus text-xs font-bold text-[#5146e5]"><Plus className="mr-1 inline h-3.5 w-3.5" />Add choice</button>}
                               </div>
                               <div className="space-y-2">
                                 {interaction.options.map((choice, optionIndex) => (
                                   <div className="flex items-center gap-2" key={`${interaction.id}-${optionIndex}`}>
-                                    {interaction.type === 'quiz' ? (
+                                    {interaction.type === 'quiz' || interaction.type === 'peer-learning' ? (
                                       <input
                                         type="radio"
                                         name={`correct-${interaction.id}`}
@@ -577,13 +580,17 @@ function NewSessionContent() {
                                   </div>
                                 ))}
                               </div>
-                              {interaction.type === 'quiz' && <p className="mt-2 pl-6 text-[11px] text-[#697087]">Select the circle beside the correct answer.</p>}
+                              {(interaction.type === 'quiz' || interaction.type === 'peer-learning') && <p className="mt-2 pl-6 text-[11px] text-[#697087]">Select the circle beside the correct answer.</p>}
                             </div>
                           )}
-                          {interaction.type === 'quiz' && (
+                          {(interaction.type === 'quiz' || interaction.type === 'peer-learning') && (
                             <textarea aria-label="Answer explanation" value={interaction.explanation || ''} onChange={(event) => updateInteraction(interaction.id, { explanation: event.target.value })} rows={2} placeholder="Explain the answer after students respond" className="w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
                           )}
+                          {interaction.type === 'peer-learning' && <label className="flex items-center gap-3 rounded-xl bg-[#f7f6ff] px-3.5 py-3 text-xs font-semibold text-[#4f576d]"><Repeat2 className="h-4 w-4 text-[#5146e5]" /> Partner discussion <input aria-label="Partner discussion minutes" type="number" min={1} max={10} value={interaction.discussionMinutes || 2} onChange={(event) => updateInteraction(interaction.id, { discussionMinutes: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5 text-[#313950]" /> min</label>}
+                          {interaction.type === 'group-work' && <label className="flex items-center gap-3 rounded-xl bg-[#fff7f2] px-3.5 py-3 text-xs font-semibold text-[#4f576d]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested group size <input aria-label="Suggested group size" type="number" min={2} max={10} value={interaction.groupSize || 4} onChange={(event) => updateInteraction(interaction.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5 text-[#313950]" /> students</label>}
+                          {interaction.type === 'timer' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">The clock starts when you launch this activity. Students see the prompt and the same countdown on their phones.</p>}
                           {interaction.type === 'open-response' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Written responses stay on the instructor screen. You choose what appears on the projector.</p>}
+                          {interaction.type === 'group-work' && <p className="rounded-lg bg-[#fff7f2] px-3 py-2 text-xs leading-5 text-[#6a554e]">Ask each group to choose one note-taker. The projector shows the number of group submissions, not individual names.</p>}
                         </div>
                         <div className="grid gap-3">
                           <Input aria-label="Planned moment" value={interaction.plannedTime || ''} onChange={(event) => updateInteraction(interaction.id, { plannedTime: event.target.value })} />
@@ -612,7 +619,6 @@ function NewSessionContent() {
                 <div className="mt-6 space-y-3 border-y border-[#dcd8ff] py-5 text-sm">
                   <div className="flex items-center justify-between"><span className="text-[#697087]">Activities</span><strong className="text-[#101a38]">{interactions.length}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-[#697087]">Activity time</span><strong className="text-[#101a38]">About {estimatedMinutes} min</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-[#697087]">Presentation</span><strong className="text-[#101a38]">Stays separate</strong></div>
                 </div>
                 <div className="mt-5 flex gap-3 text-sm leading-6 text-[#4f576d]"><Check className="mt-1 h-4 w-4 shrink-0 text-[#3aa45a]" /><span>You can add an unplanned question during class without changing this plan.</span></div>
               </section>
@@ -620,7 +626,7 @@ function NewSessionContent() {
               {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700" role="alert">{error}</div>}
 
               <Button type="button" onClick={handleSaveSession} loading={creating} disabled={!courseCode.trim() || !sessionTitle.trim()} size="lg" className="w-full gap-2">
-                <Save className="h-4 w-4" /> {editingSessionId ? 'Save changes' : 'Save session flow'}
+                <Save className="h-4 w-4" /> {editingSessionId ? 'Save changes' : 'Save session'}
               </Button>
               <Button type="button" variant="ghost" onClick={() => router.back()} className="w-full">Cancel</Button>
             </aside>

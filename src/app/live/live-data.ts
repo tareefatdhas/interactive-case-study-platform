@@ -9,13 +9,16 @@ export type OnboardingStep = 0 | 1 | 2 | 3 | 4;
 
 export type LiveInteraction = {
   id: string;
-  type: 'pulse' | 'poll' | 'quiz' | 'open-response';
+  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'peer-learning' | 'group-work' | 'timer';
   label: string;
   title: string;
   prompt: string;
   options?: string[];
   correctOptionIndex?: number;
   explanation?: string;
+  durationMinutes?: number;
+  discussionMinutes?: number;
+  groupSize?: number;
   resultVisibility?: 'live' | 'after-reveal' | 'instructor-only';
   plannedTime?: string;
 };
@@ -36,6 +39,9 @@ export type InteractionResults = {
   writtenResponses: Array<{ id: string; text: string }>;
   revealed: boolean;
   sharedResponseId: string | null;
+  phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
+  firstResponseCount?: number;
+  firstOptionCounts?: number[];
 };
 
 export type LiveQuestion = {
@@ -132,6 +138,39 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
     resultVisibility: 'instructor-only',
     plannedTime: 'Before the case',
   },
+  {
+    id: 'peer-explain',
+    type: 'peer-learning',
+    label: 'Peer learning',
+    title: 'Think, pair, answer again',
+    prompt: 'Which condition makes a network most fragile?',
+    options: ['Low switching costs', 'One critical provider', 'Rapid user growth', 'Broad interoperability'],
+    correctOptionIndex: 1,
+    discussionMinutes: 2,
+    resultVisibility: 'after-reveal',
+    plannedTime: 'After the concept check',
+  },
+  {
+    id: 'group-application',
+    type: 'group-work',
+    label: 'Group work',
+    title: 'Apply the idea',
+    prompt: 'In groups of four, choose a platform and identify its most fragile dependency.',
+    groupSize: 4,
+    durationMinutes: 8,
+    resultVisibility: 'instructor-only',
+    plannedTime: 'Application',
+  },
+  {
+    id: 'quiet-work',
+    type: 'timer',
+    label: 'Clock',
+    title: 'Quiet thinking time',
+    prompt: 'Write down one example you would be ready to explain.',
+    durationMinutes: 3,
+    resultVisibility: 'live',
+    plannedTime: 'Before discussion',
+  },
 ];
 
 export const LESSON_CHANNEL = 'living-seminar-live-lesson';
@@ -221,12 +260,13 @@ export function percent(value: number, counts: Counts) {
 export function createInteractionResults(interaction: LiveInteraction): InteractionResults {
   return {
     runId: `${interaction.id}-${Date.now()}`,
-    open: true,
+    open: interaction.type !== 'timer',
     responseCount: 0,
     optionCounts: interaction.options?.map(() => 0) ?? [],
     writtenResponses: [],
     revealed: interaction.resultVisibility === 'live',
     sharedResponseId: null,
+    phase: interaction.type === 'group-work' ? 'work' : 'respond',
   };
 }
 
@@ -240,7 +280,13 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
         ? 'Poll'
         : type === 'quiz'
           ? 'Quiz'
-          : 'Short response';
+          : type === 'peer-learning'
+            ? 'Peer learning'
+            : type === 'group-work'
+              ? 'Group work'
+              : type === 'timer'
+                ? 'Clock'
+                : 'Short response';
 
     return [{
       id: interaction.id,
@@ -251,8 +297,11 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       options: interaction.options,
       correctOptionIndex: interaction.correctOptionIndex,
       explanation: interaction.explanation,
+      durationMinutes: interaction.durationMinutes,
+      discussionMinutes: interaction.discussionMinutes,
+      groupSize: interaction.groupSize,
       resultVisibility: interaction.resultVisibility
-        || (type === 'quiz' ? 'after-reveal' : type === 'open-response' ? 'instructor-only' : 'live'),
+        || (type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live'),
       plannedTime: interaction.plannedTime || 'During class',
     } satisfies LiveInteraction];
   });

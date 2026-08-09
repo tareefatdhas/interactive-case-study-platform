@@ -166,6 +166,7 @@ function StudentPostSubmit({
   optionCounts,
   rewardState,
   latestReward,
+  phase,
 }: {
   interaction: LiveInteraction;
   answer: string;
@@ -182,6 +183,7 @@ function StudentPostSubmit({
   optionCounts: number[];
   rewardState: StudentRewardState;
   latestReward: RewardLedgerEntry | null;
+  phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
 }) {
   const showQuestionCommons = questions.length > 0
     && (interaction.type === 'quiz' || interaction.type === 'open-response');
@@ -208,11 +210,18 @@ function StudentPostSubmit({
         <p>Your response is saved. You can look up while the rest of the room answers.</p>
       </details>
 
-      {revealed && interaction.type === 'quiz' && (
+      {revealed && (interaction.type === 'quiz' || interaction.type === 'peer-learning') && (
         <div className="student-answer-reveal"><Check size={17} /><span><strong>The answer is out.</strong> {interaction.explanation || 'Look up for the class explanation.'}</span></div>
       )}
 
-      {showQuestionCommons ? (
+      {interaction.type === 'peer-learning' ? (
+        <section className="student-waiting-activity student-peer-moment" aria-labelledby="peer-moment-title">
+          <div className="student-kicker">Peer learning · Step {revealed ? '3' : phase === 'discuss' ? '2' : phase === 'respond-again' ? '3' : '1'} of 3</div>
+          <h2 id="peer-moment-title">{revealed ? 'See what changed in the room.' : phase === 'discuss' ? 'Turn to someone nearby.' : phase === 'respond-again' ? 'Your second answer is in.' : 'Keep your first thought in mind.'}</h2>
+          <p>{revealed ? 'Look up for the before and after result.' : phase === 'discuss' ? 'Take turns explaining what led you to your answer. Listen for one reason that could change your mind.' : phase === 'respond-again' ? 'The room is answering again. It is fine to keep an idea or change it.' : 'The room is still answering. A short partner conversation comes next.'}</p>
+          <div className="student-peer-cues"><span>Explain your reason</span><i /><span>Listen for evidence</span><i /><span>Answer again</span></div>
+        </section>
+      ) : showQuestionCommons ? (
         <section className="student-waiting-activity" aria-labelledby="question-commons-title">
           <div className="student-kicker">Questions from the room</div>
           <h2 id="question-commons-title">While the room responds.</h2>
@@ -747,7 +756,7 @@ export default function StudentWelcomePage() {
       }
       setInteractionSubmitted(true);
       completeTransport(transportId);
-      const participationPoints = interaction.type === 'open-response' ? 3 : interaction.type === 'pulse' ? 1 : 2;
+      const participationPoints = interaction.type === 'group-work' ? 5 : interaction.type === 'open-response' ? 3 : interaction.type === 'pulse' ? 1 : 2;
       window.setTimeout(() => {
         awardReward(`${results.runId}:response`, 'seminar', participationPoints, `${interaction.label} response`);
       }, 720);
@@ -781,8 +790,8 @@ export default function StudentWelcomePage() {
     const results = lessonState.interactionResults;
     if (!interactionSubmitted || !interaction || !results?.revealed) return;
 
-    if (interaction.type === 'quiz' && selectedOption === interaction.correctOptionIndex) {
-      awardReward(`${results.runId}:correct`, 'score', 8, 'Correct quiz answer');
+    if ((interaction.type === 'quiz' || interaction.type === 'peer-learning') && selectedOption === interaction.correctOptionIndex) {
+      awardReward(`${results.runId}:correct`, 'score', interaction.type === 'peer-learning' ? 6 : 8, interaction.type === 'peer-learning' ? 'Strong second answer' : 'Correct quiz answer');
     }
 
     if (interaction.type === 'poll' && prediction !== null && results.optionCounts.length) {
@@ -870,7 +879,7 @@ export default function StudentWelcomePage() {
       </header>
 
       <section className="student-welcome-content" ref={contentRef}>
-        {!remoteUnavailable && lessonState.timer && <StudentTimerBanner timer={lessonState.timer} />}
+        {!remoteUnavailable && lessonState.timer && lessonState.activeInteraction?.type !== 'timer' && <StudentTimerBanner timer={lessonState.timer} />}
         {remoteUnavailable && (
           <div className="student-ready-state" role="status">
             <span className="student-round-icon is-success"><Check size={30} /></span>
@@ -912,13 +921,23 @@ export default function StudentWelcomePage() {
                 optionCounts={lessonState.interactionResults.optionCounts}
                 rewardState={rewardState}
                 latestReward={latestReward}
+                phase={lessonState.interactionResults.phase}
               />
+            ) : lessonState.activeInteraction.type === 'timer' ? (
+              <div className="student-clock-module" role="timer">
+                <span className="student-round-icon"><Timer size={27} /></span>
+                <div className="student-kicker">Clock · Live now</div>
+                <h1>{lessonState.activeInteraction.prompt}</h1>
+                <p>This time is yours. The classroom screen and every phone are counting down together.</p>
+                {lessonState.timer && <StudentTimerBanner timer={lessonState.timer} />}
+                <div className="student-clock-note"><Lock size={16} /><span>No response is needed. Look up when the clock ends.</span></div>
+              </div>
             ) : (
               <>
                 <span className="student-round-icon"><ListChecks size={27} /></span>
-                <div className="student-kicker">{lessonState.activeInteraction.label} · Live now</div>
+                <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
                 <h1>{lessonState.activeInteraction.prompt}</h1>
-                <p>{lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
+                <p>{lessonState.activeInteraction.type === 'group-work' ? `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
 
                 {lessonState.activeInteraction.options?.length ? (
                   <div className="student-interaction-options" role="radiogroup" aria-label={lessonState.activeInteraction.prompt}>
@@ -949,7 +968,7 @@ export default function StudentWelcomePage() {
                     ))}
                   </div>
                 ) : (
-                  <textarea value={writtenResponse} onChange={(event) => setWrittenResponse(event.target.value.slice(0, 280))} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder="Type your response here" aria-label="Your response" />
+                  <textarea value={writtenResponse} onChange={(event) => setWrittenResponse(event.target.value.slice(0, 280))} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? 'Your group response' : 'Your response'} />
                 )}
 
                 {!lessonState.interactionResults.open ? (
@@ -962,7 +981,7 @@ export default function StudentWelcomePage() {
                     disabled={isSubmitting || (lessonState.activeInteraction.options?.length ? selectedOption === null : !writtenResponse.trim())}
                     onClick={(event) => submitInteraction(event.currentTarget)}
                   >
-                    <span>{isSubmitting ? 'Sending response' : 'Send response'}</span><Send size={17} />
+                    <span>{isSubmitting ? 'Sending response' : lessonState.activeInteraction.type === 'group-work' ? 'Send group response' : 'Send response'}</span><Send size={17} />
                   </HapticButton>
                 )}
                 <div className="student-private-line"><ShieldCheck size={16} /> The projector shows the class result, not your name.</div>

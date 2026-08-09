@@ -93,6 +93,84 @@ test('a quick timer reaches the instructor, projector, and student views', async
   await context.close();
 });
 
+test('peer learning moves from first answer through discussion to a second answer', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const remotePage = await context.newPage();
+  const displayPage = await context.newPage();
+  const studentPage = await context.newPage();
+
+  await consolePage.goto('/live');
+  await remotePage.goto('/live/remote');
+  await displayPage.goto('/live/display');
+  await studentPage.goto('/live/student');
+
+  await remotePage.getByRole('button', { name: /Think, pair, answer again/ }).click();
+  await studentPage.getByRole('radio', { name: /One critical provider/ }).click();
+  await studentPage.getByRole('button', { name: 'Send response' }).click();
+  await expect(remotePage.getByRole('button', { name: 'Start partner discussion' })).toBeEnabled();
+
+  await remotePage.getByRole('button', { name: 'Start partner discussion' }).click();
+  await expect(studentPage.getByRole('heading', { name: 'Turn to someone nearby.' })).toBeVisible();
+  await expect(displayPage.getByText('What led you to your answer?')).toBeVisible();
+
+  await remotePage.getByRole('button', { name: 'Ask again' }).click();
+  await expect(studentPage.getByText('Choose again. It is fine to keep your answer or change it.')).toBeVisible();
+  await studentPage.getByRole('radio', { name: /One critical provider/ }).click();
+  await studentPage.getByRole('button', { name: 'Send response' }).click();
+  await expect(remotePage.getByRole('button', { name: 'Show the shift' })).toBeEnabled();
+  await remotePage.getByRole('button', { name: 'Show the shift' }).click();
+  await expect(displayPage.getByText(/Before 100% · After 100%/)).toBeVisible();
+
+  await context.close();
+});
+
+test('group work collects one group submission beside a shared clock', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const remotePage = await context.newPage();
+  const displayPage = await context.newPage();
+  const studentPage = await context.newPage();
+
+  await consolePage.goto('/live');
+  await remotePage.goto('/live/remote');
+  await displayPage.goto('/live/display');
+  await studentPage.goto('/live/student');
+
+  await remotePage.getByRole('button', { name: /Apply the idea/ }).click();
+  await expect(studentPage.getByRole('timer', { name: /Group work/ })).toBeVisible();
+  await studentPage.getByRole('textbox', { name: 'Your group response' }).fill('The platform depends on one payment provider.');
+  await studentPage.getByRole('button', { name: 'Send group response' }).click();
+
+  await expect(remotePage.getByText('group submissions')).toBeVisible();
+  await expect(consolePage.getByText('The platform depends on one payment provider.')).toBeVisible();
+  await expect(displayPage.getByRole('complementary', { name: /Group work/ })).toBeVisible();
+
+  await context.close();
+});
+
+test('a planned clock gives projector and phone the same focused prompt', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const remotePage = await context.newPage();
+  const displayPage = await context.newPage();
+  const studentPage = await context.newPage();
+
+  await consolePage.goto('/live');
+  await remotePage.goto('/live/remote');
+  await displayPage.goto('/live/display');
+  await studentPage.goto('/live/student');
+
+  await remotePage.getByRole('button', { name: /Quiet thinking time/ }).click();
+  await expect(remotePage.getByText('Shared clock')).toBeVisible();
+  await expect(studentPage.getByRole('heading', { name: 'Write down one example you would be ready to explain.' })).toBeVisible();
+  await expect(studentPage.getByText('No response is needed.')).toBeVisible();
+  await expect(displayPage.getByRole('heading', { name: 'Write down one example you would be ready to explain.' })).toBeVisible();
+  await expect(displayPage.getByText('Make this time count.')).toBeVisible();
+
+  await context.close();
+});
+
 test('AI classroom endpoints reject unauthenticated requests', async ({ request }) => {
   for (const path of [
     '/api/generate-session-interactions',

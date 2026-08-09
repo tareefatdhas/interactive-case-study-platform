@@ -42,7 +42,16 @@ export interface CaseStudy {
 
 export type SessionType = 'case-study' | 'standalone';
 
-export type SessionInteractionType = 'pulse' | 'poll' | 'quiz' | 'open-response' | 'reflection' | 'case-study';
+export type SessionInteractionType =
+  | 'pulse'
+  | 'poll'
+  | 'quiz'
+  | 'open-response'
+  | 'peer-learning'
+  | 'group-work'
+  | 'timer'
+  | 'reflection'
+  | 'case-study';
 
 export interface SessionInteraction {
   id: string;
@@ -55,6 +64,8 @@ export interface SessionInteraction {
   options?: string[];
   correctOptionIndex?: number;
   explanation?: string;
+  discussionMinutes?: number;
+  groupSize?: number;
   resultVisibility?: 'live' | 'after-reveal' | 'instructor-only';
 }
 
@@ -211,6 +222,7 @@ export interface Highlight {
   endOffset: number;
   color: string;
   note?: string;
+  shared?: boolean;
   createdAt: Timestamp;
 }
 

@@ -18,6 +18,7 @@ import {
   UserCheck,
   GraduationCap,
   Gift,
+  Blocks,
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -32,6 +33,7 @@ const primaryNavigation = [
 ];
 
 const teachingTools = [
+  { name: 'Teaching modules', href: '/dashboard/modules', icon: Blocks },
   { name: 'Case studies', href: '/dashboard/case-studies', icon: BookOpen },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
 ];

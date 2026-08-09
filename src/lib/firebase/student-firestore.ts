@@ -8,9 +8,10 @@ import {
   setDoc,
   query,
   where,
-  orderBy,
   onSnapshot,
   Timestamp,
+  arrayUnion,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { ensureStudentAnonymousAuth, studentDb, studentAuth } from './student-config';
 import type {
@@ -41,9 +42,11 @@ export const COLLECTIONS = {
 // Student-specific functions using the student database instance
 
 export const getSessionByCodeStudent = async (sessionCode: string): Promise<Session | null> => {
+  await ensureStudentAnonymousAuth();
   const q = query(
     collection(studentDb, COLLECTIONS.SESSIONS),
-    where('sessionCode', '==', sessionCode)
+    where('sessionCode', '==', sessionCode),
+    where('sessionType', '==', 'case-study')
   );
   const querySnapshot = await getDocs(q);
   
@@ -117,27 +120,13 @@ export const createStudentStudent = async (student: Omit<Student, 'id' | 'create
 
 export const joinSessionStudent = async (sessionId: string, studentId: string) => {
   console.log('STUDENT JOIN: Student', studentId, 'joining session', sessionId);
-  
-  // Update the session document to add student to studentsJoined array
+
   const sessionRef = doc(studentDb, COLLECTIONS.SESSIONS, sessionId);
-  const sessionDoc = await getDoc(sessionRef);
-  
-  if (!sessionDoc.exists()) {
-    throw new Error('Session not found');
-  }
-  
-  const sessionData = sessionDoc.data() as Session;
-  const studentsJoined = sessionData.studentsJoined || [];
-  
-  if (!studentsJoined.includes(studentId)) {
-    await updateDoc(sessionRef, {
-      studentsJoined: [...studentsJoined, studentId],
-      lastActivityAt: new Date()
-    });
-    console.log('STUDENT JOIN: Added to studentsJoined array');
-  } else {
-    console.log('STUDENT JOIN: Already in studentsJoined array');
-  }
+  await updateDoc(sessionRef, {
+    studentsJoined: arrayUnion(studentId),
+    lastActivityAt: serverTimestamp(),
+  });
+  console.log('STUDENT JOIN: Attendance recorded');
 };
 
 export const getResponsesByStudentStudent = async (studentId: string, sessionId: string): Promise<Response[]> => {
@@ -188,9 +177,12 @@ export const subscribeToSessionStudent = (sessionId: string, callback: (session:
 
 // Highlights functions
 export const createHighlightStudent = async (highlight: Omit<Highlight, 'id' | 'createdAt'>) => {
+  const user = await ensureStudentAnonymousAuth();
   const now = Timestamp.now();
   const docRef = await addDoc(collection(studentDb, COLLECTIONS.HIGHLIGHTS), {
     ...highlight,
+    authorUid: user.uid,
+    shared: highlight.shared ?? false,
     createdAt: now
   });
   
@@ -230,10 +222,12 @@ export const createHighlightStudent = async (highlight: Omit<Highlight, 'id' | '
 };
 
 export const getHighlightsByStudentStudent = async (studentId: string, sessionId: string): Promise<Highlight[]> => {
+  const user = await ensureStudentAnonymousAuth();
   const q = query(
     collection(studentDb, COLLECTIONS.HIGHLIGHTS),
     where('studentId', '==', studentId),
-    where('sessionId', '==', sessionId)
+    where('sessionId', '==', sessionId),
+    where('authorUid', '==', user.uid)
   );
   const querySnapshot = await getDocs(q);
   
@@ -259,10 +253,17 @@ export const subscribeToHighlightsByStudentStudent = (
   sessionId: string,
   callback: (highlights: Highlight[]) => void
 ) => {
+  const authorUid = studentAuth.currentUser?.uid;
+  if (!authorUid) {
+    callback([]);
+    return () => {};
+  }
+
   const qRef = query(
     collection(studentDb, COLLECTIONS.HIGHLIGHTS),
     where('studentId', '==', studentId),
-    where('sessionId', '==', sessionId)
+    where('sessionId', '==', sessionId),
+    where('authorUid', '==', authorUid)
   );
 
   return onSnapshot(qRef, (snapshot) => {
@@ -275,15 +276,17 @@ export const subscribeToHighlightsByStudentStudent = (
 
 // Popular highlights function for students - gets aggregated data from all students
 export const getPopularHighlightsBySessionStudent = async (sessionId: string): Promise<Highlight[]> => {
+  await ensureStudentAnonymousAuth();
   const q = query(
     collection(studentDb, COLLECTIONS.HIGHLIGHTS),
     where('sessionId', '==', sessionId),
-    orderBy('createdAt', 'desc')
+    where('shared', '==', true)
   );
   const snapshot = await getDocs(q);
   return snapshot.docs
-    .map(doc => ({ id: doc.id, ...doc.data() }))
-    .filter(highlight => !(highlight as any).deleted) as Highlight[]; // Filter out soft-deleted highlights
+    .map(doc => ({ id: doc.id, ...doc.data() }) as Highlight)
+    .filter(highlight => !(highlight as any).deleted)
+    .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()) as Highlight[];
 };
 
 // Subscribe to popular highlights for a session (student view - read-only)
@@ -291,16 +294,23 @@ export const subscribeToPopularHighlightsBySessionStudent = (
   sessionId: string,
   callback: (highlights: Highlight[]) => void
 ) => {
+  const authorUid = studentAuth.currentUser?.uid;
+  if (!authorUid) {
+    callback([]);
+    return () => {};
+  }
+
   const q = query(
     collection(studentDb, COLLECTIONS.HIGHLIGHTS),
     where('sessionId', '==', sessionId),
-    orderBy('createdAt', 'desc')
+    where('shared', '==', true)
   );
   
   return onSnapshot(q, (snapshot) => {
     const highlights = snapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(highlight => !(highlight as any).deleted) as Highlight[]; // Filter out soft-deleted highlights
+      .map(doc => ({ id: doc.id, ...doc.data() }) as Highlight)
+      .filter(highlight => !(highlight as any).deleted)
+      .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()) as Highlight[];
     callback(highlights);
   });
 };
@@ -311,19 +321,23 @@ export const updateStudentProgressStudent = async (
   sessionId: string,
   updates: Partial<StudentProgress>
 ) => {
+  const user = await ensureStudentAnonymousAuth();
   const progressId = `${sessionId}_${studentId}`;
   const docRef = doc(studentDb, COLLECTIONS.STUDENT_PROGRESS, progressId);
   const now = Timestamp.now();
-  
-  await updateDoc(docRef, {
-    ...updates,
-    lastActive: now
-  }).catch(async () => {
-    // Document doesn't exist, create it with the specific ID to prevent duplicates
+
+  const existing = await getDoc(docRef);
+  if (existing.exists()) {
+    await updateDoc(docRef, {
+      ...updates,
+      authorUid: user.uid,
+      lastActive: now
+    });
+  } else {
     await setDoc(docRef, {
       studentId,
       sessionId,
-      authorUid: studentAuth.currentUser?.uid, // Store Firebase Auth UID for security rules
+      authorUid: user.uid,
       sectionsCompleted: 0,
       questionsAnswered: 0,
       totalPoints: 0,
@@ -338,14 +352,16 @@ export const updateStudentProgressStudent = async (
       lastActive: now,
       ...updates
     });
-  });
+  }
 };
 
 export const getStudentProgressStudent = async (studentId: string, sessionId: string): Promise<StudentProgress | null> => {
+  const user = await ensureStudentAnonymousAuth();
   const q = query(
     collection(studentDb, COLLECTIONS.STUDENT_PROGRESS),
     where('studentId', '==', studentId),
-    where('sessionId', '==', sessionId)
+    where('sessionId', '==', sessionId),
+    where('authorUid', '==', user.uid)
   );
   const querySnapshot = await getDocs(q);
   
@@ -372,9 +388,11 @@ export const getStudentProgressStudent = async (studentId: string, sessionId: st
 };
 
 export const getLeaderboardStudent = async (sessionId: string, limit: number = 10): Promise<StudentProgress[]> => {
+  const user = await ensureStudentAnonymousAuth();
   const q = query(
     collection(studentDb, COLLECTIONS.STUDENT_PROGRESS),
-    where('sessionId', '==', sessionId)
+    where('sessionId', '==', sessionId),
+    where('authorUid', '==', user.uid)
   );
   const querySnapshot = await getDocs(q);
   
@@ -441,7 +459,8 @@ export const getLeaderboardStudent = async (sessionId: string, limit: number = 1
         if (remainingIds.length > 0) {
           const q = query(
             collection(studentDb, COLLECTIONS.STUDENTS),
-            where('studentId', 'in', remainingIds)
+            where('studentId', 'in', remainingIds),
+            where('authorUid', '==', user.uid)
           );
           const querySnapshot = await getDocs(q);
           querySnapshot.docs.forEach(doc => {
@@ -470,11 +489,13 @@ export const updateSessionMetricsStudent = async (
   sessionId: string
 ) => {
   try {
+    const user = await ensureStudentAnonymousAuth();
     // Get all responses for this student in this session
     const responsesQuery = query(
       collection(studentDb, 'responses'),
       where('studentId', '==', studentId),
-      where('sessionId', '==', sessionId)
+      where('sessionId', '==', sessionId),
+      where('authorUid', '==', user.uid)
     );
     const responsesSnapshot = await getDocs(responsesQuery);
     const sessionResponses = responsesSnapshot.docs.map(doc => doc.data());
@@ -493,7 +514,8 @@ export const updateSessionMetricsStudent = async (
     const highlightsQuery = query(
       collection(studentDb, COLLECTIONS.HIGHLIGHTS),
       where('studentId', '==', studentId),
-      where('sessionId', '==', sessionId)
+      where('sessionId', '==', sessionId),
+      where('authorUid', '==', user.uid)
     );
     const highlightsSnapshot = await getDocs(highlightsQuery);
     const highlightsCreated = highlightsSnapshot.docs.length;
@@ -525,17 +547,21 @@ export const updateStudentOverallProgressStudent = async (
   studentId: string,
   updates: Partial<StudentOverallProgress>
 ) => {
+  const user = await ensureStudentAnonymousAuth();
   const docRef = doc(studentDb, COLLECTIONS.STUDENT_OVERALL_PROGRESS, studentId);
   const now = Timestamp.now();
-  
-  await updateDoc(docRef, {
-    ...updates,
-    lastActive: now
-  }).catch(async () => {
-    // Document doesn't exist, create it
+
+  const existing = await getDoc(docRef);
+  if (existing.exists()) {
+    await updateDoc(docRef, {
+      ...updates,
+      authorUid: user.uid,
+      lastActive: now
+    });
+  } else {
     await setDoc(docRef, {
       studentId,
-      authorUid: studentAuth.currentUser?.uid, // Store Firebase Auth UID for security rules
+      authorUid: user.uid,
       totalSessions: 0,
       totalSectionsCompleted: 0,
       totalQuestionsAnswered: 0,
@@ -554,10 +580,11 @@ export const updateStudentOverallProgressStudent = async (
       lastActive: now,
       ...updates
     });
-  });
+  }
 };
 
 export const getStudentOverallProgressStudent = async (studentId: string): Promise<StudentOverallProgress | null> => {
+  await ensureStudentAnonymousAuth();
   const docRef = doc(studentDb, COLLECTIONS.STUDENT_OVERALL_PROGRESS, studentId);
   const docSnap = await getDoc(docRef);
   
@@ -584,10 +611,12 @@ export const getStudentOverallProgressStudent = async (studentId: string): Promi
 
 export const calculateAndUpdateOverallProgress = async (studentId: string) => {
   try {
+    const user = await ensureStudentAnonymousAuth();
     // Get all progress records for this student across all sessions
     const q = query(
       collection(studentDb, COLLECTIONS.STUDENT_PROGRESS),
-      where('studentId', '==', studentId)
+      where('studentId', '==', studentId),
+      where('authorUid', '==', user.uid)
     );
     const querySnapshot = await getDocs(q);
   
@@ -689,7 +718,8 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
   try {
     const highlightsQuery = query(
       collection(studentDb, COLLECTIONS.HIGHLIGHTS),
-      where('studentId', '==', studentId)
+      where('studentId', '==', studentId),
+      where('authorUid', '==', user.uid)
     );
     const highlightsSnapshot = await getDocs(highlightsQuery);
     const allHighlights = highlightsSnapshot.docs.map(doc => doc.data());
@@ -708,7 +738,8 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
   try {
     const responsesQuery = query(
       collection(studentDb, 'responses'),
-      where('studentId', '==', studentId)
+      where('studentId', '==', studentId),
+      where('authorUid', '==', user.uid)
     );
     const responsesSnapshot = await getDocs(responsesQuery);
     const allResponses = responsesSnapshot.docs.map(doc => doc.data());
@@ -797,10 +828,10 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
 
 export const getOverallLeaderboardStudent = async (limit: number = 10): Promise<StudentOverallProgress[]> => {
   try {
+    const user = await ensureStudentAnonymousAuth();
     const q = query(
       collection(studentDb, COLLECTIONS.STUDENT_OVERALL_PROGRESS),
-      orderBy('totalPointsEarned', 'desc'),
-      orderBy('totalSectionsCompleted', 'desc')
+      where('authorUid', '==', user.uid)
     );
     const querySnapshot = await getDocs(q);
   
@@ -826,6 +857,12 @@ export const getOverallLeaderboardStudent = async (limit: number = 10): Promise<
   }, [] as StudentOverallProgress[]);
   
   const sortedProgress = deduplicatedProgress
+    .sort((a, b) => {
+      if (b.totalPointsEarned !== a.totalPointsEarned) {
+        return b.totalPointsEarned - a.totalPointsEarned;
+      }
+      return b.totalSectionsCompleted - a.totalSectionsCompleted;
+    })
     .slice(0, limit)
     .map((student, index) => ({
       ...student,
@@ -861,7 +898,8 @@ export const getOverallLeaderboardStudent = async (limit: number = 10): Promise<
         if (remainingIds.length > 0) {
           const q = query(
             collection(studentDb, COLLECTIONS.STUDENTS),
-            where('studentId', 'in', remainingIds)
+            where('studentId', 'in', remainingIds),
+            where('authorUid', '==', user.uid)
           );
           const querySnapshot = await getDocs(q);
           querySnapshot.docs.forEach(doc => {

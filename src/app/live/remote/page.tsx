@@ -28,7 +28,7 @@ import './remote.css';
 
 function protectStudentView(state: LessonDisplayState): LessonDisplayState {
   let publicInteraction = state.activeInteraction;
-  if (publicInteraction?.type === 'quiz' && !state.interactionResults?.revealed) {
+  if ((publicInteraction?.type === 'quiz' || publicInteraction?.type === 'peer-learning') && !state.interactionResults?.revealed) {
     publicInteraction = { ...publicInteraction };
     delete publicInteraction.correctOptionIndex;
     delete publicInteraction.explanation;
@@ -86,7 +86,12 @@ export default function InstructorRemotePage() {
       const channel = new BroadcastChannel(LESSON_CHANNEL);
       channelRef.current = channel;
       channel.onmessage = (event: MessageEvent<{ type?: string; state?: LessonDisplayState }>) => {
-        if (event.data?.type === 'lesson-state' && event.data.state) setState(event.data.state);
+        if (event.data?.type === 'lesson-state' && event.data.state) {
+          const privateInteraction = event.data.state.activeInteraction
+            ? DEMO_LIVE_INTERACTIONS.find((interaction) => interaction.id === event.data.state?.activeInteraction?.id) || event.data.state.activeInteraction
+            : null;
+          setState({ ...event.data.state, activeInteraction: privateInteraction });
+        }
       };
       channel.postMessage({ type: 'instructor-ready' });
       return () => channel.close();
@@ -157,7 +162,7 @@ export default function InstructorRemotePage() {
     }
   }, [classroomIds]);
 
-  const sendDemoCommand = (command: 'launch' | 'toggle-responses' | 'reveal' | 'finish', interactionId?: string) => {
+  const sendDemoCommand = (command: 'launch' | 'toggle-responses' | 'reveal' | 'advance-module' | 'finish', interactionId?: string) => {
     channelRef.current?.postMessage({ type: 'instructor-remote-command', command, interactionId });
   };
 
@@ -166,6 +171,12 @@ export default function InstructorRemotePage() {
       ...current,
       activeInteraction: interaction,
       interactionResults: createInteractionResults(interaction),
+      timer: interaction.type === 'timer' || interaction.type === 'group-work' ? {
+        id: `timer-${Date.now()}`,
+        label: interaction.type === 'group-work' ? 'Group work' : interaction.title,
+        durationSeconds: (interaction.durationMinutes || 5) * 60,
+        endsAt: Date.now() + (interaction.durationMinutes || 5) * 60 * 1000,
+      } : current.timer,
     }));
     if (!classroomIds) sendDemoCommand('launch', interaction.id);
   };
@@ -190,8 +201,32 @@ export default function InstructorRemotePage() {
     if (!classroomIds) sendDemoCommand('reveal');
   };
 
+  const advanceModule = () => {
+    updateRemoteState((current) => {
+      if (current.activeInteraction?.type !== 'peer-learning' || !current.interactionResults) return current;
+      const results = current.interactionResults;
+      if (results.phase === 'respond') {
+        const durationSeconds = (current.activeInteraction.discussionMinutes || 2) * 60;
+        return {
+          ...current,
+          interactionResults: { ...results, open: false, phase: 'discuss', firstResponseCount: results.responseCount, firstOptionCounts: results.optionCounts },
+          timer: { id: `peer-discussion-${Date.now()}`, label: 'Partner discussion', durationSeconds, endsAt: Date.now() + durationSeconds * 1000 },
+        };
+      }
+      if (results.phase === 'discuss') {
+        return {
+          ...current,
+          interactionResults: { ...results, runId: `${current.activeInteraction.id}-${Date.now()}-again`, open: true, responseCount: 0, optionCounts: current.activeInteraction.options?.map(() => 0) || [], writtenResponses: [], phase: 'respond-again' },
+          timer: null,
+        };
+      }
+      return { ...current, interactionResults: { ...results, open: false, revealed: true, phase: 'complete' }, timer: null };
+    });
+    if (!classroomIds) sendDemoCommand('advance-module');
+  };
+
   const finish = () => {
-    updateRemoteState((current) => ({ ...current, activeInteraction: null, interactionResults: null }));
+    updateRemoteState((current) => ({ ...current, activeInteraction: null, interactionResults: null, timer: current.activeInteraction?.type === 'timer' || current.activeInteraction?.type === 'group-work' || current.activeInteraction?.type === 'peer-learning' ? null : current.timer }));
     if (!classroomIds) sendDemoCommand('finish');
   };
 
@@ -277,6 +312,7 @@ export default function InstructorRemotePage() {
       onLaunch={launch}
       onToggleResponses={toggleResponses}
       onReveal={reveal}
+      onAdvanceModule={advanceModule}
       onFinish={finish}
       onOpenDisplay={openDisplay}
       onOpenConsole={openConsole}

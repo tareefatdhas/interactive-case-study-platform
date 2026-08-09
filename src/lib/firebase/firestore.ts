@@ -292,12 +292,13 @@ export const releaseNextSection = async (sessionId: string, nextSectionIndex: nu
   }
 };
 
-export const checkAndTimeoutInactiveSessions = async () => {
+export const checkAndTimeoutInactiveSessions = async (teacherId: string) => {
   const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
   
   // Get all active sessions first, then filter in JavaScript
   const q = query(
     collection(db, COLLECTIONS.SESSIONS),
+    where('teacherId', '==', teacherId),
     where('active', '==', true)
   );
   

@@ -14,7 +14,7 @@
       "$sessionCode": {
         ".read": "auth != null",
         ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && ((!newData.exists() && data.child('ownerUid').val() === auth.uid) || (newData.exists() && auth.uid === newData.child('ownerUid').val() && (!data.exists() || data.child('ownerUid').val() === auth.uid || data.child('status').val() === 'ended' || data.child('expiresAt').val() < now)))",
-        ".validate": "!newData.exists() || (newData.hasChildren(['sessionId', 'ownerUid', 'sessionCode', 'courseCode', 'courseName', 'sessionTitle', 'instructorName', 'status', 'expiresAt']) && newData.child('sessionId').isString() && newData.child('ownerUid').isString() && (newData.child('status').val() === 'live' || newData.child('status').val() === 'ended') && newData.child('expiresAt').isNumber() && newData.child('expiresAt').val() > now)"
+        ".validate": "!newData.exists() || (newData.hasChildren(['sessionId', 'ownerUid', 'sessionCode', 'courseCode', 'courseName', 'sessionTitle', 'instructorName', 'status', 'expiresAt']) && newData.child('sessionId').isString() && newData.child('ownerUid').isString() && (newData.child('status').val() === 'live' || newData.child('status').val() === 'ended') && newData.child('expiresAt').isNumber() && (newData.child('status').val() === 'ended' || newData.child('expiresAt').val() > now))"
       }
     },
 
@@ -25,7 +25,7 @@
           "meta": {
             ".read": "auth != null",
             ".write": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
-            ".validate": "newData.hasChildren(['ownerUid', 'status', 'sessionCode', 'courseCode', 'sessionTitle', 'createdAt', 'updatedAt', 'expiresAt']) && newData.child('ownerUid').val() === $ownerUid && (newData.child('status').val() === 'live' || newData.child('status').val() === 'ended') && (!data.exists() || newData.child('createdAt').val() === data.child('createdAt').val()) && newData.child('expiresAt').isNumber() && newData.child('expiresAt').val() > now && newData.child('expiresAt').val() <= now + 43200000"
+            ".validate": "newData.hasChildren(['ownerUid', 'status', 'sessionCode', 'courseCode', 'sessionTitle', 'createdAt', 'updatedAt', 'expiresAt']) && newData.child('ownerUid').val() === $ownerUid && (newData.child('status').val() === 'live' || newData.child('status').val() === 'ended') && (!data.exists() || newData.child('createdAt').val() === data.child('createdAt').val()) && newData.child('expiresAt').isNumber() && ((newData.child('status').val() === 'live' && newData.child('expiresAt').val() > now && newData.child('expiresAt').val() <= now + 43200000) || newData.child('status').val() === 'ended')"
           },
 
           "publicState": {

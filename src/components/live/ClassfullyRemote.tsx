@@ -43,6 +43,7 @@ type ClassfullyRemoteProps = {
   onLaunch: (interaction: LiveInteraction) => void;
   onToggleResponses: () => void;
   onReveal: () => void;
+  onAdvanceModule: () => void;
   onFinish: () => void;
   onOpenDisplay: () => void;
   onOpenConsole: () => void;
@@ -67,6 +68,7 @@ export default function ClassfullyRemote({
   onLaunch,
   onToggleResponses,
   onReveal,
+  onAdvanceModule,
   onFinish,
   onOpenDisplay,
   onOpenConsole,
@@ -114,6 +116,10 @@ export default function ClassfullyRemote({
   const topQuestions = useMemo(() => [...questions].sort((a, b) => b.votes - a.votes).slice(0, 4), [questions]);
   const timerSeconds = timer ? Math.max(0, Math.ceil((timer.endsAt - clockNow) / 1000)) : 0;
   const timerText = `${Math.floor(timerSeconds / 60)}:${String(timerSeconds % 60).padStart(2, '0')}`;
+  const isPeerLearning = activeInteraction?.type === 'peer-learning';
+  const isClock = activeInteraction?.type === 'timer';
+  const isGroupWork = activeInteraction?.type === 'group-work';
+  const peerPhase = results?.phase || 'respond';
 
   const submitQuickAsk = () => {
     const prompt = quickAsk.trim();
@@ -168,23 +174,28 @@ export default function ClassfullyRemote({
             </div>
             <h2>{activeInteraction.prompt}</h2>
 
-            <div className="remote-response-metric">
+            {!isClock && <div className="remote-response-metric">
               <div>
                 <strong key={results.responseCount}>{results.responseCount}</strong>
-                <span>of {responseTarget || 'the class'} responded</span>
+                <span>{isGroupWork ? 'group submissions' : `of ${responseTarget || 'the class'} responded`}</span>
               </div>
-              <span className="remote-response-status">{results.open ? 'Collecting' : results.revealed ? 'Revealed' : 'Locked'}</span>
-            </div>
-            <div className="remote-progress" aria-label={`${responseProgress}% of connected students responded`}>
+              <span className="remote-response-status">{isPeerLearning && peerPhase === 'discuss' ? 'Partner discussion' : isPeerLearning && peerPhase === 'respond-again' ? 'Second answer' : results.open ? 'Collecting' : results.revealed ? 'Revealed' : 'Locked'}</span>
+            </div>}
+            {!isClock && <div className="remote-progress" aria-label={`${responseProgress}% of connected students responded`}>
               <i style={{ width: `${responseProgress}%` }} />
-            </div>
+            </div>}
+
+            {isPeerLearning && <div className="remote-module-steps" aria-label="Peer learning stages"><span className="is-complete">1 Answer</span><span className={peerPhase === 'discuss' || peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>2 Discuss</span><span className={peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>3 Answer again</span></div>}
+            {isGroupWork && <p className="remote-module-note">Groups of about {activeInteraction.groupSize || 4}. Ask each group to choose one note-taker.</p>}
+            {isClock && <div className="remote-clock-focus"><Timer size={22} /><span><small>{timerSeconds === 0 ? 'Time is up' : 'Shared clock'}</small><strong>{timerText}</strong></span></div>}
 
             <div className="remote-primary-actions">
-              <button type="button" className="remote-lock" onClick={onToggleResponses}>
+              {!isClock && !isPeerLearning && <button type="button" className="remote-lock" onClick={onToggleResponses}>
                 {results.open ? <Pause size={18} /> : <Play size={18} />}
                 <span>{results.open ? 'Lock responses' : 'Reopen responses'}</span>
-              </button>
-              {activeInteraction.resultVisibility === 'after-reveal' && !results.revealed && (
+              </button>}
+              {isPeerLearning && peerPhase !== 'complete' && <button type="button" className="remote-reveal" onClick={onAdvanceModule} disabled={peerPhase !== 'discuss' && !results.responseCount}><ArrowRight size={18} /><span>{peerPhase === 'respond' ? 'Start partner discussion' : peerPhase === 'discuss' ? 'Ask again' : 'Show the shift'}</span></button>}
+              {!isPeerLearning && activeInteraction.resultVisibility === 'after-reveal' && !results.revealed && (
                 <button type="button" className="remote-reveal" onClick={onReveal} disabled={!results.responseCount}>
                   <Sparkles size={18} />
                   <span>{activeInteraction.type === 'quiz' ? 'Reveal answer' : 'Reveal result'}</span>
@@ -207,7 +218,7 @@ export default function ClassfullyRemote({
           </section>
         )}
 
-        {timer && (
+        {timer && !isClock && (
           <section className={`remote-timer-card ${timerSeconds === 0 ? 'is-complete' : ''}`} aria-live="polite">
             <span><Timer size={17} /></span><div><small>{timerSeconds === 0 ? 'Time is up' : timer.label}</small><strong>{timerText}</strong></div><button type="button" onClick={onClearTimer}>{timerSeconds === 0 ? 'Dismiss' : 'Clear'}</button>
           </section>

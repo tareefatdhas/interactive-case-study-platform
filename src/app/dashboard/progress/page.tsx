@@ -146,7 +146,7 @@ function ProgressContent() {
         if (!response) return;
         responses += 1;
         const interaction = session.interactions?.find((candidate) => candidate.id === response.interactionId);
-        if (interaction?.type === 'quiz' && typeof response.optionIndex === 'number') {
+        if ((interaction?.type === 'quiz' || interaction?.type === 'peer-learning') && typeof response.optionIndex === 'number') {
           quizAnswered += 1;
           if (response.optionIndex === interaction.correctOptionIndex) quizCorrect += 1;
         }

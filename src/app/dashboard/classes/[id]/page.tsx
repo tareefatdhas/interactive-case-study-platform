@@ -33,8 +33,10 @@ import {
   Radio,
   Save,
   Sparkles,
+  Repeat2,
   Trash2,
   Users,
+  UsersRound,
   X,
 } from 'lucide-react';
 
@@ -52,6 +54,9 @@ const interactionTypes: Array<{
   { type: 'poll', label: 'Opinion poll', use: 'See where the room stands before discussion.', icon: BarChart3 },
   { type: 'quiz', label: 'Knowledge check', use: 'Catch a misconception while you can address it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', use: 'Collect questions, reasoning, or reflection.', icon: MessageCircle },
+  { type: 'peer-learning', label: 'Peer learning', use: 'Answer, discuss with a partner, then answer again.', icon: Repeat2 },
+  { type: 'group-work', label: 'Group work', use: 'Give groups a shared task and one submission.', icon: UsersRound },
+  { type: 'timer', label: 'Clock', use: 'Save a timed thinking or working block.', icon: Clock3 },
 ];
 
 const createTemplate = (type: SessionInteractionType): SessionInteraction => ({
@@ -64,16 +69,24 @@ const createTemplate = (type: SessionInteractionType): SessionInteraction => ({
       ? 'Which option best matches your view?'
       : type === 'quiz'
         ? 'Choose the best answer.'
-        : 'What question is still unresolved?',
+        : type === 'peer-learning'
+          ? 'Choose the best answer. Discuss it with a partner, then answer again.'
+          : type === 'group-work'
+            ? 'Work together on this prompt. Choose one note-taker to submit.'
+            : type === 'timer'
+              ? 'Use this time to think, write, or complete the task on screen.'
+              : 'What question is still unresolved?',
   plannedTime: 'During class',
-  durationMinutes: type === 'open-response' ? 4 : 3,
+  durationMinutes: type === 'group-work' ? 8 : type === 'timer' ? 5 : type === 'open-response' ? 4 : 3,
+  discussionMinutes: type === 'peer-learning' ? 2 : undefined,
+  groupSize: type === 'group-work' ? 4 : undefined,
   options: type === 'pulse'
     ? ['Still fuzzy', 'Getting there', 'Mostly got it', 'Confident', 'Could explain it']
-    : type === 'poll' || type === 'quiz'
+    : type === 'poll' || type === 'quiz' || type === 'peer-learning'
       ? ['Option 1', 'Option 2', 'Option 3', 'Option 4']
       : undefined,
-  correctOptionIndex: type === 'quiz' ? 0 : undefined,
-  resultVisibility: type === 'quiz' ? 'after-reveal' : type === 'open-response' ? 'instructor-only' : 'live',
+  correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
+  resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live',
 });
 
 const readableDate = (value?: string) => {
@@ -354,9 +367,11 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                   <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#697087]">{type?.label || template.type}</span>
                                 </div>
                                 <textarea aria-label={`${template.title} prompt`} value={template.prompt} onChange={(event) => updateTemplate(template.id, { prompt: event.target.value })} rows={2} className="mt-3 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
-                                {template.options && <div className="mt-4 space-y-2"><p className="text-[11px] font-bold uppercase tracking-[0.07em] text-[#697087]">{template.type === 'quiz' ? 'Choices and correct answer' : 'Response choices'}</p>{template.options.map((option, optionIndex) => <div key={`${template.id}-${optionIndex}`} className="flex items-center gap-2"><input type="radio" name={`correct-${template.id}`} checked={template.type === 'quiz' && template.correctOptionIndex === optionIndex} onChange={() => template.type === 'quiz' && updateTemplate(template.id, { correctOptionIndex: optionIndex })} disabled={template.type !== 'quiz'} className={template.type === 'quiz' ? 'accent-[#5146e5]' : 'invisible'} aria-label={template.type === 'quiz' ? `Mark choice ${optionIndex + 1} correct` : undefined} /><input aria-label={`Choice ${optionIndex + 1}`} value={option} onChange={(event) => updateTemplateOption(template.id, optionIndex, event.target.value)} className="min-h-10 flex-1 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /><button type="button" onClick={() => removeTemplateOption(template.id, optionIndex)} disabled={template.options!.length <= 2} className="seminar-focus rounded-lg p-2 text-[#8b91a3] hover:bg-[#fff1ee] hover:text-[#b64936] disabled:opacity-25" aria-label={`Remove choice ${optionIndex + 1}`}><X className="h-3.5 w-3.5" /></button></div>)}{template.options.length < 6 && <button type="button" onClick={() => updateTemplate(template.id, { options: [...template.options!, `Option ${template.options!.length + 1}`] })} className="seminar-focus ml-6 rounded-lg px-2 py-1 text-xs font-bold text-[#5146e5] hover:bg-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Add choice</button>}</div>}
-                                {template.type === 'quiz' && <textarea aria-label={`${template.title} answer explanation`} value={template.explanation || ''} onChange={(event) => updateTemplate(template.id, { explanation: event.target.value })} rows={2} placeholder="Explain why the correct answer is right" className="mt-4 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />}
-                                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-[#697087]"><span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> About {template.durationMinutes || 3} min</span><div className="flex gap-1"><button type="button" onClick={() => { setTemplates((current) => [...current, { ...template, id: `${template.id}-copy-${Date.now()}`, title: `${template.title} copy` }]); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-white" aria-label={`Duplicate ${template.title}`}><Copy className="h-4 w-4" /></button><button type="button" onClick={() => { setTemplates((current) => current.filter((item) => item.id !== template.id)); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Delete ${template.title}`}><Trash2 className="h-4 w-4" /></button></div></div>
+                                {template.options && <div className="mt-4 space-y-2"><p className="text-[11px] font-bold uppercase tracking-[0.07em] text-[#697087]">{template.type === 'quiz' || template.type === 'peer-learning' ? 'Choices and correct answer' : 'Response choices'}</p>{template.options.map((option, optionIndex) => { const hasCorrectAnswer = template.type === 'quiz' || template.type === 'peer-learning'; return <div key={`${template.id}-${optionIndex}`} className="flex items-center gap-2"><input type="radio" name={`correct-${template.id}`} checked={hasCorrectAnswer && template.correctOptionIndex === optionIndex} onChange={() => hasCorrectAnswer && updateTemplate(template.id, { correctOptionIndex: optionIndex })} disabled={!hasCorrectAnswer} className={hasCorrectAnswer ? 'accent-[#5146e5]' : 'invisible'} aria-label={hasCorrectAnswer ? `Mark choice ${optionIndex + 1} correct` : undefined} /><input aria-label={`Choice ${optionIndex + 1}`} value={option} onChange={(event) => updateTemplateOption(template.id, optionIndex, event.target.value)} className="min-h-10 flex-1 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /><button type="button" onClick={() => removeTemplateOption(template.id, optionIndex)} disabled={template.options!.length <= 2} className="seminar-focus rounded-lg p-2 text-[#8b91a3] hover:bg-[#fff1ee] hover:text-[#b64936] disabled:opacity-25" aria-label={`Remove choice ${optionIndex + 1}`}><X className="h-3.5 w-3.5" /></button></div>; })}{template.options.length < 6 && <button type="button" onClick={() => updateTemplate(template.id, { options: [...template.options!, `Option ${template.options!.length + 1}`] })} className="seminar-focus ml-6 rounded-lg px-2 py-1 text-xs font-bold text-[#5146e5] hover:bg-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Add choice</button>}</div>}
+                                {(template.type === 'quiz' || template.type === 'peer-learning') && <textarea aria-label={`${template.title} answer explanation`} value={template.explanation || ''} onChange={(event) => updateTemplate(template.id, { explanation: event.target.value })} rows={2} placeholder="Explain why the correct answer is right" className="mt-4 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />}
+                                {template.type === 'peer-learning' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#555d73]"><Repeat2 className="h-4 w-4 text-[#5146e5]" /> Partner discussion <input type="number" aria-label={`${template.title} discussion minutes`} min={1} max={10} value={template.discussionMinutes || 2} onChange={(event) => updateTemplate(template.id, { discussionMinutes: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> min</label>}
+                                {template.type === 'group-work' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#fff5f0] p-3 text-xs font-bold text-[#654f48]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested size <input type="number" aria-label={`${template.title} group size`} min={2} max={10} value={template.groupSize || 4} onChange={(event) => updateTemplate(template.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5" /> students</label>}
+                                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-[#697087]"><label className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /><input type="number" aria-label={`${template.title} duration minutes`} min={1} max={60} value={template.durationMinutes || 3} onChange={(event) => updateTemplate(template.id, { durationMinutes: Number(event.target.value) })} className="w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> min</label><div className="flex gap-1"><button type="button" onClick={() => { setTemplates((current) => [...current, { ...template, id: `${template.id}-copy-${Date.now()}`, title: `${template.title} copy` }]); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-white" aria-label={`Duplicate ${template.title}`}><Copy className="h-4 w-4" /></button><button type="button" onClick={() => { setTemplates((current) => current.filter((item) => item.id !== template.id)); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Delete ${template.title}`}><Trash2 className="h-4 w-4" /></button></div></div>
                               </div>
                             </div>
                           </article>

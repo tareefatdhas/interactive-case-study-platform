@@ -12,7 +12,8 @@ import {
   getStudentByStudentIdStudent as getStudentByStudentId,
   joinSessionStudent as joinSession,
   createResponseStudent as createResponse,
-  getResponsesByStudentStudent as getResponsesByStudent
+  getResponsesByStudentStudent as getResponsesByStudent,
+  subscribeToSessionStudent,
 } from '@/lib/firebase/student-firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -349,60 +350,20 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   }, [session]);
 
 
-  // Handle student presence when component unmounts or page unloads
-  useEffect(() => {
-    if (!session || !student) return;
-
-    const handleBeforeUnload = async () => {
-      try {
-        const { updateStudentPresenceStudent } = require('@/lib/firebase/student-realtime');
-        await updateStudentPresenceStudent(session.id, student.id, false);
-      } catch (error) {
-        console.warn('Failed to update presence on unload:', error);
-      }
-    };
-
-    // Set up presence tracking
-    const setupPresence = async () => {
-      try {
-        const { updateStudentPresenceStudent } = require('@/lib/firebase/student-realtime');
-        await updateStudentPresenceStudent(session.id, student.id, true);
-      } catch (error) {
-        console.warn('Failed to set initial presence:', error);
-      }
-    };
-
-    setupPresence();
-
-    // Listen for page unload
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    // Cleanup function for component unmount
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      // Update presence to offline when component unmounts
-      const { updateStudentPresenceStudent } = require('@/lib/firebase/student-realtime');
-      updateStudentPresenceStudent(session.id, student.id, false).catch(console.warn);
-    };
-  }, [session, student]);
-
   // Subscribe to session updates to detect when new sections are released
   useEffect(() => {
     if (!session?.id || !['reading', 'review', 'waiting'].includes(step)) return;
-    
-    // Use Realtime Database for instant updates with zero polling
-    const { subscribeToSessionStatusStudent } = require('@/lib/firebase/student-realtime');
-    
-    const unsubscribe = subscribeToSessionStatusStudent(session.id, (status: any) => {
-      if (status && status.releasedSections) {
+
+    const unsubscribe = subscribeToSessionStudent(session.id, (latestSession) => {
+      if (latestSession?.releasedSections) {
         // Update local session state with latest released sections
         setSession(prev => prev ? {
           ...prev,
-          releasedSections: status.releasedSections
+          ...latestSession,
         } : null);
 
-        if (initialReleasedSections && status.releasedSections.length > initialReleasedSections.length) {
-          const newSection = status.releasedSections[status.releasedSections.length - 1];
+        if (initialReleasedSections && latestSession.releasedSections.length > initialReleasedSections.length) {
+          const newSection = latestSession.releasedSections[latestSession.releasedSections.length - 1];
           setNewSectionIndex(newSection);
           setNewSectionAvailable(true);
         }
@@ -468,17 +429,6 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         console.error('JOIN: Session join failed:', error.code || 'unknown', '-', error.message);
         throw error;
       }
-      
-             // Add to Realtime Database for live presence
-       // Use the Firestore document ID for consistency with responses
-       try {
-         const { joinLiveSessionStudent } = require('@/lib/firebase/student-realtime');
-         await joinLiveSessionStudent(session.id, studentData.id, studentData.name);
-         console.log('JOIN: Live session joined successfully');
-       } catch (error: any) {
-         console.warn('JOIN: Live session join failed (non-critical):', error);
-       }
-      
       console.log('JOIN: Getting responses...');
       let existingResponses: Response[] = [];
       try {

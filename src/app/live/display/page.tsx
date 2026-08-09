@@ -148,19 +148,21 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
 
   const sharedResponse = (results.writtenResponses || []).find((response) => response.id === results.sharedResponseId);
   const showDistribution = Boolean(interaction.options?.length && results.revealed);
+  const isPeerDiscussion = interaction.type === 'peer-learning' && results.phase === 'discuss';
+  const isClock = interaction.type === 'timer';
 
   return (
-    <section className={`interaction-display-stage ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
+    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
       <div className="interaction-display-heading">
         <div>
           <span className="display-eyebrow"><ListChecks size={20} /> {interaction.label}</span>
           <h1>{interaction.prompt}</h1>
-          <p>{results.open ? 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>
+          <p>{isClock ? 'The same clock is visible on every student phone.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? interaction.type === 'group-work' ? `Work in groups of about ${interaction.groupSize || 4}. One note-taker submits for each group.` : 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>
         </div>
-        <div className="interaction-display-count">
+        {!isClock && <div className="interaction-display-count">
           <Users size={21} />
           <strong key={results.responseCount}>{results.responseCount}</strong>
-          <span>responses</span>
+          <span>{interaction.type === 'group-work' ? 'groups' : 'responses'}</span>
           <div className="response-signal-meter" aria-hidden="true">
             {Array.from({ length: 9 }).map((_, index) => (
               <i
@@ -170,17 +172,23 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
               />
             ))}
           </div>
-        </div>
+        </div>}
       </div>
-      {!showDistribution && interaction.options?.length && (
+      {isClock ? (
+        <div className="display-clock-module" aria-hidden="true"><span><Timer size={46} /></span><div><i /><i /><i /></div><strong>Make this time count.</strong></div>
+      ) : isPeerDiscussion ? (
+        <div className="display-peer-discussion"><div className="peer-orbit"><span>Think</span><i /><span>Listen</span><i /><span>Explain</span></div><strong>What led you to your answer?</strong><p>Find one point you agree on and one point worth reconsidering.</p></div>
+      ) : !showDistribution && interaction.options?.length && (
         <ResponseCurrent count={results.responseCount} runId={results.runId} open={results.open} />
       )}
-      {showDistribution ? (
+      {!isClock && !isPeerDiscussion && (showDistribution ? (
         <div className="interaction-result-options">
           {interaction.options?.map((option, index) => {
             const count = results.optionCounts[index] ?? 0;
             const percentage = resultPercent(count, results.responseCount);
-            const isCorrect = interaction.type === 'quiz' && interaction.correctOptionIndex === index;
+            const isCorrect = (interaction.type === 'quiz' || interaction.type === 'peer-learning') && interaction.correctOptionIndex === index;
+            const firstCount = results.firstOptionCounts?.[index] || 0;
+            const firstPercentage = resultPercent(firstCount, results.firstResponseCount || 0);
             const resultColor = RESULT_COLORS[index % RESULT_COLORS.length];
             return (
               <article
@@ -206,10 +214,11 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
                 </div>
                 <div className="result-option-value"><strong key={`${count}-${percentage}`}>{percentage}%</strong><span>{count} {count === 1 ? 'student' : 'students'}</span></div>
                 {isCorrect && <CheckCircle2 size={24} />}
+                {interaction.type === 'peer-learning' && <small className="peer-result-shift">Before {firstPercentage}% · After {percentage}%</small>}
               </article>
             );
           })}
-          {interaction.type === 'quiz' && interaction.explanation && (
+          {(interaction.type === 'quiz' || interaction.type === 'peer-learning') && interaction.explanation && (
             <div className="display-quiz-explanation"><CheckCircle2 size={21} /><span><strong>Why this answer</strong>{interaction.explanation}</span></div>
           )}
         </div>
@@ -224,7 +233,7 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
           <MessageCircle size={30} />
           {sharedResponse ? <><strong>“{sharedResponse.text}”</strong><span>Shared anonymously by the instructor</span></> : <><strong>{results.responseCount ? `${results.responseCount} ${results.responseCount === 1 ? 'response' : 'responses'} received` : 'Responses are open'}</strong><span>Written answers stay private until the instructor shares one.</span></>}
         </div>
-      )}
+      ))}
     </section>
   );
 }
@@ -618,7 +627,7 @@ export default function ClassroomDisplayPage() {
         <>
           <ClassroomInteraction lessonState={lessonState} />
           <footer className="display-footer">
-            <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
+            <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
             <div className="display-footer-insight"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
             <div className="join-code"><span>Class code</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
           </footer>
