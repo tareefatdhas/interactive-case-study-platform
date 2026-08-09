@@ -23,6 +23,7 @@ import {
   Check,
   CircleHelp,
   Clock3,
+  Cloud,
   Copy,
   HeartPulse,
   Library,
@@ -54,6 +55,7 @@ const interactionTypes: Array<{
   { type: 'poll', label: 'Opinion poll', use: 'See where the room stands before discussion.', icon: BarChart3 },
   { type: 'quiz', label: 'Knowledge check', use: 'Catch a misconception while you can address it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', use: 'Collect questions, reasoning, or reflection.', icon: MessageCircle },
+  { type: 'word-cloud', label: 'Word cloud', use: 'Turn one-word responses into a live view of shared themes.', icon: Cloud },
   { type: 'peer-learning', label: 'Peer learning', use: 'Answer, discuss with a partner, then answer again.', icon: Repeat2 },
   { type: 'group-work', label: 'Group work', use: 'Give groups a shared task and one submission.', icon: UsersRound },
   { type: 'timer', label: 'Clock', use: 'Save a timed thinking or working block.', icon: Clock3 },
@@ -68,8 +70,10 @@ const createTemplate = (type: SessionInteractionType): SessionInteraction => ({
     : type === 'poll'
       ? 'Which option best matches your view?'
       : type === 'quiz'
-        ? 'Choose the best answer.'
-        : type === 'peer-learning'
+      ? 'Choose the best answer.'
+      : type === 'word-cloud'
+        ? 'What one word best captures this idea?'
+      : type === 'peer-learning'
           ? 'Choose the best answer. Discuss it with a partner, then answer again.'
           : type === 'group-work'
             ? 'Work together on this prompt. Choose one note-taker to submit.'
@@ -77,7 +81,7 @@ const createTemplate = (type: SessionInteractionType): SessionInteraction => ({
               ? 'Use this time to think, write, or complete the task on screen.'
               : 'What question is still unresolved?',
   plannedTime: 'During class',
-  durationMinutes: type === 'group-work' ? 8 : type === 'timer' ? 5 : type === 'open-response' ? 4 : 3,
+  durationMinutes: type === 'group-work' ? 8 : type === 'timer' ? 5 : type === 'open-response' ? 4 : type === 'word-cloud' ? 2 : 3,
   discussionMinutes: type === 'peer-learning' ? 2 : undefined,
   groupSize: type === 'group-work' ? 4 : undefined,
   options: type === 'pulse'

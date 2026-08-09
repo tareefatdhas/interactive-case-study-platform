@@ -19,6 +19,7 @@ import {
   Check,
   CircleHelp,
   Clock3,
+  Cloud,
   FileText,
   HeartPulse,
   ListChecks,
@@ -45,6 +46,7 @@ const interactionOptions: Array<{
   { type: 'poll', label: 'Opinion poll', description: 'Open a discussion with the room’s starting view.', icon: BarChart3 },
   { type: 'quiz', label: 'Knowledge check', description: 'Reveal a misconception while there is time to reteach it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', description: 'Gather questions or a brief reflection for review.', icon: MessageCircle },
+  { type: 'word-cloud', label: 'Word cloud', description: 'Gather one word or a short phrase and show shared themes live.', icon: Cloud },
   { type: 'peer-learning', label: 'Peer learning', description: 'Let students answer, discuss, then answer again.', icon: Repeat2 },
   { type: 'group-work', label: 'Group work', description: 'Give small groups a shared task, clock, and submission.', icon: UsersRound },
   { type: 'timer', label: 'Clock', description: 'Put focused thinking or working time into the session flow.', icon: Clock3 },
@@ -79,6 +81,7 @@ const defaultPrompt: Record<SessionInteractionType, string> = {
   poll: 'Which option best matches your view?',
   quiz: 'Choose the best answer.',
   'open-response': 'What question is still unresolved?',
+  'word-cloud': 'What one word best captures this idea?',
   'peer-learning': 'Choose the best answer. You will discuss it with a partner, then answer again.',
   'group-work': 'Work together on this prompt. Choose one note-taker to submit for your group.',
   timer: 'Use this time to think, write, or complete the task on screen.',
@@ -197,7 +200,7 @@ function NewSessionContent() {
         title: caseStudy?.title || option?.label || 'Class activity',
         prompt: defaultPrompt[type],
         plannedTime: 'During class',
-        durationMinutes: type === 'case-study' ? 15 : type === 'group-work' ? 8 : type === 'timer' ? 5 : 3,
+        durationMinutes: type === 'case-study' ? 15 : type === 'group-work' ? 8 : type === 'timer' ? 5 : type === 'word-cloud' ? 2 : 3,
         discussionMinutes: type === 'peer-learning' ? 2 : undefined,
         groupSize: type === 'group-work' ? 4 : undefined,
         caseStudyId: caseStudy?.id,
@@ -598,6 +601,7 @@ function NewSessionContent() {
                           {interaction.type === 'group-work' && <label className="flex items-center gap-3 rounded-xl bg-[#fff7f2] px-3.5 py-3 text-xs font-semibold text-[#4f576d]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested group size <input aria-label="Suggested group size" type="number" min={2} max={10} value={interaction.groupSize || 4} onChange={(event) => updateInteraction(interaction.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5 text-[#313950]" /> students</label>}
                           {interaction.type === 'timer' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">The clock starts when you launch this activity. Students see the prompt and the same countdown on their phones.</p>}
                           {interaction.type === 'open-response' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Written responses stay on the instructor screen. You choose what appears on the projector.</p>}
+                          {interaction.type === 'word-cloud' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Students send one word or a short phrase. Repeated answers grow larger in the live projector cloud.</p>}
                           {interaction.type === 'group-work' && <p className="rounded-lg bg-[#fff7f2] px-3 py-2 text-xs leading-5 text-[#6a554e]">Ask each group to choose one note-taker. The projector shows the number of group submissions, not individual names.</p>}
                         </div>
                         <div className="grid gap-3">

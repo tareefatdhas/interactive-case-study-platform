@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'react-qr-code';
-import { Activity, CheckCircle2, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
+import { Activity, CheckCircle2, Cloud, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
 import LivingMoodField from '@/components/live/LivingMoodField';
 import { joinDisplayPresence, subscribeToStudentPublicState } from '@/lib/firebase/live-classroom';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
@@ -14,6 +14,7 @@ import {
   LESSON_CHANNEL,
   LESSON_STORAGE_KEY,
   MOODS,
+  buildWordCloudItems,
   dotStyle,
   formatSessionCode,
   percent,
@@ -150,14 +151,19 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   const showDistribution = Boolean(interaction.options?.length && results.revealed);
   const isPeerDiscussion = interaction.type === 'peer-learning' && results.phase === 'discuss';
   const isClock = interaction.type === 'timer';
+  const isWordCloud = interaction.type === 'word-cloud';
+  const wordCloudItems = buildWordCloudItems(results.writtenResponses);
+  const wordArrivals = [
+    [-34, -24], [38, 18], [-42, 26], [30, -30], [4, 34], [-12, -36], [44, -8], [-38, 4],
+  ];
 
   return (
-    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
+    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
       <div className="interaction-display-heading">
         <div>
           <span className="display-eyebrow"><ListChecks size={20} /> {interaction.label}</span>
           <h1>{interaction.prompt}</h1>
-          <p>{isClock ? 'The same clock is visible on every student phone.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? interaction.type === 'group-work' ? `Work in groups of about ${interaction.groupSize || 4}. One note-taker submits for each group.` : 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>
+          <p>{isClock ? 'The same clock is visible on every student phone.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? interaction.type === 'group-work' ? `Work in groups of about ${interaction.groupSize || 4}. One note-taker submits for each group.` : 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>
         </div>
         {!isClock && <div className="interaction-display-count">
           <Users size={21} />
@@ -176,6 +182,27 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
       </div>
       {isClock ? (
         <div className="display-clock-module" aria-hidden="true"><span><Timer size={46} /></span><div><i /><i /><i /></div><strong>Make this time count.</strong></div>
+      ) : isWordCloud ? (
+        <div className="display-word-cloud" aria-label={`Word cloud with ${wordCloudItems.length} unique answers`}>
+          {wordCloudItems.length ? wordCloudItems.map((item, index) => {
+            const [arrivalX, arrivalY] = wordArrivals[index % wordArrivals.length];
+            return (
+              <span
+                key={`${results.runId}-${item.key}-${item.count}`}
+                style={{
+                  '--word-size': `${30 + item.strength * 70}px`,
+                  '--arrival-x': `${arrivalX}vw`,
+                  '--arrival-y': `${arrivalY}vh`,
+                  '--word-delay': `${Math.min(index * 22, 220)}ms`,
+                } as CSSProperties}
+                title={`${item.count} ${item.count === 1 ? 'response' : 'responses'}`}
+              >
+                {item.label}
+                {item.count > 1 && <small>{item.count}</small>}
+              </span>
+            );
+          }) : <div className="display-word-cloud-empty"><Cloud size={44} /><strong>Waiting for the first word</strong><span>Answer on your phone.</span></div>}
+        </div>
       ) : isPeerDiscussion ? (
         <div className="display-peer-discussion"><div className="peer-orbit"><span>Think</span><i /><span>Listen</span><i /><span>Explain</span></div><strong>What led you to your answer?</strong><p>Find one point you agree on and one point worth reconsidering.</p></div>
       ) : !showDistribution && interaction.options?.length && (

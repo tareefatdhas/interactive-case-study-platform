@@ -9,7 +9,7 @@ export type OnboardingStep = 0 | 1 | 2 | 3 | 4;
 
 export type LiveInteraction = {
   id: string;
-  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'peer-learning' | 'group-work' | 'timer';
+  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'word-cloud' | 'peer-learning' | 'group-work' | 'timer';
   label: string;
   title: string;
   prompt: string;
@@ -42,6 +42,13 @@ export type InteractionResults = {
   phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
   firstResponseCount?: number;
   firstOptionCounts?: number[];
+};
+
+export type WordCloudItem = {
+  key: string;
+  label: string;
+  count: number;
+  strength: number;
 };
 
 export type LiveQuestion = {
@@ -137,6 +144,15 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
     prompt: 'What is still unclear before we move on?',
     resultVisibility: 'instructor-only',
     plannedTime: 'Before the case',
+  },
+  {
+    id: 'platform-word-cloud',
+    type: 'word-cloud',
+    label: 'Word cloud',
+    title: 'One-word association',
+    prompt: 'What one word best describes a healthy platform?',
+    resultVisibility: 'live',
+    plannedTime: 'Open the discussion',
   },
   {
     id: 'peer-explain',
@@ -270,6 +286,39 @@ export function createInteractionResults(interaction: LiveInteraction): Interact
   };
 }
 
+export function buildWordCloudItems(
+  responses: Array<{ id: string; text: string }> = [],
+  limit = 36,
+): WordCloudItem[] {
+  const terms = new Map<string, { label: string; count: number; firstSeen: number }>();
+
+  responses.forEach((response, index) => {
+    const label = response.text
+      .normalize('NFKC')
+      .replace(/\s+/g, ' ')
+      .replace(/^[\s.,!?;:'\"“”‘’()[\]{}]+|[\s.,!?;:'\"“”‘’()[\]{}]+$/g, '')
+      .trim()
+      .slice(0, 48);
+    if (!label) return;
+    const key = label.toLocaleLowerCase();
+    const existing = terms.get(key);
+    if (existing) existing.count += 1;
+    else terms.set(key, { label: `${label.charAt(0).toLocaleUpperCase()}${label.slice(1)}`, count: 1, firstSeen: index });
+  });
+
+  const ranked = Array.from(terms.entries())
+    .sort(([, a], [, b]) => b.count - a.count || a.firstSeen - b.firstSeen)
+    .slice(0, limit);
+  const maximum = Math.max(1, ...ranked.map(([, value]) => value.count));
+
+  return ranked.map(([key, value]) => ({
+    key,
+    label: value.label,
+    count: value.count,
+    strength: value.count / maximum,
+  }));
+}
+
 export function prepareLiveInteractions(interactions: SessionInteraction[] = []): LiveInteraction[] {
   return interactions.flatMap((interaction) => {
     if (interaction.type === 'case-study') return [];
@@ -280,13 +329,15 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
         ? 'Poll'
         : type === 'quiz'
           ? 'Quiz'
-          : type === 'peer-learning'
-            ? 'Peer learning'
-            : type === 'group-work'
-              ? 'Group work'
-              : type === 'timer'
-                ? 'Clock'
-                : 'Short response';
+          : type === 'word-cloud'
+            ? 'Word cloud'
+            : type === 'peer-learning'
+              ? 'Peer learning'
+              : type === 'group-work'
+                ? 'Group work'
+                : type === 'timer'
+                  ? 'Clock'
+                  : 'Short response';
 
     return [{
       id: interaction.id,

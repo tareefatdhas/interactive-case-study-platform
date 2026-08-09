@@ -869,6 +869,55 @@ body:has(.student-welcome-shell) {
   box-shadow: 0 0 0 3px rgba(81, 70, 229, 0.12);
 }
 
+.student-word-answer {
+  position: relative;
+  margin-top: 23px;
+  display: grid;
+  gap: 7px;
+}
+
+.student-word-answer > span { color: var(--student-muted); font-size: 10px; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
+.student-word-answer input {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid var(--student-line);
+  border-radius: 13px;
+  padding: 12px 54px 12px 14px;
+  color: var(--student-ink);
+  background: white;
+  font-family: var(--seminar-font-display);
+  font-size: 22px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.student-word-answer input:focus { border-color: var(--student-violet); box-shadow: 0 0 0 3px rgba(81, 70, 229, 0.12); }
+.student-word-answer > small { position: absolute; right: 13px; bottom: 20px; color: var(--student-muted); font-size: 9px; }
+
+.student-word-cloud-moment { background: linear-gradient(180deg, #f7f5ff, #fff); }
+.student-mini-word-cloud {
+  min-height: 112px;
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px 12px;
+  padding: 14px;
+  border: 1px solid #dedaff;
+  border-radius: 14px;
+  background: radial-gradient(circle at center, rgba(81, 70, 229, 0.1), transparent 68%), white;
+}
+.student-mini-word-cloud span { color: var(--student-violet); font-family: var(--seminar-font-display); font-size: var(--word-size); animation: student-word-arrive 480ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.student-mini-word-cloud span:nth-child(3n + 2) { color: #2f73df; }
+.student-mini-word-cloud span:nth-child(4n + 3) { color: #b75543; }
+.student-mini-word-cloud small { margin-left: 2px; font-family: var(--seminar-font-ui); font-size: 7px; vertical-align: top; }
+
+@keyframes student-word-arrive {
+  from { opacity: 0; transform: translateY(9px) scale(0.72); filter: blur(3px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+
 .student-send-response {
   width: 100%;
   min-height: 50px;

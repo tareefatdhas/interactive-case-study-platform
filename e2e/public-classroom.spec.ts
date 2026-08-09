@@ -171,6 +171,34 @@ test('a planned clock gives projector and phone the same focused prompt', async 
   await context.close();
 });
 
+test('a short word answer grows into the live class word cloud', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const remotePage = await context.newPage();
+  const displayPage = await context.newPage();
+  const studentPage = await context.newPage();
+  const secondStudentPage = await context.newPage();
+
+  await consolePage.goto('/live');
+  await remotePage.goto('/live/remote');
+  await displayPage.goto('/live/display');
+  await studentPage.goto('/live/student');
+  await secondStudentPage.goto('/live/student');
+
+  await remotePage.getByRole('button', { name: /One-word association/ }).click();
+  await expect(studentPage.getByRole('textbox', { name: 'Your word or short phrase' })).toBeVisible();
+  await studentPage.getByRole('textbox', { name: 'Your word or short phrase' }).fill('Trust');
+  await studentPage.getByRole('button', { name: 'Add to word cloud' }).click();
+  await secondStudentPage.getByRole('textbox', { name: 'Your word or short phrase' }).fill('trust');
+  await secondStudentPage.getByRole('button', { name: 'Add to word cloud' }).click();
+
+  await expect(displayPage.locator('.display-word-cloud > span[title="2 responses"]')).toContainText('Trust');
+  await expect(consolePage.locator('.live-word-cloud > span[title="2 responses"]')).toContainText('Trust');
+  await expect(studentPage.getByRole('heading', { name: 'Your word is joining the room.' })).toBeVisible();
+
+  await context.close();
+});
+
 test('AI classroom endpoints reject unauthenticated requests', async ({ request }) => {
   for (const path of [
     '/api/generate-session-interactions',

@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import ClassfullyRemote from '@/components/live/ClassfullyRemote';
 import LivingMoodField from '@/components/live/LivingMoodField';
@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ClipboardCheck,
+  Cloud,
   GraduationCap,
   HeartPulse,
   Laptop,
@@ -58,6 +59,7 @@ import {
   LESSON_CHANNEL,
   LESSON_STORAGE_KEY,
   MOODS,
+  buildWordCloudItems,
   createInteractionResults,
   percent,
   prepareLiveInteractions,
@@ -100,6 +102,8 @@ function InstructorInteractionStage({
   const hasChoices = Boolean(interaction.options?.length);
   const isPeerLearning = interaction.type === 'peer-learning';
   const isClock = interaction.type === 'timer';
+  const isWordCloud = interaction.type === 'word-cloud';
+  const wordCloudItems = buildWordCloudItems(results.writtenResponses);
 
   return (
     <section className="live-interaction-stage" aria-live="polite">
@@ -111,6 +115,8 @@ function InstructorInteractionStage({
             ? `Students answer privately. Reveal the ${interaction.type === 'quiz' ? 'answer' : 'class result'} when you are ready to discuss it.`
             : interaction.type === 'open-response'
               ? 'Written responses stay on your screen until you choose one to share.'
+              : isWordCloud
+                ? 'Repeated answers grow as the class cloud forms on the projector.'
               : 'The class distribution updates as responses arrive.'}</p>
         </div>
         {!isClock && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{interaction.type === 'group-work' ? 'groups' : 'responses'}</span></div>}
@@ -118,6 +124,18 @@ function InstructorInteractionStage({
 
       {isClock ? (
         <div className="written-response-review"><div className="written-response-summary"><Timer size={21} /><span><strong>The shared clock is running</strong><small>Students see this prompt and the same time remaining on their phones.</small></span></div></div>
+      ) : isWordCloud ? (
+        <div className="live-word-cloud" aria-label={`${results.responseCount} word cloud responses`}>
+          {wordCloudItems.length ? wordCloudItems.map((item, index) => (
+            <span
+              key={`${item.key}-${item.count}`}
+              style={{ '--word-size': `${18 + item.strength * 32}px`, '--word-index': index } as CSSProperties}
+              title={`${item.count} ${item.count === 1 ? 'response' : 'responses'}`}
+            >
+              {item.label}<small>{item.count > 1 ? item.count : ''}</small>
+            </span>
+          )) : <div className="live-word-cloud-empty"><Cloud size={26} /><strong>Waiting for the first word</strong><small>The cloud will build here as students answer.</small></div>}
+        </div>
       ) : hasChoices ? (
         <div className="live-choice-results">
           {interaction.options?.map((option, index) => {
@@ -268,9 +286,16 @@ export default function LiveLessonPrototype() {
     const publicSharedResponseId = sharedResponse && interactionResults
       ? `shared-${interactionResults.runId}-${Math.max(0, sharedResponseIndex)}`
       : null;
+    const publicWordCloudResponses = activeInteraction?.type === 'word-cloud' && interactionResults
+      ? interactionResults.writtenResponses.map((response, index) => ({
+        id: `word-${interactionResults.runId}-${index}`,
+        text: response.text,
+      }))
+      : null;
     const publicResults = interactionResults ? {
       ...interactionResults,
-      writtenResponses: sharedResponse && publicSharedResponseId ? [{ id: publicSharedResponseId, text: sharedResponse.text }] : [],
+      writtenResponses: publicWordCloudResponses
+        || (sharedResponse && publicSharedResponseId ? [{ id: publicSharedResponseId, text: sharedResponse.text }] : []),
       sharedResponseId: publicSharedResponseId,
     } : null;
 

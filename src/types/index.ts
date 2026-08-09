@@ -47,6 +47,7 @@ export type SessionInteractionType =
   | 'poll'
   | 'quiz'
   | 'open-response'
+  | 'word-cloud'
   | 'peer-learning'
   | 'group-work'
   | 'timer'

@@ -32,6 +32,7 @@ import {
   LESSON_CHANNEL,
   LESSON_STORAGE_KEY,
   MOODS,
+  buildWordCloudItems,
   type LessonDisplayState,
   type InteractionResponse,
   type LiveInteraction,
@@ -164,6 +165,7 @@ function StudentPostSubmit({
   responseCount,
   runId,
   optionCounts,
+  writtenResponses,
   rewardState,
   latestReward,
   phase,
@@ -181,6 +183,7 @@ function StudentPostSubmit({
   responseCount: number;
   runId: string;
   optionCounts: number[];
+  writtenResponses: Array<{ id: string; text: string }>;
   rewardState: StudentRewardState;
   latestReward: RewardLedgerEntry | null;
   phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
@@ -190,6 +193,7 @@ function StudentPostSubmit({
   const roomChoice = optionCounts.length
     ? optionCounts.reduce((bestIndex, value, index) => value > (optionCounts[bestIndex] ?? -1) ? index : bestIndex, 0)
     : null;
+  const wordCloudItems = buildWordCloudItems(writtenResponses, 12);
 
   return (
     <div className="student-after-response">
@@ -220,6 +224,15 @@ function StudentPostSubmit({
           <h2 id="peer-moment-title">{revealed ? 'See what changed in the room.' : phase === 'discuss' ? 'Turn to someone nearby.' : phase === 'respond-again' ? 'Your second answer is in.' : 'Keep your first thought in mind.'}</h2>
           <p>{revealed ? 'Look up for the before and after result.' : phase === 'discuss' ? 'Take turns explaining what led you to your answer. Listen for one reason that could change your mind.' : phase === 'respond-again' ? 'The room is answering again. It is fine to keep an idea or change it.' : 'The room is still answering. A short partner conversation comes next.'}</p>
           <div className="student-peer-cues"><span>Explain your reason</span><i /><span>Listen for evidence</span><i /><span>Answer again</span></div>
+        </section>
+      ) : interaction.type === 'word-cloud' ? (
+        <section className="student-waiting-activity student-word-cloud-moment" aria-labelledby="student-word-cloud-title">
+          <div className="student-kicker">Class word cloud</div>
+          <h2 id="student-word-cloud-title">Your word is joining the room.</h2>
+          <p>Repeated ideas grow as more responses arrive. Look up to see the full cloud.</p>
+          <div className="student-mini-word-cloud" aria-label={`${wordCloudItems.length} ideas in the class word cloud`}>
+            {wordCloudItems.map((item) => <span key={`${item.key}-${item.count}`} style={{ '--word-size': `${12 + item.strength * 9}px` } as CSSProperties}>{item.label}{item.count > 1 && <small>{item.count}</small>}</span>)}
+          </div>
         </section>
       ) : showQuestionCommons ? (
         <section className="student-waiting-activity" aria-labelledby="question-commons-title">
@@ -919,6 +932,7 @@ export default function StudentWelcomePage() {
                 responseCount={lessonState.interactionResults.responseCount}
                 runId={lessonState.interactionResults.runId}
                 optionCounts={lessonState.interactionResults.optionCounts}
+                writtenResponses={lessonState.interactionResults.writtenResponses}
                 rewardState={rewardState}
                 latestReward={latestReward}
                 phase={lessonState.interactionResults.phase}
@@ -937,7 +951,7 @@ export default function StudentWelcomePage() {
                 <span className="student-round-icon"><ListChecks size={27} /></span>
                 <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
                 <h1>{lessonState.activeInteraction.prompt}</h1>
-                <p>{lessonState.activeInteraction.type === 'group-work' ? `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
+                <p>{lessonState.activeInteraction.type === 'group-work' ? `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Similar answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
 
                 {lessonState.activeInteraction.options?.length ? (
                   <div className="student-interaction-options" role="radiogroup" aria-label={lessonState.activeInteraction.prompt}>
@@ -967,6 +981,12 @@ export default function StudentWelcomePage() {
                       </HapticButton>
                     ))}
                   </div>
+                ) : lessonState.activeInteraction.type === 'word-cloud' ? (
+                  <label className="student-word-answer">
+                    <span>One word or short phrase</span>
+                    <input value={writtenResponse} onChange={(event) => setWrittenResponse(event.target.value.slice(0, 48))} disabled={!lessonState.interactionResults?.open} maxLength={48} placeholder="Type your answer" aria-label="Your word or short phrase" autoComplete="off" />
+                    <small>{writtenResponse.length}/48</small>
+                  </label>
                 ) : (
                   <textarea value={writtenResponse} onChange={(event) => setWrittenResponse(event.target.value.slice(0, 280))} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? 'Your group response' : 'Your response'} />
                 )}
@@ -981,7 +1001,7 @@ export default function StudentWelcomePage() {
                     disabled={isSubmitting || (lessonState.activeInteraction.options?.length ? selectedOption === null : !writtenResponse.trim())}
                     onClick={(event) => submitInteraction(event.currentTarget)}
                   >
-                    <span>{isSubmitting ? 'Sending response' : lessonState.activeInteraction.type === 'group-work' ? 'Send group response' : 'Send response'}</span><Send size={17} />
+                    <span>{isSubmitting ? 'Sending response' : lessonState.activeInteraction.type === 'group-work' ? 'Send group response' : lessonState.activeInteraction.type === 'word-cloud' ? 'Add to word cloud' : 'Send response'}</span><Send size={17} />
                   </HapticButton>
                 )}
                 <div className="student-private-line"><ShieldCheck size={16} /> The projector shows the class result, not your name.</div>
