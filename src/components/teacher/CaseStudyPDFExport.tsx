@@ -12,6 +12,7 @@ interface CaseStudyPDFExportProps {
 
 const CaseStudyPDFExport: React.FC<CaseStudyPDFExportProps> = ({ caseStudy, className = '' }) => {
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const formatDate = (timestamp: any) => {
     if (!timestamp) return 'Unknown';
@@ -36,6 +37,7 @@ const CaseStudyPDFExport: React.FC<CaseStudyPDFExportProps> = ({ caseStudy, clas
 
   const handleExportPDF = async () => {
     setIsExporting(true);
+    setExportError('');
     
     try {
       // Dynamic import to avoid SSR issues
@@ -249,7 +251,7 @@ const CaseStudyPDFExport: React.FC<CaseStudyPDFExportProps> = ({ caseStudy, clas
 
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('Failed to generate PDF. Please try again.');
+      setExportError('The PDF could not be created. Try again.');
     } finally {
       setIsExporting(false);
     }
@@ -275,6 +277,7 @@ const CaseStudyPDFExport: React.FC<CaseStudyPDFExportProps> = ({ caseStudy, clas
           </>
         )}
       </Button>
+      {exportError && <span className="mt-2 block text-sm font-medium text-red-700" role="alert">{exportError}</span>}
     </>
   );
 };

@@ -69,7 +69,7 @@ const firebaseConfig = JSON.parse(fs.readFileSync(path.join(root, 'firebase.json
 check(Boolean(firebaseConfig.firestore?.rules && firebaseConfig.database?.rules), 'Firestore and Realtime Database rules are configured for deployment.', 'firebase.json must include both Firestore and Realtime Database rules.');
 if (firebaseConfig.hosting?.public === 'out') warnings.push('The old static Firebase Hosting configuration cannot run the AI API routes. Use a Next.js-compatible host.');
 
-console.log('\nThe Living Seminar classroom readiness\n');
+console.log('\nClassfully classroom readiness\n');
 passes.forEach((item) => console.log(`PASS  ${item}`));
 warnings.forEach((item) => console.log(`WARN  ${item}`));
 failures.forEach((item) => console.log(`BLOCK ${item}`));

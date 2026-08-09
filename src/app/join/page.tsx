@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getSessionByCodeStudent } from '@/lib/firebase/student-firestore';
@@ -8,25 +8,101 @@ import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import {
   claimStudentAttendance,
   getLiveClassroomByCode,
+  normalizeStudentDisplayName,
   normalizeStudentNumber,
 } from '@/lib/firebase/live-classroom';
 import { STUDENT_PRIVACY_NOTICE_VERSION } from '@/lib/privacy';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { ArrowRight, EyeOff, Smartphone, Users } from 'lucide-react';
+import ClassfullyBrand from '@/components/marketing/ClassfullyBrand';
+import { ArrowRight, CheckCircle2, EyeOff, Smartphone, UserRound, Users } from 'lucide-react';
+
+const REMEMBERED_STUDENT_KEY = 'classfully-remembered-student';
+
+type RememberedStudent = {
+  studentNumber: string;
+  studentDisplayName?: string;
+  privacyNoticeVersion: string;
+  rememberedAt: number;
+};
+
+function maskStudentNumber(studentNumber: string) {
+  if (studentNumber.length <= 4) return studentNumber;
+  return `${'•'.repeat(Math.min(4, studentNumber.length - 4))}${studentNumber.slice(-4)}`;
+}
+
+function formatJoinCode(sessionCode: string) {
+  return sessionCode.length > 3 ? `${sessionCode.slice(0, 3)} ${sessionCode.slice(3)}` : sessionCode;
+}
 
 export default function JoinPage() {
   const router = useRouter();
   const [sessionCode, setSessionCode] = useState('');
   const [studentNumber, setStudentNumber] = useState('');
+  const [studentDisplayName, setStudentDisplayName] = useState('');
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
+  const [rememberOnDevice, setRememberOnDevice] = useState(true);
+  const [rememberedStudentNumber, setRememberedStudentNumber] = useState('');
+  const [codeFromLink, setCodeFromLink] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const studentNumberInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get('code');
-    if (code) setSessionCode(code.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 6));
+    const normalizedCode = code?.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 6) || '';
+    if (normalizedCode) {
+      setSessionCode(normalizedCode);
+      setCodeFromLink(normalizedCode.length === 6);
+    }
+
+    try {
+      const stored = window.localStorage.getItem(REMEMBERED_STUDENT_KEY);
+      if (stored) {
+        const remembered = JSON.parse(stored) as Partial<RememberedStudent>;
+        const normalizedStudentNumber = normalizeStudentNumber(remembered.studentNumber || '');
+        if (normalizedStudentNumber.length >= 3) {
+          setStudentNumber(normalizedStudentNumber);
+          setStudentDisplayName(normalizeStudentDisplayName(remembered.studentDisplayName || ''));
+          setRememberedStudentNumber(normalizedStudentNumber);
+          setPrivacyAcknowledged(remembered.privacyNoticeVersion === STUDENT_PRIVACY_NOTICE_VERSION);
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(REMEMBERED_STUDENT_KEY);
+    }
+
+    window.requestAnimationFrame(() => {
+      if (normalizedCode) studentNumberInputRef.current?.focus();
+      else codeInputRef.current?.focus();
+    });
   }, []);
+
+  const saveRememberedStudent = (normalizedStudentNumber: string, normalizedDisplayName: string) => {
+    if (!rememberOnDevice) {
+      window.localStorage.removeItem(REMEMBERED_STUDENT_KEY);
+      return;
+    }
+    const remembered: RememberedStudent = {
+      studentNumber: normalizedStudentNumber,
+      ...(normalizedDisplayName ? { studentDisplayName: normalizedDisplayName } : {}),
+      privacyNoticeVersion: STUDENT_PRIVACY_NOTICE_VERSION,
+      rememberedAt: Date.now(),
+    };
+    window.localStorage.setItem(REMEMBERED_STUDENT_KEY, JSON.stringify(remembered));
+    setRememberedStudentNumber(normalizedStudentNumber);
+  };
+
+  const forgetRememberedStudent = () => {
+    window.localStorage.removeItem(REMEMBERED_STUDENT_KEY);
+    setRememberedStudentNumber('');
+    setStudentNumber('');
+    setStudentDisplayName('');
+    setPrivacyAcknowledged(false);
+    setRememberOnDevice(false);
+    window.requestAnimationFrame(() => studentNumberInputRef.current?.focus());
+  };
 
   const handleJoinSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,9 +117,12 @@ export default function JoinPage() {
     try {
       await ensureStudentAnonymousAuth();
       const normalizedCode = sessionCode.replace(/[^a-z0-9]/gi, '').toUpperCase();
+      const normalizedStudentNumber = normalizeStudentNumber(studentNumber);
+      const normalizedDisplayName = normalizeStudentDisplayName(studentDisplayName);
       const liveClassroom = await getLiveClassroomByCode(normalizedCode);
       if (liveClassroom) {
-        await claimStudentAttendance(liveClassroom.ownerUid, liveClassroom.sessionId, studentNumber);
+        await claimStudentAttendance(liveClassroom.ownerUid, liveClassroom.sessionId, normalizedStudentNumber, normalizedDisplayName);
+        saveRememberedStudent(normalizedStudentNumber, normalizedDisplayName);
         router.push(`/live/student?sessionId=${encodeURIComponent(liveClassroom.sessionId)}&ownerUid=${encodeURIComponent(liveClassroom.ownerUid)}`);
         return;
       }
@@ -57,7 +136,9 @@ export default function JoinPage() {
         throw new Error('This class session has ended. Ask your instructor for the current code.');
       }
 
-      window.sessionStorage.setItem('living-seminar-pending-student-number', normalizeStudentNumber(studentNumber));
+      saveRememberedStudent(normalizedStudentNumber, normalizedDisplayName);
+      window.sessionStorage.setItem('living-seminar-pending-student-number', normalizedStudentNumber);
+      window.sessionStorage.setItem('classfully-pending-student-display-name', normalizedDisplayName);
       router.push(`/session/${session.sessionCode}`);
     } catch (joinError: unknown) {
       setError(joinError instanceof Error ? joinError.message : 'We could not join the class. Check the code and try again.');
@@ -69,7 +150,7 @@ export default function JoinPage() {
   return (
     <main className="min-h-screen bg-[#fffefa]">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
-        <Link href="/" className="classfully-wordmark seminar-focus text-xl sm:text-2xl">Classfully</Link>
+        <ClassfullyBrand className="text-xl sm:text-2xl" />
         <Link href="/login" className="seminar-focus inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-semibold text-[#697087] hover:text-[#101a38]">Instructor sign in</Link>
       </header>
 
@@ -97,26 +178,39 @@ export default function JoinPage() {
         </section>
 
         <section className="order-1 rounded-[24px] border border-[#e3e5ed] bg-white p-6 shadow-[0_24px_70px_rgba(16,26,56,0.08)] sm:p-8 lg:order-2" aria-labelledby="join-form-title">
-            <h2 id="join-form-title" className="seminar-display text-3xl text-[#101a38]">Join this class</h2>
-            <p className="mt-2 text-sm leading-6 text-[#697087]">Use the code on the projector, then identify yourself for attendance.</p>
+            <h2 id="join-form-title" className="seminar-display text-3xl text-[#101a38]">{codeFromLink ? 'You found the class' : 'Join this class'}</h2>
+            <p className="mt-2 text-sm leading-6 text-[#697087]">{codeFromLink ? 'Confirm your student number to join and record attendance.' : 'Use the code on the projector, then identify yourself for attendance.'}</p>
             <form onSubmit={handleJoinSession} className="space-y-6">
               <div className="mt-6 space-y-4">
-                <Input
-                  label="Class code"
-                  value={sessionCode}
-                  onChange={(e) => setSessionCode(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())}
-                  placeholder="ABC123"
-                  maxLength={6}
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="h-14 text-center font-mono text-xl font-semibold tracking-[0.3em]"
-                  required
-                />
+                {codeFromLink ? (
+                  <div className="flex min-h-14 items-center gap-3 rounded-xl border border-[#cde7d4] bg-[#f2fbf4] px-4 py-3 text-[#287044]">
+                    <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    <div className="min-w-0 flex-1"><p className="text-xs font-semibold uppercase tracking-[0.08em]">Class code added</p><strong className="font-mono text-base tracking-[0.16em] text-[#174d2c]">{formatJoinCode(sessionCode)}</strong></div>
+                    <button type="button" onClick={() => {
+                      setCodeFromLink(false);
+                      window.requestAnimationFrame(() => codeInputRef.current?.focus());
+                    }} className="min-h-11 rounded-lg px-2 text-sm font-semibold underline-offset-4 hover:underline">Edit</button>
+                  </div>
+                ) : (
+                  <Input
+                    label="Class code"
+                    ref={codeInputRef}
+                    value={sessionCode}
+                    onChange={(e) => setSessionCode(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())}
+                    placeholder="ABC123"
+                    maxLength={6}
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="h-14 text-center font-mono text-xl font-semibold tracking-[0.3em]"
+                    required
+                  />
+                )}
 
                 <div>
                   <Input
                     label="Student number"
+                    ref={studentNumberInputRef}
                     value={studentNumber}
                     onChange={(e) => setStudentNumber(normalizeStudentNumber(e.target.value))}
                     placeholder="66123456"
@@ -131,6 +225,37 @@ export default function JoinPage() {
                   <p className="mt-2 text-xs leading-5 text-[#697087]">Used for attendance and course progress. It is never shown to classmates.</p>
                 </div>
 
+                <div>
+                  <Input
+                    label="Preferred name (optional)"
+                    value={studentDisplayName}
+                    onChange={(e) => setStudentDisplayName(e.target.value.slice(0, 60))}
+                    placeholder="What your instructor should call you"
+                    maxLength={60}
+                    autoComplete="name"
+                    className="h-14 text-base font-semibold"
+                  />
+                  <p className="mt-2 text-xs leading-5 text-[#697087]">Shown only to you and your instructor. Class standings still use a private alias.</p>
+                </div>
+
+                {rememberedStudentNumber && (
+                  <div className="flex items-center gap-3 rounded-xl border border-[#dcd8ff] bg-[#f7f5ff] p-4">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#5146e5]"><UserRound className="h-5 w-5" aria-hidden="true" /></span>
+                    <div className="min-w-0 flex-1"><p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7057e8]">Welcome back</p><p className="mt-0.5 text-sm font-semibold text-[#101a38]">{studentDisplayName || 'Student'} · {maskStudentNumber(rememberedStudentNumber)}</p></div>
+                    <button type="button" onClick={forgetRememberedStudent} className="min-h-11 rounded-lg px-2 text-sm font-semibold text-[#5146e5] underline-offset-4 hover:underline">Not you?</button>
+                  </div>
+                )}
+
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e3e5ed] p-3.5 text-sm leading-6 text-[#555d73]">
+                  <input
+                    type="checkbox"
+                    checked={rememberOnDevice}
+                    onChange={(event) => setRememberOnDevice(event.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 accent-[#5146e5]"
+                  />
+                  <span><strong className="font-semibold text-[#313950]">Remember me on this device.</strong> Use this only on your own phone or computer.</span>
+                </label>
+
                 <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e3e5ed] bg-[#fbfbfd] p-4 text-sm leading-6 text-[#555d73]">
                   <input
                     type="checkbox"
@@ -139,7 +264,7 @@ export default function JoinPage() {
                     className="mt-1 h-4 w-4 shrink-0 accent-[#5146e5]"
                     required
                   />
-                  <span>I have read how my student number and class responses are used. <Link className="font-semibold text-[#5146e5] underline underline-offset-2" href={`/privacy?version=${STUDENT_PRIVACY_NOTICE_VERSION}`} target="_blank">Read the student privacy notice</Link>.</span>
+                  <span>I have read how my student number, optional preferred name, and class responses are used. <Link className="font-semibold text-[#5146e5] underline underline-offset-2" href={`/privacy?version=${STUDENT_PRIVACY_NOTICE_VERSION}`} target="_blank">Read the student privacy notice</Link>.</span>
                 </label>
 
                 {error && (

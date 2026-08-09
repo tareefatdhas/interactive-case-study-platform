@@ -11,6 +11,7 @@ import Input from '@/components/ui/Input';
 import type { Course, Session, SessionInteraction } from '@/types';
 import {
   ArrowRight,
+  Archive,
   CalendarPlus,
   CheckCircle2,
   GraduationCap,
@@ -65,13 +66,14 @@ export default function ClassesPage() {
   const [name, setName] = useState('');
   const [term, setTerm] = useState('');
   const [creating, setCreating] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState('');
 
   const loadClasses = async () => {
     if (!user) return;
     try {
       const [courseData, sessionData] = await Promise.all([
-        getCoursesByTeacher(user.uid),
+        getCoursesByTeacher(user.uid, true),
         getSessionsByTeacher(user.uid),
       ]);
       setCourses(courseData);
@@ -90,7 +92,7 @@ export default function ClassesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const classSummaries = useMemo(() => courses.map((course) => {
+  const classSummaries = useMemo(() => courses.filter((course) => Boolean(course.archived) === showArchived).map((course) => {
     const courseSessions = sessions.filter((session) => (
       session.courseId === course.id || (!session.courseId && session.courseCode === course.code)
     ));
@@ -99,15 +101,22 @@ export default function ClassesPage() {
       .filter((session) => !session.active && session.scheduledFor && new Date(session.scheduledFor) >= new Date())
       .sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime())[0];
     return { course, courseSessions, students: students.size, upcoming };
-  }), [courses, sessions]);
+  }), [courses, sessions, showArchived]);
+
+  const archivedCount = courses.filter((course) => course.archived).length;
 
   const createNewClass = async () => {
     if (!user || !code.trim() || !name.trim()) return;
+    const normalizedCode = code.trim().toUpperCase();
+    if (courses.some((course) => course.code.trim().toUpperCase() === normalizedCode)) {
+      setError('That class code is already in use. Choose a different code so records stay separate.');
+      return;
+    }
     setCreating(true);
     setError('');
     try {
       await createCourse({
-        code: code.trim().toUpperCase(),
+        code: normalizedCode,
         name: name.trim(),
         term: term.trim() || undefined,
         teacherId: user.uid,
@@ -158,10 +167,21 @@ export default function ClassesPage() {
             })}
           </section>
 
+          <div className="mb-6 flex flex-wrap items-center gap-2" aria-label="Class list view">
+            <button type="button" onClick={() => setShowArchived(false)} className={`seminar-focus rounded-full px-4 py-2 text-sm font-bold ${!showArchived ? 'bg-[#101a38] text-white' : 'bg-white text-[#697087] hover:bg-[#f8f7fb]'}`}>Current classes</button>
+            <button type="button" onClick={() => setShowArchived(true)} className={`seminar-focus inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold ${showArchived ? 'bg-[#101a38] text-white' : 'bg-white text-[#697087] hover:bg-[#f8f7fb]'}`}><Archive className="h-4 w-4" /> Archived <span className="tabular-nums">{archivedCount}</span></button>
+          </div>
+
           {error && <p className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
 
           {loading ? (
             <div className="flex min-h-64 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /></div>
+          ) : classSummaries.length === 0 && showArchived ? (
+            <section className="rounded-3xl border border-dashed border-[#cfd2df] bg-white px-6 py-14 text-center">
+              <Archive className="mx-auto h-7 w-7 text-[#697087]" />
+              <h2 className="seminar-display mt-4 text-3xl text-[#101a38]">No archived classes.</h2>
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#697087]">Classes you close at the end of a term will be kept here with their session history intact.</p>
+            </section>
           ) : classSummaries.length === 0 ? (
             <section className="rounded-3xl border border-dashed border-[#cfd2df] bg-white px-6 py-16 text-center">
               <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f0efff] text-[#5146e5]"><GraduationCap className="h-7 w-7" /></span>
@@ -172,10 +192,10 @@ export default function ClassesPage() {
           ) : (
             <section className="grid gap-5 lg:grid-cols-2">
               {classSummaries.map(({ course, courseSessions, students, upcoming }) => (
-                <article key={course.id} className="group rounded-3xl border border-[#e3e5ed] bg-white p-6 transition duration-200 hover:-translate-y-0.5 hover:border-[#cbc7ff] hover:shadow-[0_16px_40px_rgba(16,26,56,0.08)]">
+                <article key={course.id} className={`group rounded-3xl border p-6 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(16,26,56,0.08)] ${course.archived ? 'border-[#e3e5ed] bg-[#f8f7f3]' : 'border-[#e3e5ed] bg-white hover:border-[#cbc7ff]'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#101a38] px-3 py-1 text-xs font-bold text-white">{course.code}</span>{course.term && <span className="text-xs font-semibold text-[#697087]">{course.term}</span>}</div>
+                      <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#101a38] px-3 py-1 text-xs font-bold text-white">{course.code}</span>{course.term && <span className="text-xs font-semibold text-[#697087]">{course.term}</span>}{course.archived && <span className="rounded-full bg-[#e7e5df] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#5f6472]">Archived</span>}</div>
                       <h2 className="seminar-display mt-4 text-3xl text-[#101a38]">{course.name}</h2>
                     </div>
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#fff2ed] text-[#c85540]"><Sparkles className="h-5 w-5" /></span>
@@ -187,7 +207,7 @@ export default function ClassesPage() {
                   </div>
                   <div className="mt-5 flex items-center justify-between gap-4">
                     <div className="min-w-0 text-xs leading-5 text-[#697087]">
-                      {upcoming ? <><span className="font-semibold text-[#3a4258]">Next:</span> {upcoming.title || 'Prepared session'}</> : <span>No upcoming session prepared</span>}
+                      {course.archived ? <span>Session history and student records are preserved</span> : upcoming ? <><span className="font-semibold text-[#3a4258]">Next:</span> {upcoming.title || 'Prepared session'}</> : <span>No upcoming session prepared</span>}
                     </div>
                     <Link href={`/dashboard/classes/${course.id}`} className="seminar-focus inline-flex shrink-0 items-center gap-2 rounded-lg text-sm font-bold text-[#5146e5]">Open class <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></Link>
                   </div>

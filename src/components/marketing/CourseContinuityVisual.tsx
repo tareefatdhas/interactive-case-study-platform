@@ -13,7 +13,7 @@ export default function CourseContinuityVisual() {
       <div className="course-thread-head">
         <div>
           <span className="seminar-eyebrow">ECON 302 · Course record</span>
-          <h3 className="seminar-display">Four classes. One developing picture.</h3>
+          <h3 className="seminar-display">See how your sessions are being experienced.</h3>
         </div>
         <span className="course-thread-live"><i /> Updated today</span>
       </div>

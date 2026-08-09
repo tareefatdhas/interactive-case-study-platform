@@ -6,6 +6,7 @@ import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Dialog from '@/components/ui/Dialog';
 import type { Achievement, AchievementCategory, AchievementRarity } from '@/types';
 import {
   getAchievementsByTeacher,
@@ -452,6 +453,7 @@ export default function AchievementsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingAchievement, setEditingAchievement] = useState<Achievement | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<AchievementCategory | 'all'>('all');
+  const [replaceDefaultsOpen, setReplaceDefaultsOpen] = useState(false);
 
   const loadAchievements = useCallback(async () => {
     if (!user) return;
@@ -523,14 +525,16 @@ export default function AchievementsPage() {
 
   const handleReplaceDefaults = async () => {
     if (!user) return;
-    
-    if (!confirm('This will replace all existing default achievements with the new enhanced set. Custom achievements will be preserved. Continue?')) {
-      return;
-    }
-    
+
+    setReplaceDefaultsOpen(true);
+  };
+
+  const confirmReplaceDefaults = async () => {
+    if (!user) return;
     try {
       setLoading(true);
       await replaceDefaultAchievements(user.uid);
+      setReplaceDefaultsOpen(false);
       loadAchievements();
     } catch (error) {
       console.error('Failed to replace default achievements:', error);
@@ -724,6 +728,7 @@ export default function AchievementsPage() {
                 onSave={editingAchievement ? handleUpdateAchievement : handleCreateAchievement}
                 editingAchievement={editingAchievement}
               />
+              <Dialog isOpen={replaceDefaultsOpen} onClose={() => setReplaceDefaultsOpen(false)} onConfirm={confirmReplaceDefaults} title="Replace the default rewards?" message="Classfully will refresh the default set while keeping every reward you created yourself." confirmText="Replace defaults" />
             </>
           )}
         </div>

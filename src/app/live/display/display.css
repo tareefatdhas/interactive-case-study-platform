@@ -504,7 +504,7 @@ body:has(.classroom-display) {
 .welcome-qr-card {
   justify-self: center;
   width: 100%;
-  max-width: 374px;
+  max-width: 404px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -515,7 +515,7 @@ body:has(.classroom-display) {
   box-shadow: 0 26px 60px rgba(32, 29, 85, 0.13);
 }
 
-.welcome-qr-card svg { width: 218px; height: 218px; }
+.welcome-qr-card svg { width: 248px; height: 248px; }
 .welcome-qr-card > span { margin-top: 22px; color: var(--display-muted); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; font-weight: 800; }
 .welcome-qr-card > strong { margin-top: 4px; font-family: var(--seminar-font-display); font-size: 48px; font-weight: 500; letter-spacing: 0.1em; }
 .welcome-qr-card > small { margin-top: 9px; color: var(--display-muted); font-size: 11px; }

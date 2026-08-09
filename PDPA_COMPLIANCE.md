@@ -48,7 +48,8 @@ Pilot target: delete live classroom and attendance data within 90 days after the
 Current enforcement:
 
 - An instructor can delete a session and its live data immediately.
-- Automatic time-based deletion is not yet implemented. Production deployment requires a scheduled server-side retention job and an auditable deletion log.
+- A daily server-side job deletes live classroom, attendance, response, vote, presence, and join-code data 90 days after its last recorded update.
+- Each retention run writes an audit record with the policy window, deletion count, classroom owner, session identifier, and source timestamp. It does not copy student numbers or responses into the audit log.
 - Local reward data stays on the student's device until browser storage is cleared. A visible reset/export control should be added before rewards are used for formal credit.
 
 ## Student rights workflow
@@ -79,7 +80,7 @@ Cross-device self-service rights require verified student accounts. LINE Login o
 - [ ] Firebase region and cross-border safeguards approved
 - [ ] Firebase and AI data-processing terms approved
 - [ ] Realtime Database and Firestore rules deployed and tested
-- [ ] Automatic retention job and deletion audit log enabled
+- [ ] Automatic retention job and deletion audit log deployed and observed successfully
 - [ ] Verified student identity enabled for cross-device access and rights requests
 - [ ] Local owner-scoped Firestore rules deployed and verified against the legacy module
 - [ ] Incident-response owner and PDPC notification process documented

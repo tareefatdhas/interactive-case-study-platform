@@ -197,9 +197,11 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   useEffect(() => {
     const remembered = loadStudentInfoFromCookie();
     const pendingStudentNumber = window.sessionStorage.getItem('living-seminar-pending-student-number');
+    const pendingDisplayName = window.sessionStorage.getItem('classfully-pending-student-display-name') || '';
     window.sessionStorage.removeItem('living-seminar-pending-student-number');
+    window.sessionStorage.removeItem('classfully-pending-student-display-name');
     if (pendingStudentNumber) {
-      setStudentInfo((current) => ({ ...current, studentId: pendingStudentNumber }));
+      setStudentInfo((current) => ({ ...current, studentId: pendingStudentNumber, name: pendingDisplayName || current.name }));
       if (remembered && normalizeStudentId(remembered.studentId) === normalizeStudentId(pendingStudentNumber)) {
         setRememberedStudent(remembered);
       } else {

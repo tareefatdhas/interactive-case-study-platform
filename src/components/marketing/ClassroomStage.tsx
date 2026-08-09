@@ -62,7 +62,7 @@ export default function ClassroomStage() {
       <div className="stage-phone">
         <div className="stage-phone-top"><span>Classfully</span><i /></div>
         <span className="seminar-eyebrow">Response sent</span>
-        <strong className="seminar-display">Look up. The class signal just changed.</strong>
+        <strong className="seminar-display">See what the class is thinking.</strong>
         <div className="stage-phone-answer"><Radio /><span>Your answer</span><b>One more example</b></div>
         <div className="stage-phone-wait"><Users /><span><b>While the room responds</b><small>Upvote a question you want discussed.</small></span></div>
       </div>

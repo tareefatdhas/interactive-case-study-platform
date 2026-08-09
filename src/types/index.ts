@@ -178,6 +178,9 @@ export interface Course {
   teacherId: string;
   studentIds: string[];
   term?: string;
+  archived?: boolean;
+  archivedAt?: Timestamp | null;
+  sourceCourseId?: string;
   interactionTemplates?: SessionInteraction[];
   createdAt: Timestamp;
   updatedAt?: Timestamp;
@@ -312,4 +315,40 @@ export interface AchievementProgress {
   currentValue: number;
   requiredValue: number;
   percentage: number;
+}
+
+export type RewardKind = 'pass' | 'recognition' | 'choice' | 'extra-credit';
+export type RewardRequestStatus = 'pending' | 'approved' | 'declined' | 'used';
+
+export interface RewardDefinition {
+  id: string;
+  teacherId: string;
+  courseId: string;
+  courseCode: string;
+  name: string;
+  description: string;
+  pointsRequired: number;
+  kind: RewardKind;
+  enabled: boolean;
+  limitPerStudent?: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface RewardRequest {
+  id: string;
+  authorUid: string;
+  teacherId: string;
+  courseId: string;
+  courseCode: string;
+  studentNumber: string;
+  studentDisplayName?: string;
+  rewardId: string;
+  rewardName: string;
+  pointsRequired: number;
+  pointsAtRequest: number;
+  status: RewardRequestStatus;
+  requestedAt: Timestamp;
+  reviewedAt?: Timestamp;
+  instructorNote?: string;
 }

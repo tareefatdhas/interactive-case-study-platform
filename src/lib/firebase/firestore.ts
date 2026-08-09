@@ -144,6 +144,7 @@ export const createCourse = async (
   const now = Timestamp.now();
   const docRef = await addDoc(collection(db, COLLECTIONS.COURSES), {
     ...omitUndefinedValues(course),
+    archived: course.archived ?? false,
     createdAt: now,
     updatedAt: now,
   });
@@ -155,14 +156,15 @@ export const getCourse = async (id: string): Promise<Course | null> => {
   return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } as Course : null;
 };
 
-export const getCoursesByTeacher = async (teacherId: string): Promise<Course[]> => {
+export const getCoursesByTeacher = async (teacherId: string, includeArchived = false): Promise<Course[]> => {
   const snapshot = await getDocs(query(
     collection(db, COLLECTIONS.COURSES),
     where('teacherId', '==', teacherId),
   ));
-  return snapshot.docs
+  const courses = snapshot.docs
     .map((courseDoc) => ({ id: courseDoc.id, ...courseDoc.data() } as Course))
     .sort((a, b) => a.code.localeCompare(b.code));
+  return includeArchived ? courses : courses.filter((course) => !course.archived);
 };
 
 export const updateCourse = async (
@@ -615,7 +617,8 @@ export const subscribeToSessionResponses = (sessionId: string, callback: (respon
 
 // Utility functions
 export const generateSessionCode = (): string => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  // Avoid characters that are easy to confuse when a code is shown on a projector.
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let result = '';
   for (let i = 0; i < 6; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));

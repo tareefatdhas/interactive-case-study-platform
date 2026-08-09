@@ -15,6 +15,7 @@ import {
   LESSON_STORAGE_KEY,
   MOODS,
   dotStyle,
+  formatSessionCode,
   percent,
   resultPercent,
   total,
@@ -212,6 +213,8 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
 function ClassroomWelcome({ lessonState, joinUrl }: { lessonState: LessonDisplayState; joinUrl: string }) {
   const step = lessonState.onboardingStep;
   const welcomeResponses = total(lessonState.onboardingMoodCounts);
+  const joinLink = new URL(joinUrl);
+  joinLink.searchParams.set('code', lessonState.session.sessionCode.replace(/\s/g, ''));
 
   if (step === 1) {
     return (
@@ -220,12 +223,12 @@ function ClassroomWelcome({ lessonState, joinUrl }: { lessonState: LessonDisplay
           <span className="welcome-display-kicker"><Smartphone size={21} /> Step 1 · Join the room</span>
           <h1>Your phone is your quiet way into the conversation.</h1>
           <p>Open the class link, enter the code, and keep this page nearby while we learn.</p>
-          <div className="welcome-join-details"><span>Go to</span><strong>{joinUrl.replace(/^https?:\/\//, '')}</strong><small>No app download needed</small></div>
+          <div className="welcome-join-details"><span>Scan or go to</span><strong>{joinUrl.replace(/^https?:\/\//, '')}</strong><small>No app download needed</small></div>
         </div>
-        <div className="welcome-qr-card">
-          <QRCode value={`${joinUrl}?code=${encodeURIComponent(lessonState.session.sessionCode.replace(/\s/g, ''))}`} size={218} bgColor="#fffefa" fgColor="#101a38" />
+        <div className="welcome-qr-card" aria-label="Scan to join this class">
+          <QRCode value={joinLink.toString()} title="Scan to join this class" level="M" size={248} bgColor="#fffefa" fgColor="#101a38" />
           <span>Class code</span>
-          <strong>{lessonState.session.sessionCode}</strong>
+          <strong>{formatSessionCode(lessonState.session.sessionCode)}</strong>
           <small>{lessonState.session.courseCode} · {lessonState.session.sessionTitle}</small>
         </div>
       </section>
@@ -298,7 +301,7 @@ function ClassroomWelcome({ lessonState, joinUrl }: { lessonState: LessonDisplay
       <h1>You’re in. Let’s make this a conversation.</h1>
       <p>{welcomeResponses} students tried the first pulse. Questions can be anonymous, and the shared room signal stays visible throughout the lesson.</p>
       <div className="welcome-ready-stats">
-        <span><strong>{lessonState.session.sessionCode}</strong><small>Class code</small></span>
+        <span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong><small>Class code</small></span>
         <span><strong>{welcomeResponses}</strong><small>First pulses</small></span>
         <span><strong>3</strong><small>Ways to participate</small></span>
       </div>
@@ -329,7 +332,7 @@ export default function ClassroomDisplayPage() {
   const [lessonState, setLessonState] = useState<LessonDisplayState>(DEFAULT_STATE);
   const [connected, setConnected] = useState(false);
   const [remoteUnavailable, setRemoteUnavailable] = useState(false);
-  const [joinUrl, setJoinUrl] = useState('https://seminar.live/join');
+  const [joinUrl, setJoinUrl] = useState('https://classfully.com/join');
   const [projectorFlights, setProjectorFlights] = useState<ProjectorFlight[]>([]);
   const arrivalSequenceRef = useRef(0);
   const priorArrivalStateRef = useRef<{
@@ -579,7 +582,7 @@ export default function ClassroomDisplayPage() {
               {[1, 2, 3].map((step) => <i className={step <= lessonState.onboardingStep ? 'is-filled' : ''} key={step} />)}
               <span>{lessonState.onboardingStep === 4 ? 'Ready to begin' : `Step ${lessonState.onboardingStep} of 3`}</span>
             </div>
-            <div className="join-code"><span>Class code</span><strong>{lessonState.session.sessionCode}</strong></div>
+            <div className="join-code"><span>Class code</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
           </footer>
         </>
       ) : featuredQuestion ? (
@@ -588,7 +591,7 @@ export default function ClassroomDisplayPage() {
           <footer className="display-footer question-spotlight-footer">
             <div className="room-rhythm"><i /><span><strong>Question selected for discussion</strong><small>The instructor can return to the activity when ready</small></span></div>
             <div className="display-footer-insight"><MessageCircle size={16} /><span>{featuredQuestion.votes} class upvotes</span></div>
-            <div className="join-code"><span>Class code</span><strong>{lessonState.session.sessionCode}</strong></div>
+            <div className="join-code"><span>Class code</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
           </footer>
         </>
       ) : lessonState.activeInteraction ? (
@@ -597,7 +600,7 @@ export default function ClassroomDisplayPage() {
           <footer className="display-footer">
             <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
             <div className="display-footer-insight"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
-            <div className="join-code"><span>Class code</span><strong>{lessonState.session.sessionCode}</strong></div>
+            <div className="join-code"><span>Class code</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
           </footer>
         </>
       ) : (
@@ -651,7 +654,7 @@ export default function ClassroomDisplayPage() {
           <footer className="display-footer">
             <div className="room-rhythm"><i /><span><strong>{roomSignal}</strong><small>{lessonState.paused ? 'Responses are paused' : 'New responses appear as they arrive'}</small></span></div>
             <div className="display-history"><MonitorUp size={18} /><span>{lessonState.playingHistory ? `Replaying ${selectedDate}` : 'Live class pulse'}</span></div>
-            <div className="join-code"><span>Join the class</span><strong>{lessonState.session.sessionCode}</strong></div>
+            <div className="join-code"><span>Join the class</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
           </footer>
         </>
       )}

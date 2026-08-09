@@ -8,6 +8,7 @@ import { IconContext, Pulse as Activity, ArrowRight, ArrowFatUp as ArrowUp, Meda
 import HapticButton from '@/components/student/HapticButton';
 import {
   getStudentQuestionVotes,
+  getCurrentStudentAttendance,
   getStudentResponse,
   getStudentWelcomeResponse,
   joinStudentPresence,
@@ -16,6 +17,12 @@ import {
   submitStudentWelcomeResponse,
   subscribeToStudentPublicState,
 } from '@/lib/firebase/live-classroom';
+import {
+  getAvailableRewardsForStudent,
+  getStudentRewardRequests,
+  requestReward as requestManagedReward,
+} from '@/lib/firebase/rewards';
+import type { RewardDefinition, RewardRequest, RewardRequestStatus } from '@/types';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import {
   EMPTY_ONBOARDING_COUNTS,
@@ -178,8 +185,8 @@ function StudentPostSubmit({
         <ParticipationSignal active={Boolean(latestReward)} />
         <span><Sparkles size={17} /></span>
         <div>
-          <small>{latestReward?.label || 'Seminar points'}</small>
-          <strong>{latestReward ? `+${latestReward.amount} ${latestReward.balance === 'score' ? 'class score' : 'seminar points'}` : `${rewardState.seminarPoints} seminar points`}</strong>
+          <small>{latestReward?.label || 'Points'}</small>
+          <strong>{latestReward ? `+${latestReward.amount} ${latestReward.balance === 'score' ? 'class score' : 'points'}` : `${rewardState.seminarPoints} points`}</strong>
         </div>
         <b>{latestReward?.balance === 'score' ? rewardState.classScore : rewardState.seminarPoints}</b>
       </div>
@@ -304,11 +311,15 @@ function StudentPostSubmit({
 function StudentCourseHome({
   lessonState,
   rewards,
+  courseRewards,
+  requestStatuses,
   onRequestReward,
   enableSocialRewards,
 }: {
   lessonState: LessonDisplayState;
   rewards: StudentRewardState;
+  courseRewards: CourseReward[];
+  requestStatuses: Record<string, RewardRequestStatus>;
   onRequestReward: (reward: CourseReward) => void;
   enableSocialRewards: boolean;
 }) {
@@ -324,8 +335,8 @@ function StudentCourseHome({
     { alias: rewards.alias, points: rewards.seminarPoints, current: true },
     { alias: 'Open Atlas', points: 82 },
   ].sort((a, b) => b.points - a.points);
-  const nextReward = COURSE_REWARDS.find((reward) => reward.cost > rewards.seminarPoints) || COURSE_REWARDS[COURSE_REWARDS.length - 1];
-  const progress = Math.min(100, Math.round((rewards.seminarPoints / nextReward.cost) * 100));
+  const nextReward = courseRewards.find((reward) => reward.pointsRequired > rewards.seminarPoints) || courseRewards[courseRewards.length - 1];
+  const progress = nextReward ? Math.min(100, Math.round((rewards.seminarPoints / nextReward.pointsRequired) * 100)) : 0;
 
   return (
     <div className="student-course-home">
@@ -343,22 +354,22 @@ function StudentCourseHome({
           <p className="student-home-intro">A private record of how you show up, answer, predict, and contribute.</p>
           <section className="student-constellation-card" aria-labelledby="student-progress-title">
             <div className="student-constellation-heading">
-              <div><small>Your seminar points</small><strong id="student-progress-title">{rewards.seminarPoints}</strong></div>
+              <div><small>Your points</small><strong id="student-progress-title">{rewards.seminarPoints}</strong></div>
               <span><Flame size={16} /><strong>{rewards.classRun}</strong><small>class run</small></span>
             </div>
             <div className="student-constellation-visual">
               <Image src="/assets/living-seminar/room-forming.png" alt="A soft constellation formed by your classroom participation" width={2079} height={756} priority />
               <div className="student-constellation-copy"><Sparkles size={16} /><span><strong>6 learning moments</strong><small>across this course</small></span></div>
             </div>
-            {enableSocialRewards ? <div className="student-reward-progress">
+            {enableSocialRewards && nextReward ? <div className="student-reward-progress">
               <div><span>Next reward</span><strong>{nextReward.name}</strong></div>
-              <small>{Math.max(0, nextReward.cost - rewards.seminarPoints)} points to go</small>
+              <small>{Math.max(0, nextReward.pointsRequired - rewards.seminarPoints)} points to go</small>
               <i><b style={{ width: `${progress}%` }} /></i>
-            </div> : <div className="student-pilot-points"><Lock size={14} /><span><strong>Pilot points stay on this device.</strong> They are feedback, not grades or extra credit.</span></div>}
+            </div> : enableSocialRewards ? <div className="student-pilot-points"><Gift size={14} /><span><strong>No rewards have been added yet.</strong> Your points will keep accumulating.</span></div> : <div className="student-pilot-points"><Lock size={14} /><span><strong>Pilot points stay on this device.</strong> They are feedback, not grades or extra credit.</span></div>}
           </section>
           {enableSocialRewards && <div className="student-home-shortcuts">
             <HapticButton type="button" depth="compact" onClick={() => setView('standing')}><Trophy size={17} /><span><small>Weekly standing</small><strong>Position {leaderboard.findIndex((entry) => entry.current) + 1}</strong></span><ArrowRight size={15} /></HapticButton>
-            <HapticButton type="button" depth="compact" onClick={() => setView('rewards')}><Gift size={17} /><span><small>Reward shelf</small><strong>{COURSE_REWARDS.filter((reward) => reward.cost <= rewards.seminarPoints).length} available now</strong></span><ArrowRight size={15} /></HapticButton>
+            <HapticButton type="button" depth="compact" onClick={() => setView('rewards')}><Gift size={17} /><span><small>My Rewards</small><strong>{courseRewards.filter((reward) => reward.pointsRequired <= rewards.seminarPoints).length} available now</strong></span><ArrowRight size={15} /></HapticButton>
           </div>}
         </>
       )}
@@ -380,22 +391,27 @@ function StudentCourseHome({
 
       {view === 'rewards' && (
         <section className="student-home-section is-panel" aria-labelledby="student-rewards-title">
-          <div className="student-section-title"><div><span>Reward shelf</span><h2 id="student-rewards-title">Use points your way</h2></div><Gift size={19} /></div>
-          <p className="student-section-note">Requests go to your instructor. Points are only used after approval.</p>
+          <div className="student-section-title"><div><span>My Rewards</span><h2 id="student-rewards-title">What you’ve unlocked</h2></div><Gift size={19} /></div>
+          <p className="student-section-note">Your points are permanent. Reaching a milestone unlocks the option to request its reward.</p>
           <div className="student-reward-shelf">
-            {COURSE_REWARDS.map((reward) => {
-              const pending = rewards.redemptions.some((redemption) => redemption.rewardId === reward.id && redemption.status === 'pending');
-              const available = rewards.seminarPoints >= reward.cost;
+            {courseRewards.map((reward) => {
+              const localStatus = rewards.redemptions.find((redemption) => redemption.rewardId === reward.id)?.status;
+              const status = requestStatuses[reward.id] || localStatus;
+              const pending = status === 'pending';
+              const approved = status === 'approved';
+              const used = status === 'used';
+              const available = rewards.seminarPoints >= reward.pointsRequired;
               return (
                 <article key={reward.id}>
                   <span><Award size={18} /></span>
                   <div><strong>{reward.name}</strong><small>{reward.description}</small></div>
-                  <HapticButton type="button" depth="compact" hapticTone="action" disabled={!available || pending} onClick={() => onRequestReward(reward)}>
-                    {pending ? 'Requested' : `${reward.cost} pts`} {!pending && <ArrowRight size={13} />}
+                  <HapticButton type="button" depth="compact" hapticTone="action" disabled={!available || pending || approved || used} onClick={() => onRequestReward(reward)}>
+                    {pending ? 'Pending' : approved ? 'Approved' : used ? 'Used' : available ? 'Request' : `${reward.pointsRequired} pts`} {!status && available && <ArrowRight size={13} />}
                   </HapticButton>
                 </article>
               );
             })}
+            {courseRewards.length === 0 && <div className="student-pilot-points"><Gift size={14} /><span><strong>No rewards available yet.</strong> Your instructor can add rewards for this class.</span></div>}
           </div>
         </section>
       )}
@@ -421,6 +437,11 @@ export default function StudentWelcomePage() {
   const [remoteUnavailable, setRemoteUnavailable] = useState(false);
   const [rewardScope, setRewardScope] = useState('demo:ECON302');
   const [rewardState, setRewardState] = useState<StudentRewardState>(() => createInitialRewardState(true));
+  const [studentNumber, setStudentNumber] = useState('');
+  const [studentDisplayName, setStudentDisplayName] = useState('');
+  const [managedRewards, setManagedRewards] = useState<RewardDefinition[]>([]);
+  const [managedRequests, setManagedRequests] = useState<RewardRequest[]>([]);
+  const [rewardRequestError, setRewardRequestError] = useState('');
   const [latestReward, setLatestReward] = useState<RewardLedgerEntry | null>(null);
   const [transportSignal, setTransportSignal] = useState<TransportSignal | null>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -552,6 +573,41 @@ export default function StudentWelcomePage() {
   useEffect(() => {
     setRewardState(loadRewardState(rewardScope, rewardScope.startsWith('demo:')));
   }, [rewardScope]);
+
+  useEffect(() => {
+    if (!remoteSession) {
+      setStudentNumber('');
+      setStudentDisplayName('');
+      setManagedRewards([]);
+      setManagedRequests([]);
+      return;
+    }
+    getCurrentStudentAttendance(remoteSession.ownerUid, remoteSession.sessionId)
+      .then((claim) => {
+        setStudentNumber(claim?.studentNumber || '');
+        setStudentDisplayName(claim?.studentDisplayName || '');
+      })
+      .catch(() => {
+        setStudentNumber('');
+        setStudentDisplayName('');
+      });
+  }, [remoteSession]);
+
+  useEffect(() => {
+    if (!remoteSession || !studentNumber || !lessonState.session.courseCode) return;
+    let cancelled = false;
+    Promise.all([
+      getAvailableRewardsForStudent(remoteSession.ownerUid, lessonState.session.courseCode),
+      getStudentRewardRequests(remoteSession.ownerUid, lessonState.session.courseCode),
+    ]).then(([rewardDefinitions, rewardRequests]) => {
+      if (cancelled) return;
+      setManagedRewards(rewardDefinitions);
+      setManagedRequests(rewardRequests);
+    }).catch(() => {
+      if (!cancelled) setRewardRequestError('Rewards could not be loaded. Your classroom responses still work normally.');
+    });
+    return () => { cancelled = true; };
+  }, [lessonState.session.courseCode, remoteSession, studentNumber]);
 
   const awardReward = useCallback((eventKey: string, balance: RewardBalance, amount: number, label: string) => {
     setRewardState((current) => {
@@ -725,7 +781,28 @@ export default function StudentWelcomePage() {
     }
   }, [awardReward, interactionSubmitted, lessonState.activeInteraction, lessonState.interactionResults, prediction, selectedOption]);
 
-  const requestReward = (reward: CourseReward) => {
+  const requestReward = async (reward: CourseReward) => {
+    setRewardRequestError('');
+    if (remoteSession) {
+      const managedReward = managedRewards.find((item) => item.id === reward.id);
+      if (!managedReward || !studentNumber) return;
+      try {
+        await requestManagedReward({
+          teacherId: remoteSession.ownerUid,
+          courseId: managedReward.courseId,
+          courseCode: managedReward.courseCode,
+          studentNumber,
+          studentDisplayName,
+          reward: managedReward,
+          pointsAtRequest: rewardState.seminarPoints,
+        });
+        setManagedRequests(await getStudentRewardRequests(remoteSession.ownerUid, managedReward.courseCode));
+        confirmResponseHaptic();
+      } catch (requestError) {
+        setRewardRequestError(requestError instanceof Error ? requestError.message : 'The reward request could not be sent. Try again.');
+      }
+      return;
+    }
     setRewardState((current) => {
       const next = requestCourseReward(current, reward);
       if (next !== current) saveRewardState(rewardScope, next);
@@ -760,6 +837,17 @@ export default function StudentWelcomePage() {
   };
 
   const step = lessonState.onboardingStep;
+  const requestStatuses = managedRewards.reduce<Record<string, RewardRequestStatus>>((statuses, reward) => {
+    const rewardRequests = managedRequests.filter((request) => request.rewardId === reward.id);
+    const activeRequest = rewardRequests.find((request) => request.status === 'pending' || request.status === 'approved');
+    if (activeRequest) {
+      statuses[reward.id] = activeRequest.status;
+      return statuses;
+    }
+    const usedCount = rewardRequests.filter((request) => request.status === 'used').length;
+    if (usedCount >= (reward.limitPerStudent || 1)) statuses[reward.id] = 'used';
+    return statuses;
+  }, {});
 
   return (
     <IconContext.Provider value={{ weight: 'duotone' }}>
@@ -780,8 +868,17 @@ export default function StudentWelcomePage() {
         )}
 
         {!remoteUnavailable && step === 0 && !lessonState.activeInteraction && (
-          <StudentCourseHome lessonState={lessonState} rewards={rewardState} onRequestReward={requestReward} enableSocialRewards={!remoteSession} />
+          <StudentCourseHome
+            lessonState={lessonState}
+            rewards={rewardState}
+            courseRewards={remoteSession ? managedRewards : COURSE_REWARDS}
+            requestStatuses={requestStatuses}
+            onRequestReward={requestReward}
+            enableSocialRewards={!remoteSession || Boolean(studentNumber)}
+          />
         )}
+
+        {rewardRequestError && <div className="student-response-error" role="alert">{rewardRequestError}</div>}
 
         {!remoteUnavailable && step === 0 && lessonState.activeInteraction && lessonState.interactionResults && (
           <div className="student-interaction-state">
@@ -941,7 +1038,8 @@ export default function StudentWelcomePage() {
 
       <footer className="student-welcome-footer">
         <Link href="/privacy" target="_blank"><Lock size={13} /> Privacy</Link>
-        <strong>{lessonState.session.sessionCode}</strong>
+        {studentNumber && <span className="student-footer-identity" title={`Student number ${studentNumber}`}><small>You</small><b>{studentDisplayName || `Student •${studentNumber.slice(-4)}`}</b></span>}
+        <span className="student-footer-class"><small>Class</small><strong>{lessonState.session.sessionCode}</strong></span>
       </footer>
     </main>
     </IconContext.Provider>

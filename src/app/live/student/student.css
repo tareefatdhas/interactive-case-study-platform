@@ -30,6 +30,35 @@
     opacity 160ms ease;
 }
 
+/* Keep keyboard focus distinct from the physical depth. A slim in-surface
+   marker preserves accessibility without drawing a second box around the
+   button or competing with the raised base. */
+.student-tactile::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 4px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--student-violet);
+  opacity: 0;
+  transform: scaleY(0.55);
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms var(--student-press-ease);
+}
+
+.student-tactile:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--student-violet) 72%, white);
+}
+
+.student-tactile:focus-visible::after { opacity: 1; transform: scaleY(1); }
+
+@media (hover: hover) {
+  .student-tactile:not(:disabled):hover { border-color: color-mix(in srgb, var(--student-violet) 34%, var(--student-line)); }
+}
+
 .student-tactile.is-compact { --tactile-depth: var(--student-press-depth-compact); }
 
 .student-tactile:not(:disabled) {
@@ -1342,6 +1371,30 @@ body:has(.student-welcome-shell) {
 
 .student-welcome-footer span { display: flex; align-items: center; gap: 6px; font-size: 9px; }
 .student-welcome-footer strong { font-family: var(--seminar-font-display); font-size: 15px; letter-spacing: 0.09em; }
+.student-welcome-footer .student-footer-identity {
+  min-width: 0;
+  max-width: 150px;
+  gap: 5px;
+  color: #525a70;
+}
+.student-footer-identity small,
+.student-footer-class small { color: var(--student-muted); font-size: 8px; font-weight: 650; }
+.student-footer-identity b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--student-ink);
+  font-size: 9px;
+  font-weight: 700;
+}
+.student-welcome-footer .student-footer-class { margin-left: auto; gap: 5px; }
+.student-footer-class strong { color: var(--student-ink); }
+
+@media (max-width: 360px) {
+  .student-welcome-footer { gap: 10px; padding-inline: 14px; }
+  .student-welcome-footer .student-footer-identity { max-width: 108px; }
+  .student-welcome-footer a { font-size: 0; gap: 0; }
+}
 
 @keyframes student-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes student-room-breathe { 0%, 100% { opacity: 0.82; transform: scale(0.985); } 50% { opacity: 1; transform: scale(1.025); } }

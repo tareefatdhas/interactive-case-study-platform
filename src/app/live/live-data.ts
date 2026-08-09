@@ -129,6 +129,11 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
 export const LESSON_CHANNEL = 'living-seminar-live-lesson';
 export const LESSON_STORAGE_KEY = 'living-seminar-display-state';
 
+export function formatSessionCode(sessionCode: string) {
+  const normalized = sessionCode.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 6);
+  return normalized.length > 3 ? `${normalized.slice(0, 3)} ${normalized.slice(3)}` : normalized;
+}
+
 export const EMPTY_ONBOARDING_COUNTS: Counts = {
   energized: 0,
   steady: 0,

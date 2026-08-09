@@ -5,6 +5,7 @@ import ClassfullyBrand from './ClassfullyBrand';
 const links = [
   { href: '/instructors', label: 'For instructors' },
   { href: '/students', label: 'For students' },
+  { href: '/pricing', label: 'Pricing' },
   { href: '/resources', label: 'Resources' },
 ];
 

@@ -17,6 +17,7 @@ import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Dialog from '@/components/ui/Dialog';
 import type { Session, CaseStudy, Response, Student } from '@/types';
 import { 
   QrCode, 
@@ -58,6 +59,8 @@ export default function SessionPage({ params }: SessionPageProps) {
   const [updating, setUpdating] = useState(false);
   const [releasingSection, setReleasingSection] = useState(false);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState('');
+  const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false);
   const [appUrl, setAppUrl] = useState(process.env.NEXT_PUBLIC_APP_URL || '');
 
   const joinUrl = session?.sessionType === 'standalone'
@@ -262,8 +265,7 @@ export default function SessionPage({ params }: SessionPageProps) {
   const copyJoinUrl = async () => {
     try {
       await navigator.clipboard.writeText(joinUrl);
-      // TODO: Show toast notification
-      alert('Join URL copied to clipboard!');
+      setToast('Join link copied');
     } catch (error) {
       console.error('Failed to copy:', error);
     }
@@ -273,8 +275,7 @@ export default function SessionPage({ params }: SessionPageProps) {
     if (!session) return;
     try {
       await navigator.clipboard.writeText(session.sessionCode);
-      // TODO: Show toast notification
-      alert('Session code copied to clipboard!');
+      setToast('Session code copied');
     } catch (error) {
       console.error('Failed to copy:', error);
     }
@@ -287,13 +288,17 @@ export default function SessionPage({ params }: SessionPageProps) {
     const nextSectionIndex = currentReleasedSection + 1;
     
     if (nextSectionIndex >= caseStudy.sections.length) {
-      alert('All sections have already been released!');
+      setToast('All sections are already available');
       return;
     }
-    
-    if (!confirm(`Release Section ${nextSectionIndex + 1}: "${caseStudy.sections[nextSectionIndex].title}"?`)) {
-      return;
-    }
+
+    setReleaseConfirmOpen(true);
+  };
+
+  const confirmReleaseNextSection = async () => {
+    if (!session || !caseStudy) return;
+    const nextSectionIndex = (session.currentReleasedSection ?? 0) + 1;
+    if (nextSectionIndex >= caseStudy.sections.length) return;
 
     setReleasingSection(true);
     try {
@@ -303,11 +308,11 @@ export default function SessionPage({ params }: SessionPageProps) {
       // Update Realtime Database for instant student notifications
       const { releaseNextSection: releaseNextSectionRealtime } = require('@/lib/firebase/realtime');
       await releaseNextSectionRealtime(session.id, nextSectionIndex);
-      
-      // The session will update via the subscription
+      setReleaseConfirmOpen(false);
+      setToast(`Section ${nextSectionIndex + 1} is now available`);
     } catch (error: any) {
       setError(error.message || 'Failed to release section');
-      alert('Failed to release section. Please try again.');
+      setReleaseConfirmOpen(false);
     } finally {
       setReleasingSection(false);
     }
@@ -809,6 +814,15 @@ export default function SessionPage({ params }: SessionPageProps) {
               </Card>
             </div>
           </div>
+          {toast && <div className="fixed bottom-5 right-5 z-[80] rounded-xl bg-[#101a38] px-4 py-3 text-sm font-semibold text-white shadow-xl" role="status">{toast}</div>}
+          <Dialog
+            isOpen={releaseConfirmOpen}
+            onClose={() => setReleaseConfirmOpen(false)}
+            onConfirm={confirmReleaseNextSection}
+            title="Release the next section?"
+            message={caseStudy && session ? `Students will immediately see Section ${(session.currentReleasedSection ?? 0) + 2}: ${caseStudy.sections[(session.currentReleasedSection ?? 0) + 1]?.title || ''}.` : 'Students will immediately see the next section.'}
+            confirmText="Release section"
+          />
         </div>
       </DashboardLayout>
     </ProtectedRoute>

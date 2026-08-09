@@ -7,14 +7,17 @@ import {
   ChevronLeft,
   Lock,
   Maximize2,
+  MessageCircle,
   MonitorUp,
   Pause,
   Play,
   Radio,
   Sparkles,
   Users,
+  X,
 } from 'lucide-react';
-import type { InteractionResults, LiveInteraction, LiveSessionContext } from '@/app/live/live-data';
+import type { InteractionResults, LiveInteraction, LiveQuestion, LiveSessionContext } from '@/app/live/live-data';
+import ProjectorPreflight from './ProjectorPreflight';
 import './classfully-remote.css';
 
 // Storyboard: shell settles, content arrives, then controls become available.
@@ -31,6 +34,8 @@ type ClassfullyRemoteProps = {
   results: InteractionResults | null;
   connectedStudents: number;
   questionCount: number;
+  questions: LiveQuestion[];
+  featuredQuestionId: number | null;
   displayConnected: boolean;
   syncConnected?: boolean;
   onLaunch: (interaction: LiveInteraction) => void;
@@ -39,6 +44,8 @@ type ClassfullyRemoteProps = {
   onFinish: () => void;
   onOpenDisplay: () => void;
   onOpenConsole: () => void;
+  onFeatureQuestion: (questionId: number) => void;
+  onLaunchUnplanned: (prompt: string) => void;
 };
 
 export default function ClassfullyRemote({
@@ -48,6 +55,8 @@ export default function ClassfullyRemote({
   results,
   connectedStudents,
   questionCount,
+  questions,
+  featuredQuestionId,
   displayConnected,
   syncConnected = true,
   onLaunch,
@@ -56,9 +65,15 @@ export default function ClassfullyRemote({
   onFinish,
   onOpenDisplay,
   onOpenConsole,
+  onFeatureQuestion,
+  onLaunchUnplanned,
 }: ClassfullyRemoteProps) {
   const [stage, setStage] = useState<'shell' | 'content' | 'actions'>('shell');
   const [showPlan, setShowPlan] = useState(!activeInteraction);
+  const [showQuestions, setShowQuestions] = useState(false);
+  const [quickAskOpen, setQuickAskOpen] = useState(false);
+  const [quickAsk, setQuickAsk] = useState('');
+  const [projectorCheckOpen, setProjectorCheckOpen] = useState(false);
 
   useEffect(() => {
     setStage('shell');
@@ -79,6 +94,20 @@ export default function ClassfullyRemote({
     () => plan.filter((interaction) => interaction.id !== activeInteraction?.id),
     [activeInteraction?.id, plan],
   );
+  const topQuestions = useMemo(() => [...questions].sort((a, b) => b.votes - a.votes).slice(0, 4), [questions]);
+
+  const submitQuickAsk = () => {
+    const prompt = quickAsk.trim();
+    if (!prompt) return;
+    onLaunchUnplanned(prompt);
+    setQuickAsk('');
+    setQuickAskOpen(false);
+  };
+
+  const startProjectorCheck = () => {
+    setProjectorCheckOpen(true);
+    if (!displayConnected) onOpenDisplay();
+  };
 
   return (
     <div className="classfully-remote" data-stage={stage}>
@@ -96,9 +125,18 @@ export default function ClassfullyRemote({
           <h1>{session.sessionTitle}</h1>
           <div className="remote-room-stats">
             <span><Users size={15} /> {connectedStudents} connected</span>
-            <span className={questionCount ? 'has-questions' : ''}><Radio size={14} /> {questionCount} questions</span>
+            <button type="button" className={questionCount ? 'has-questions' : ''} onClick={() => setShowQuestions((open) => !open)} aria-expanded={showQuestions}><Radio size={14} /> {questionCount} questions</button>
           </div>
         </section>
+
+        {showQuestions && (
+          <section className="remote-question-panel" aria-label="Top student questions">
+            <div className="remote-question-heading"><div><small>Student questions</small><strong>What the room wants discussed</strong></div><button type="button" onClick={() => setShowQuestions(false)} aria-label="Close student questions"><X size={17} /></button></div>
+            <div className="remote-question-list">
+              {topQuestions.length ? topQuestions.map((question) => <article key={question.id}><p>{question.question}</p><div><span>{question.votes} upvotes</span><button type="button" className={featuredQuestionId === question.id ? 'is-featured' : ''} onClick={() => onFeatureQuestion(question.id)}>{featuredQuestionId === question.id ? 'Remove' : 'Show on display'}</button></div></article>) : <p className="remote-no-questions">No student questions yet.</p>}
+            </div>
+          </section>
+        )}
 
         {activeInteraction && results ? (
           <section className="remote-active-card" aria-live="polite">
@@ -149,6 +187,16 @@ export default function ClassfullyRemote({
           </section>
         )}
 
+        {!activeInteraction && (quickAskOpen ? (
+          <section className="remote-quick-ask-form" aria-label="Ask an unplanned question">
+            <div className="remote-question-heading"><div><small>Unplanned moment</small><strong>Ask the room now</strong></div><button type="button" onClick={() => setQuickAskOpen(false)} aria-label="Cancel unplanned question"><X size={17} /></button></div>
+            <textarea autoFocus value={quickAsk} onChange={(event) => setQuickAsk(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submitQuickAsk(); } }} maxLength={180} placeholder="What do you want to ask?" aria-label="Unplanned question" />
+            <button type="button" onClick={submitQuickAsk} disabled={!quickAsk.trim()}><MessageCircle size={16} /> Show now</button>
+          </section>
+        ) : (
+          <button type="button" className="remote-quick-ask-trigger" onClick={() => setQuickAskOpen(true)}><MessageCircle size={16} /> Ask something unplanned</button>
+        ))}
+
         {showPlan && (
           <section className="remote-plan" aria-label="Prepared interactions">
             <div className="remote-section-title">
@@ -175,15 +223,16 @@ export default function ClassfullyRemote({
       </main>
 
       <footer className="remote-footer">
-        <button type="button" className={displayConnected ? 'is-connected' : ''} onClick={onOpenDisplay}>
+        <button type="button" className={displayConnected ? 'is-connected' : ''} onClick={startProjectorCheck}>
           <MonitorUp size={17} />
-          <span>{displayConnected ? 'Display connected' : 'Open display'}</span>
+          <span>{displayConnected ? 'Check display' : 'Set up display'}</span>
         </button>
         <button type="button" onClick={onOpenConsole}>
           <Maximize2 size={16} />
           <span>Full console</span>
         </button>
       </footer>
+      <ProjectorPreflight open={projectorCheckOpen} connected={displayConnected} onOpenDisplay={onOpenDisplay} onConfirm={() => setProjectorCheckOpen(false)} onClose={() => setProjectorCheckOpen(false)} />
     </div>
   );
 }

@@ -36,12 +36,18 @@ export type AttendanceStatus = 'claimed' | 'participated' | 'confirmed' | 'excus
 export type StoredAttendanceClaim = {
   studentUid: string;
   studentNumber: string;
+  studentDisplayName?: string;
   status: AttendanceStatus;
   joinedAt: number;
   updatedAt: number;
   participatedAt?: number;
   privacyNoticeVersion?: string;
   privacyNoticeAcknowledgedAt?: number;
+};
+
+export type InstructorClassroomRecords = {
+  attendance: Record<string, StoredAttendanceClaim>;
+  responses: Record<string, Record<string, StoredLiveResponse>>;
 };
 
 export type LiveJoinRecord = {
@@ -98,18 +104,25 @@ export function normalizeStudentNumber(value: string) {
   return value.trim().toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9._-]/g, '').slice(0, 32);
 }
 
-export async function claimStudentAttendance(ownerUid: string, sessionId: string, rawStudentNumber: string) {
+export function normalizeStudentDisplayName(value: string) {
+  return value.trim().replace(/\s+/g, ' ').slice(0, 60);
+}
+
+export async function claimStudentAttendance(ownerUid: string, sessionId: string, rawStudentNumber: string, rawDisplayName = '') {
   const student = await ensureStudentAnonymousAuth();
   const studentNumber = normalizeStudentNumber(rawStudentNumber);
+  const studentDisplayName = normalizeStudentDisplayName(rawDisplayName);
   if (studentNumber.length < 3) throw new Error('Enter your student number.');
 
   const claimRef = ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/attendanceClaims/${student.uid}`);
   const result = await runTransaction(claimRef, (current: StoredAttendanceClaim | null) => {
     const now = Date.now();
     if (current?.status === 'participated' && current.studentNumber !== studentNumber) return;
+    const resolvedDisplayName = studentDisplayName || current?.studentDisplayName || '';
     return {
       studentUid: student.uid,
       studentNumber,
+      ...(resolvedDisplayName ? { studentDisplayName: resolvedDisplayName } : {}),
       status: current?.status || 'claimed',
       joinedAt: current?.joinedAt || now,
       updatedAt: now,
@@ -124,6 +137,12 @@ export async function claimStudentAttendance(ownerUid: string, sessionId: string
     throw new Error('This device has already participated under another student number. Use your original device or ask your instructor for help.');
   }
   return claim;
+}
+
+export async function getCurrentStudentAttendance(ownerUid: string, sessionId: string): Promise<StoredAttendanceClaim | null> {
+  const student = await ensureStudentAnonymousAuth();
+  const snapshot = await get(ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/attendanceClaims/${student.uid}`));
+  return snapshot.val() as StoredAttendanceClaim | null;
 }
 
 export async function deleteInstructorClassroomData(ownerUid: string, sessionId: string) {
@@ -232,6 +251,25 @@ export async function endInstructorClassroom(ownerUid: string, sessionId: string
       await set(joinRef, { ...joinRecord, status: 'ended' });
     }
   }
+}
+
+export async function getInstructorClassroomRecords(
+  ownerUid: string,
+  sessionId: string,
+): Promise<InstructorClassroomRecords> {
+  const instructor = auth.currentUser;
+  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) {
+    throw new Error('Instructor sign-in required.');
+  }
+  const roomSnapshot = await get(ref(realtimeDb, roomPath(ownerUid, sessionId)));
+  const room = roomSnapshot.val() as {
+    attendanceClaims?: Record<string, StoredAttendanceClaim>;
+    responses?: Record<string, Record<string, StoredLiveResponse>>;
+  } | null;
+  return {
+    attendance: room?.attendanceClaims || {},
+    responses: room?.responses || {},
+  };
 }
 
 export async function publishInstructorState(ownerUid: string, sessionId: string, state: LessonDisplayState) {

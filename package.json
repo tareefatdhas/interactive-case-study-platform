@@ -2,11 +2,17 @@
   "name": "case-study-platform",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "check": "npm run typecheck && npm run lint && npm run build && npm run test:e2e",
     "ready:classroom": "node scripts/check-live-readiness.mjs"
   },
   "dependencies": {
@@ -42,8 +48,18 @@
     "react-qr-code": "^2.0.18",
     "tailwind-merge": "^3.3.1"
   },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.26",
+      "sharp": "0.35.3"
+    },
+    "gaxios": {
+      "uuid": "11.1.1"
+    }
+  },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

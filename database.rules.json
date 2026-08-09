@@ -5,8 +5,8 @@
 
     "sessions": {
       "$sessionId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
+        ".read": false,
+        ".write": false
       }
     },
 
@@ -71,7 +71,7 @@
             "$studentUid": {
               ".read": "auth != null && (auth.uid === $ownerUid || auth.uid === $studentUid)",
               ".write": "auth != null && ((auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous') || (auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now && ((!data.exists() && newData.child('status').val() === 'claimed') || (data.exists() && newData.child('studentUid').val() === data.child('studentUid').val() && newData.child('joinedAt').val() === data.child('joinedAt').val() && ((data.child('status').val() === 'claimed' && (newData.child('status').val() === 'claimed' || newData.child('status').val() === 'participated')) || (data.child('status').val() === 'participated' && newData.child('status').val() === 'participated'))))))",
-              ".validate": "newData.hasChildren(['studentUid', 'studentNumber', 'status', 'joinedAt', 'updatedAt']) && newData.child('studentUid').val() === $studentUid && newData.child('studentNumber').isString() && newData.child('studentNumber').val().length >= 3 && newData.child('studentNumber').val().length <= 32 && (newData.child('status').val() === 'claimed' || newData.child('status').val() === 'participated' || newData.child('status').val() === 'confirmed' || newData.child('status').val() === 'excused') && newData.child('joinedAt').isNumber() && newData.child('updatedAt').isNumber() && (!newData.child('participatedAt').exists() || newData.child('participatedAt').isNumber())"
+              ".validate": "newData.hasChildren(['studentUid', 'studentNumber', 'status', 'joinedAt', 'updatedAt']) && newData.child('studentUid').val() === $studentUid && newData.child('studentNumber').isString() && newData.child('studentNumber').val().length >= 3 && newData.child('studentNumber').val().length <= 32 && (!newData.child('studentDisplayName').exists() || (newData.child('studentDisplayName').isString() && newData.child('studentDisplayName').val().length <= 60)) && (newData.child('status').val() === 'claimed' || newData.child('status').val() === 'participated' || newData.child('status').val() === 'confirmed' || newData.child('status').val() === 'excused') && newData.child('joinedAt').isNumber() && newData.child('updatedAt').isNumber() && (!newData.child('participatedAt').exists() || newData.child('participatedAt').isNumber())"
             }
           },
 

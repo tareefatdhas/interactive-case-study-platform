@@ -4,7 +4,6 @@ import {
   signOut,
   onAuthStateChanged,
   User,
-  sendPasswordResetEmail,
   updateProfile
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
@@ -53,7 +52,7 @@ export const signUpTeacher = async (
       courseIds: [],
       createdAt: new Date()
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Clean up by deleting the auth user since teacher doc creation failed
     try {
       await user.delete();
@@ -76,7 +75,16 @@ export const signOutUser = async (): Promise<void> => {
 };
 
 export const resetPassword = async (email: string): Promise<void> => {
-  await sendPasswordResetEmail(auth, email);
+  const response = await fetch('/api/auth/password-reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+
+  const payload = await response.json().catch(() => null) as { error?: string } | null;
+  if (!response.ok) {
+    throw new Error(payload?.error || 'We could not send the reset email. Please try again.');
+  }
 };
 
 export const onAuthChange = (callback: (user: AuthUser | null) => void): () => void => {

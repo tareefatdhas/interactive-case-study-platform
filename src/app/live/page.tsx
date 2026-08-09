@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ClassfullyRemote from '@/components/live/ClassfullyRemote';
 import LivingMoodField from '@/components/live/LivingMoodField';
+import ProjectorPreflight from '@/components/live/ProjectorPreflight';
 import { useAuth } from '@/lib/hooks/useAuth';
 import {
   initializeInstructorClassroom,
@@ -16,6 +17,7 @@ import {
   subscribeToInstructorQuestionVotes,
   subscribeToInstructorResponses,
   subscribeToInstructorWelcomeResponses,
+  endInstructorClassroom,
   type StoredLiveResponse,
   type StoredAttendanceClaim,
 } from '@/lib/firebase/live-classroom';
@@ -40,6 +42,7 @@ import {
   Presentation,
   Send,
   Smartphone,
+  Square,
   ThumbsUp,
   TimerReset,
   Users,
@@ -169,11 +172,14 @@ export default function LiveLessonPrototype() {
   const [attendanceOpen, setAttendanceOpen] = useState(false);
   const [unplannedQuestionOpen, setUnplannedQuestionOpen] = useState(false);
   const [unplannedQuestion, setUnplannedQuestion] = useState('');
+  const [endClassOpen, setEndClassOpen] = useState(false);
+  const [endingClass, setEndingClass] = useState(false);
   const [activeInteraction, setActiveInteraction] = useState<LiveInteraction | null>(null);
   const [interactionResults, setInteractionResults] = useState<InteractionResults | null>(null);
   const [toast, setToast] = useState('');
   const [incomingMood, setIncomingMood] = useState<MoodKey | null>(null);
   const [displayConnected, setDisplayConnected] = useState(false);
+  const [projectorPreflightOpen, setProjectorPreflightOpen] = useState(false);
   const [connectedStudents, setConnectedStudents] = useState(148);
   const [attendanceClaims, setAttendanceClaims] = useState<StoredAttendanceClaim[]>([]);
   const [remoteClassroomReady, setRemoteClassroomReady] = useState(false);
@@ -741,6 +747,32 @@ export default function LiveLessonPrototype() {
     }, 500);
   };
 
+  const startProjectorCheck = () => {
+    setProjectorPreflightOpen(true);
+    if (!displayConnected) openClassroomDisplay();
+  };
+
+  const confirmProjector = () => {
+    setProjectorPreflightOpen(false);
+    setToast('Projector checked. You are ready to teach.');
+  };
+
+  const endLiveClass = async () => {
+    if (!sessionContext.sessionId || !sessionContext.ownerUid) return;
+    setEndingClass(true);
+    try {
+      await endInstructorClassroom(sessionContext.ownerUid, sessionContext.sessionId);
+      const { updateSession } = await import('@/lib/firebase/firestore');
+      await updateSession(sessionContext.sessionId, { active: false, endedAt: Timestamp.now() });
+      window.location.assign(`/dashboard/sessions/${sessionContext.sessionId}`);
+    } catch (endError) {
+      console.error('Could not end class:', endError);
+      setToast('The class could not be ended. Check your connection and try again.');
+      setEndingClass(false);
+      setEndClassOpen(false);
+    }
+  };
+
   const openStudentView = () => {
     const studentUrl = sessionContext.sessionId && sessionContext.ownerUid
       ? `/live/student?sessionId=${encodeURIComponent(sessionContext.sessionId)}&ownerUid=${encodeURIComponent(sessionContext.ownerUid)}`
@@ -883,7 +915,8 @@ export default function LiveLessonPrototype() {
               onClick={() => onboardingStep > 0 ? setToast('Use the welcome controls above the lesson dock') : setWelcomeOpen(true)}
             ><GraduationCap size={17} /> {onboardingStep > 0 ? 'Welcome running' : 'Welcome class'}</button>
             <button className="floating-controls-trigger" type="button" onClick={openFloatingControls}><PictureInPicture2 size={17} /> Float controls</button>
-            <button type="button" onClick={openClassroomDisplay}><MonitorUp size={17} /> {displayConnected ? 'Display connected' : 'Open display'}</button>
+            <button type="button" onClick={startProjectorCheck}><MonitorUp size={17} /> {displayConnected ? 'Check display' : 'Set up display'}</button>
+            {sessionContext.sessionId && <button className="end-class-trigger" type="button" onClick={() => setEndClassOpen(true)}><Square size={15} /> End class</button>}
           </div>
         </header>
 
@@ -1044,7 +1077,7 @@ export default function LiveLessonPrototype() {
               <span>Classroom display</span>
               <small><i /> {displayConnected ? 'Connected' : 'Preview'}</small>
             </div>
-            <button className="display-preview" type="button" onClick={openClassroomDisplay}>
+            <button className="display-preview" type="button" onClick={startProjectorCheck}>
               {onboardingStep > 0 ? (
                 <div className="preview-welcome-state">
                   <span><GraduationCap size={14} /> Classroom welcome</span>
@@ -1264,7 +1297,19 @@ export default function LiveLessonPrototype() {
         </section>
       )}
 
+      <ProjectorPreflight open={projectorPreflightOpen} connected={displayConnected} onOpenDisplay={openClassroomDisplay} onConfirm={confirmProjector} onClose={() => setProjectorPreflightOpen(false)} />
       {toast && <div className="seminar-toast" role="status">{toast}</div>}
+      {endClassOpen && (
+        <div className="end-class-backdrop" role="presentation">
+          <section className="end-class-dialog" role="dialog" aria-modal="true" aria-labelledby="end-class-title">
+            <span className="end-class-icon"><Square size={18} /></span>
+            <p className="seminar-eyebrow">Finish this session</p>
+            <h2 id="end-class-title" className="seminar-display">End class and review?</h2>
+            <p>Student responses will close. You will return to the session record to review attendance and participation.</p>
+            <div><button type="button" onClick={() => setEndClassOpen(false)} disabled={endingClass}>Keep teaching</button><button type="button" className="is-primary" onClick={endLiveClass} disabled={endingClass}>{endingClass ? 'Ending class…' : 'End and review'}</button></div>
+          </section>
+        </div>
+      )}
       {floatingRemoteWindow && !floatingRemoteWindow.closed && createPortal(
         <ClassfullyRemote
           session={sessionContext}
@@ -1273,6 +1318,8 @@ export default function LiveLessonPrototype() {
           results={interactionResults}
           connectedStudents={connectedStudents}
           questionCount={classQuestions.length}
+          questions={classQuestions}
+          featuredQuestionId={activeQuestion}
           displayConnected={displayConnected}
           onLaunch={launchInteraction}
           onToggleResponses={toggleInteractionResponses}
@@ -1280,6 +1327,16 @@ export default function LiveLessonPrototype() {
           onFinish={returnToSlides}
           onOpenDisplay={openClassroomDisplay}
           onOpenConsole={() => window.focus()}
+          onFeatureQuestion={discussQuestion}
+          onLaunchUnplanned={(prompt) => launchInteraction({
+            id: `unplanned-${Date.now()}`,
+            type: 'open-response',
+            label: 'Short response',
+            title: 'Unplanned question',
+            prompt,
+            resultVisibility: 'instructor-only',
+            plannedTime: 'Asked live',
+          })}
         />,
         floatingRemoteWindow.document.body,
       )}

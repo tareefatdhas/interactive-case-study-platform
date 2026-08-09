@@ -5,7 +5,7 @@ Use this checklist before every session until the pilot has completed several re
 ## One week before the pilot
 
 - Put the Firebase project on the Blaze plan. A 100 to 200 person class cannot use the Spark Realtime Database connection limit.
-- Ask Firebase support for an anonymous account-creation quota that is safely above the class size. Students on one university network may share one public IP address.
+- Schedule a temporary Firebase Authentication sign-up quota of at least 1,000 accounts per hour per IP for the class window. Students on one university network may share one public IP address, and Firebase defaults to only 100 new accounts per hour per IP. The increase expires, so repeat this before each pilot window.
 - Deploy `firestore.rules` and `database.rules.json` to `interactive-case-study-2aff7` from an account that has access to that project.
 - Deploy the Next.js app to a public HTTPS host. The old static Firebase Hosting configuration has been removed because it cannot run the AI API routes.
 - Set the production environment variables, including the final public URL, controller name, and privacy contact.

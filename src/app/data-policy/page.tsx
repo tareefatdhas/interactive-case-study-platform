@@ -24,7 +24,7 @@ export default function DataPolicyPage() {
         <h2>2. Information Classfully may process</h2>
         <ul>
           <li><strong>Instructor information:</strong> name, email address, account identifiers, course details, lesson material, interaction plans, and support messages.</li>
-          <li><strong>Student identity information:</strong> student number, class membership, temporary authentication identifier, and device or session identifiers used to prevent duplicate responses.</li>
+          <li><strong>Student identity information:</strong> student number, optional preferred name, class membership, temporary authentication identifier, and device or session identifiers used to prevent duplicate responses.</li>
           <li><strong>Classroom activity:</strong> attendance, poll and quiz responses, written responses, questions, votes, check-ins, points, streaks, rewards, and timestamps.</li>
           <li><strong>Optional pulse information:</strong> pace, confidence, sentiment, or wellbeing responses. These prompts should remain optional and must not be used for grading or discipline.</li>
           <li><strong>Technical information:</strong> browser, device, IP address, security events, diagnostic logs, and service usage needed to operate and protect the platform.</li>
@@ -58,7 +58,7 @@ export default function DataPolicyPage() {
       <section>
         <h2>7. Retention and deletion</h2>
         <p>Classroom data should be kept only for the period set by the instructor or institution. The current pilot target is deletion within 90 days after the course ends unless a shorter period is chosen or a legal obligation requires longer retention.</p>
-        <p>Instructors can delete a session and its associated live attendance, response, vote, and presence records. Automatic time-based deletion is still being completed, so institutions using the pilot should document and carry out their chosen deletion schedule.</p>
+        <p>Instructors can delete a session and its associated live attendance, response, vote, and presence records. Classfully also runs a daily cleanup that removes live classroom data 90 days after its last recorded update.</p>
       </section>
 
       <section>

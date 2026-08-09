@@ -14,6 +14,7 @@ import {
   subscribeToSessionHighlights
 } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
+import Dialog from '@/components/ui/Dialog';
 import PopularHighlightsPanel from '@/components/teacher/PopularHighlightsPanel';
 import HighlightedContent from '@/components/teacher/HighlightedContent';
 import type { Session, CaseStudy, Response, Student, Highlight } from '@/types';
@@ -72,6 +73,8 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   const [error, setError] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [releasingSection, setReleasingSection] = useState(false);
+  const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false);
+  const [toast, setToast] = useState('');
   const [currentView, setCurrentView] = useState<'overview' | 'questions' | 'section'>('overview');
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
   const [showFullScreenQR, setShowFullScreenQR] = useState(false);
@@ -324,11 +327,14 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       return; // All sections already released
     }
     
-    // Add confirmation dialog to prevent accidental releases
-    if (!confirm(`Release Section ${nextSectionIndex + 1}: "${caseStudy.sections[nextSectionIndex].title}"?`)) {
-      return;
-    }
-    
+    setReleaseConfirmOpen(true);
+  };
+
+  const confirmReleaseNextSection = async () => {
+    if (!session || !caseStudy) return;
+    const nextSectionIndex = (session.currentReleasedSection ?? 0) + 1;
+    if (nextSectionIndex >= caseStudy.sections.length) return;
+
     setReleasingSection(true);
     try {
       // Use hybrid approach: Update both Firestore (persistence) and Realtime Database (live updates)
@@ -337,11 +343,12 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       // Update Realtime Database for instant student notifications
       const { releaseNextSection: releaseNextSectionRealtime } = require('@/lib/firebase/realtime');
       await releaseNextSectionRealtime(session.id, nextSectionIndex);
-      
-      // The session will update via the subscription
+      setReleaseConfirmOpen(false);
+      setToast(`Section ${nextSectionIndex + 1} is now available`);
     } catch (error: any) {
       console.error('Failed to release section:', error);
-      // Could add a toast notification here
+      setReleaseConfirmOpen(false);
+      setToast('The section could not be released. Check your connection and try again.');
     } finally {
       setReleasingSection(false);
     }
@@ -686,6 +693,15 @@ export default function PresentationPage({ params }: PresentationPageProps) {
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-400 mx-auto mb-4"></div>
           <p className="text-gray-300 text-xl">Loading presentation...</p>
         </div>
+        {toast && <div className="fixed bottom-6 right-6 z-[90] rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#101a38] shadow-2xl" role="status">{toast}</div>}
+        <Dialog
+          isOpen={releaseConfirmOpen}
+          onClose={() => setReleaseConfirmOpen(false)}
+          onConfirm={confirmReleaseNextSection}
+          title="Release the next section?"
+          message={caseStudy && session ? `Students will immediately see Section ${(session.currentReleasedSection ?? 0) + 2}: ${caseStudy.sections[(session.currentReleasedSection ?? 0) + 1]?.title || ''}.` : 'Students will immediately see the next section.'}
+          confirmText="Release section"
+        />
       </div>
     );
   }

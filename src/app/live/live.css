@@ -1769,6 +1769,38 @@ input {
   animation: toast-in 220ms ease both;
 }
 
+.topbar-actions .end-class-trigger { color: #9b4b3d; }
+.topbar-actions .end-class-trigger:hover { border-color: #efc9c0; background: #fff4f1; }
+
+.end-class-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(16, 26, 56, .38);
+  backdrop-filter: blur(6px);
+  animation: welcome-fade-in 180ms ease both;
+}
+.end-class-dialog {
+  width: min(460px, 100%);
+  border: 1px solid rgba(227,229,237,.95);
+  border-radius: 22px;
+  padding: 28px;
+  background: #fffefa;
+  box-shadow: 0 28px 80px rgba(16,26,56,.24);
+  text-align: center;
+  animation: welcome-rise 240ms cubic-bezier(.2,.8,.25,1) both;
+}
+.end-class-icon { display: grid; width: 48px; height: 48px; margin: 0 auto 16px; place-items: center; border-radius: 15px; color: #b6533f; background: #fff0ec; }
+.end-class-dialog h2 { margin: 7px 0 10px; font-size: 31px; }
+.end-class-dialog > p:not(.seminar-eyebrow) { margin: 0 auto; max-width: 350px; color: var(--seminar-muted); font-size: 13px; line-height: 1.65; }
+.end-class-dialog > div { display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; margin-top: 24px; }
+.end-class-dialog button { min-height: 46px; border: 1px solid var(--seminar-line); border-radius: 12px; color: var(--seminar-ink); background: white; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; }
+.end-class-dialog button.is-primary { border-color: #b6533f; color: white; background: #b6533f; }
+.end-class-dialog button:disabled { cursor: wait; opacity: .55; }
+
 .welcome-modal-backdrop {
   position: fixed;
   inset: 0;

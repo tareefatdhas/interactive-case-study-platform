@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { IconContext, ArrowRight, Medal as Award, ChartBar as BarChart3, BookOpenText as BookOpen, Brain, Check, Question as CircleHelp, Eye, Fire as Flame, FileText, Gift, Heartbeat as HeartPulse, LockKey as Lock, ChatCircleDots as MessageCircleQuestion, Broadcast as Radio, ShieldCheck, DeviceMobile as Smartphone, Sparkle as Sparkles, Target, UsersThree as Users } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import MarketingPage from '@/components/marketing/MarketingPage';
+import PricingPlans from '@/components/marketing/PricingPlans';
 import ClassroomStage from '@/components/marketing/ClassroomStage';
 import SlideCompanionVisual from '@/components/marketing/SlideCompanionVisual';
 import WaitingStateVisual from '@/components/marketing/WaitingStateVisual';
@@ -47,7 +48,7 @@ export default function Home() {
           </div>
           <div className="max-w-5xl">
             <p className="seminar-eyebrow mb-5">The interactive layer for university courses</p>
-            <h1 className="seminar-display text-5xl leading-[0.98] text-[var(--seminar-ink)] sm:text-7xl lg:text-[5.8rem]">
+            <h1 className="seminar-display text-5xl leading-[0.98] text-[var(--seminar-ink)] sm:text-7xl lg:text-[4.35rem]">
               Make the classroom interactive. <em>Build every student’s journey.</em>
             </h1>
           </div>
@@ -56,7 +57,7 @@ export default function Home() {
               Run live questions, check-ins, quizzes, and discussions beside your slides. Every response adds to a course-long record of participation, understanding, and progress.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first class <ArrowRight className="h-4 w-4" /></Link>
+              <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first interactive class <ArrowRight className="h-4 w-4" /></Link>
               <a href="#how-it-fits" className="marketing-button marketing-button-secondary marketing-button-large seminar-focus">See the classroom flow</a>
             </div>
           </div>
@@ -76,7 +77,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-7xl gap-12 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.72fr_1.28fr] lg:items-center lg:gap-20">
           <div>
             <p className="seminar-eyebrow mb-4">A course that remembers</p>
-            <h2 id="course-memory-title" className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">The live moment matters. What follows matters more.</h2>
+            <h2 id="course-memory-title" className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">Keep it flowing.</h2>
             <p className="mt-6 text-lg leading-8 text-[var(--seminar-muted)]">Attendance, confidence, questions, quizzes, and reflections stay tied to the session. See what changed, not only what won the last poll.</p>
           </div>
           <CourseContinuityVisual />
@@ -100,23 +101,44 @@ export default function Home() {
       </section>
 
       <section className="room-problem">
-        <div className="mx-auto grid max-w-7xl gap-12 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.88fr_1.12fr] lg:items-start lg:gap-24">
-          <div className="lg:sticky lg:top-24">
-            <p className="seminar-eyebrow mb-4">More than a response system</p>
-            <h2 className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">Know the room today. Understand the course over time.</h2>
-            <p className="mt-6 max-w-lg text-lg leading-8 text-[var(--seminar-muted)]">A poll can change today’s discussion. A connected record can change how you teach the course.</p>
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
+          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end lg:gap-20">
+            <div>
+              <p className="seminar-eyebrow mb-4">Classfully compared with Mentimeter</p>
+              <h2 className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">Built for the course, not only the presentation.</h2>
+            </div>
+            <p className="max-w-2xl text-lg leading-8 text-[var(--seminar-muted)]">Mentimeter is excellent at making a presentation interactive. Classfully connects those live moments across the whole course.</p>
           </div>
-          <div className="room-problem-list">
-            {[
-              ['In the moment', 'See pace, questions, and understanding beyond the loudest voices.'],
-              ['After the session', 'Review who joined, what shifted, and what still needs an answer.'],
-              ['Across the course', 'Spot attendance and learning patterns before students quietly fall behind.'],
-            ].map(([when, result], index) => (
-              <article key={when}>
-                <span className="seminar-display">0{index + 1}</span>
-                <div><p className="seminar-eyebrow">{when}</p><h3 className="seminar-display">{result}</h3></div>
-              </article>
-            ))}
+
+          <div className="course-comparison">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col"><span className="sr-only">What is being compared</span></th>
+                  <th scope="col"><strong>Mentimeter</strong><span>Presentation-first</span></th>
+                  <th scope="col"><strong>Classfully</strong><span>Course-first</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ['The core unit', 'A class, its sessions, and each student’s progress.', 'A presentation, its slides, and the results they collect.'],
+                  ['Student journey', 'Student ID, attendance, participation, and progress stay connected.', 'Anonymous by default. Participant names are available on Pro and Enterprise plans.'],
+                  ['Progress over time', 'Track attendance, confidence, participation, and understanding across the course.', 'Compare results when the same presentation is used again.'],
+                  ['Motivation', 'Carry points, streaks, and instructor-approved rewards across the course.', 'Use timed quizzes, points, and live leaderboards.'],
+                  ['Your slides', 'Keep PowerPoint, Keynote, or Google Slides. Open Classfully for live moments.', 'Build or import slides and present from Mentimeter.'],
+                ].map(([label, classfully, mentimeter]) => (
+                  <tr key={label}>
+                    <th scope="row">{label}</th>
+                    <td><span>Mentimeter</span>{mentimeter}</td>
+                    <td className="is-classfully"><span>Classfully</span>{classfully}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="course-comparison-choice">
+              <p><strong>Choose Mentimeter</strong> when the presentation is the center of the experience.</p>
+              <p><strong>Choose Classfully</strong> when every session should build on the last.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -126,7 +148,7 @@ export default function Home() {
           <div className="grid gap-8 lg:grid-cols-[1fr_0.72fr] lg:items-end">
             <div>
               <p className="seminar-eyebrow mb-4">Fits beside your presentation</p>
-              <h2 className="seminar-display max-w-4xl text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">Keep your lecture in your slides. Bring live moments here.</h2>
+              <h2 className="seminar-display max-w-4xl text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">A companion to your course materials.</h2>
             </div>
             <p className="text-lg leading-8 text-[var(--seminar-muted)]">Prepare a few interactions. Open Classfully when the room should respond, then return to your lecture.</p>
           </div>
@@ -144,7 +166,7 @@ export default function Home() {
           <div className="grid gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-end">
             <div>
               <p className="seminar-eyebrow mb-4">One question, three useful views</p>
-              <h2 className="seminar-display text-4xl leading-[1.02] sm:text-6xl">Each person sees what they need. Nothing more.</h2>
+              <h2 className="seminar-display text-4xl leading-[1.02] sm:text-6xl">Managing attention and focus.</h2>
             </div>
             <p className="max-w-2xl text-lg leading-8">The projector shows the room. The instructor keeps private controls. Students see one clear next action.</p>
           </div>
@@ -161,7 +183,7 @@ export default function Home() {
           <div className="grid gap-7 lg:grid-cols-[1fr_0.55fr] lg:items-end">
             <div>
               <p className="seminar-eyebrow mb-4">Four ways to ask</p>
-              <h2 className="seminar-display max-w-4xl text-4xl leading-tight text-[var(--seminar-ink)] sm:text-6xl">Choose the question that fits the moment.</h2>
+              <h2 className="seminar-display max-w-4xl text-4xl leading-tight text-[var(--seminar-ink)] sm:text-6xl">Pick an interaction from a template or create your own.</h2>
             </div>
             <p className="text-lg leading-8 text-[var(--seminar-muted)]">A pulse should not feel like a quiz. Each format helps the room answer differently.</p>
           </div>
@@ -183,7 +205,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-7xl gap-14 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.72fr_1.28fr] lg:items-center lg:gap-24">
           <div>
             <p className="seminar-eyebrow mb-4">After a student responds</p>
-            <h2 className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">Waiting becomes part of the discussion.</h2>
+            <h2 className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">Helping you make the most of every moment.</h2>
             <p className="mt-6 text-lg leading-8 text-[var(--seminar-muted)]">Fast responders can upvote questions, add their own, or simply look up while the room finishes.</p>
             <div className="waiting-story-points">
               <span><Check /> No reward for speed</span>
@@ -198,8 +220,8 @@ export default function Home() {
       <section className="trend-story">
         <div className="mx-auto grid max-w-[1420px] gap-14 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.76fr_1.24fr] lg:items-start lg:gap-16">
           <div className="course-pulse-story-copy">
-            <p className="seminar-eyebrow mb-4">The participation layer for university courses</p>
-            <h2 className="seminar-display"><span>Course Pulse.</span>See what matters,<br /><em>decide what&apos;s next.</em></h2>
+            <p className="seminar-eyebrow mb-4">Course Pulse</p>
+            <h2 className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">See what matters. Decide what&apos;s next.</h2>
             <p>Attendance, participation, and confidence stay connected across every session. See what&apos;s changing, understand why, and take action that moves learning forward.</p>
             <div className="course-pulse-next">
               <div className="course-pulse-next-title"><Sparkles /><strong>What should I do next?</strong></div>
@@ -216,7 +238,7 @@ export default function Home() {
         <div className="mx-auto grid max-w-7xl gap-14 px-5 py-20 sm:px-8 sm:py-28 lg:grid-cols-[0.8fr_1.2fr] lg:items-center lg:gap-24">
           <div>
             <p className="seminar-eyebrow mb-4">Participation that adds up</p>
-            <h2 id="progress-story-title" className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">Give students something worth carrying forward.</h2>
+            <h2 id="progress-story-title" className="seminar-display text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-6xl">Give students something they look forward to building on.</h2>
             <p className="mt-6 text-lg leading-8 text-[var(--seminar-muted)]">Students build streaks, earn points for meaningful participation, and track their understanding. Instructors decide what counts and which rewards fit.</p>
             <ul className="progress-principles">
               <li><Check /> Reward showing up, thinking, and improving</li>
@@ -252,7 +274,7 @@ export default function Home() {
           <div>
             <BookOpen className="h-6 w-6 text-[var(--seminar-violet)]" />
             <p className="seminar-eyebrow mt-5">Classroom-native modules</p>
-            <h2 className="seminar-display mt-4 text-4xl leading-tight text-[var(--seminar-ink)] sm:text-5xl">Go deeper when the lesson calls for it.</h2>
+            <h2 className="seminar-display mt-4 text-4xl leading-tight text-[var(--seminar-ink)] sm:text-5xl">Add-ons you can easily drop in.</h2>
             <p className="mt-5 leading-7 text-[var(--seminar-muted)]">Use structured activities when a poll is not enough.</p>
           </div>
           <div className="module-grid">
@@ -261,6 +283,18 @@ export default function Home() {
             <article className="module-discussion"><MessageCircleQuestion /><span className="seminar-eyebrow">Discussion</span><h3 className="seminar-display">Make room for more voices.</h3><p>Collect perspectives before opening the microphone.</p></article>
             <article className="module-reflection"><Target /><span className="seminar-eyebrow">Reflection</span><h3 className="seminar-display">Turn a class into a next step.</h3><p>Capture what changed and what comes next.</p></article>
           </div>
+        </div>
+      </section>
+
+      <section className="homepage-pricing">
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-28">
+          <div className="pricing-section-heading">
+            <p className="seminar-eyebrow">Pricing that follows the course</p>
+            <h2 className="seminar-display">Start free. Pay by teaching term when it becomes part of the class.</h2>
+            <p>No student licenses and no charge for every answer. The full classroom can participate without making the price harder to predict.</p>
+          </div>
+          <PricingPlans />
+          <div className="mt-8 text-center"><Link href="/pricing" className="marketing-text-link seminar-focus">Read the pricing details <ArrowRight /></Link></div>
         </div>
       </section>
 
@@ -310,10 +344,10 @@ export default function Home() {
         <div className="relative z-10 mx-auto max-w-5xl px-5 py-24 text-center sm:px-8 sm:py-32">
           <Sparkles className="mx-auto h-6 w-6 text-[var(--seminar-violet)]" />
           <p className="seminar-eyebrow mt-6">Start the course record</p>
-          <h2 className="seminar-display mt-5 text-5xl leading-[0.98] text-[var(--seminar-ink)] sm:text-7xl">Start with one interaction. Build from there.</h2>
+          <h2 className="seminar-display mt-5 text-5xl leading-[0.98] text-[var(--seminar-ink)] sm:text-7xl">Your classroom just got an upgrade.</h2>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[var(--seminar-muted)]">Prepare a session, open the display, and invite every student in. The value grows each time the class returns.</p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first class <ArrowRight className="h-4 w-4" /></Link>
+            <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first interactive class <ArrowRight className="h-4 w-4" /></Link>
             <Link href="/resources" className="marketing-button marketing-button-secondary marketing-button-large seminar-focus">Open the classroom checklist</Link>
           </div>
           <p className="world-final-reassurance">Keep your slides. Students join in a browser. Every session stays connected.</p>

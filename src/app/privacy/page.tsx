@@ -15,12 +15,12 @@ const sections = [
   {
     icon: Database,
     title: 'Information used in class',
-    content: 'The class may record your student number, attendance status, response choices, short written responses, question votes, points, and the time you participated. A temporary device identifier keeps one response per activity.',
+    content: 'The class may record your student number, optional preferred name, attendance status, response choices, short written responses, question votes, points, and the time you participated. A temporary device identifier keeps one response per activity.',
   },
   {
     icon: Eye,
     title: 'Who can see it',
-    content: 'Classmates and the projector see class totals and responses the instructor deliberately shares. Your instructor can access attendance and individual records. Student numbers are never shown to classmates.',
+    content: 'Classmates and the projector see class totals and responses the instructor deliberately shares. Your instructor can access attendance, your optional preferred name, and individual records. Student numbers and preferred names are never shown to classmates.',
   },
   {
     icon: ShieldCheck,

@@ -3,8 +3,10 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { Timestamp } from 'firebase/firestore';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { getAllStudentsWithStats, getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { getInstructorClassroomRecords, type InstructorClassroomRecords } from '@/lib/firebase/live-classroom';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import StudentResponseModal from '@/components/teacher/StudentResponseModal';
@@ -43,6 +45,8 @@ const hasStudent = (session: Session, student: StudentWithStats) => (
   session.studentsJoined?.includes(student.id) || session.studentsJoined?.includes(student.studentId)
 );
 
+const normalizeStudentNumber = (value: string) => value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 function ProgressContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
@@ -50,6 +54,7 @@ function ProgressContent() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [students, setStudents] = useState<StudentWithStats[]>([]);
+  const [liveRecords, setLiveRecords] = useState<Record<string, InstructorClassroomRecords>>({});
   const [selectedCourseId, setSelectedCourseId] = useState(requestedCourseId);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -65,9 +70,40 @@ function ProgressContent() {
           getSessionsByTeacher(user.uid),
           getAllStudentsWithStats(user.uid),
         ]);
+        const classroomRecordPairs = await Promise.all(sessionData
+          .filter((session) => session.sessionType === 'standalone')
+          .map(async (session) => {
+            try {
+              return [session.id, await getInstructorClassroomRecords(user.uid, session.id)] as const;
+            } catch {
+              return [session.id, {
+                attendance: {},
+                responses: {},
+              } satisfies InstructorClassroomRecords] as const;
+            }
+          }));
+        const records: Record<string, InstructorClassroomRecords> = Object.fromEntries(classroomRecordPairs);
+        const knownStudents = studentData as StudentWithStats[];
+        const knownNumbers = new Set(knownStudents.map((student) => normalizeStudentNumber(student.studentId)));
+        const attendanceOnlyStudents: StudentWithStats[] = [];
+        Object.values(records).forEach((record) => Object.values(record.attendance).forEach((claim) => {
+          const normalized = normalizeStudentNumber(claim.studentNumber);
+          if (!normalized || knownNumbers.has(normalized)) return;
+          knownNumbers.add(normalized);
+          attendanceOnlyStudents.push({
+            id: `attendance-${normalized}`,
+            studentId: claim.studentNumber,
+            studentIdNormalized: normalized,
+            name: claim.studentDisplayName || `Student ${claim.studentNumber.slice(-4)}`,
+            courseIds: [],
+            createdAt: sessionData[0]?.createdAt || Timestamp.now(),
+            stats: { totalResponses: 0, correctResponses: 0, correctPercentage: 0, totalPoints: 0, maxTotalPoints: 0, averageScore: 0, progressPercentage: 0, totalQuestionsAvailable: 0 },
+          });
+        }));
         setCourses(courseData);
         setSessions(sessionData);
-        setStudents(studentData as StudentWithStats[]);
+        setLiveRecords(records);
+        setStudents([...knownStudents, ...attendanceOnlyStudents]);
       } catch (loadError) {
         console.error('Could not load student progress:', loadError);
         setError('Student progress could not be loaded. Try refreshing the page.');
@@ -89,17 +125,49 @@ function ProgressContent() {
     session.active || session.startedAt || session.endedAt || (session.studentsJoined?.length || 0) > 0
   )), [relevantSessions]);
 
+  const attendedSession = (session: Session, student: StudentWithStats) => {
+    if (hasStudent(session, student)) return true;
+    const target = normalizeStudentNumber(student.studentId);
+    return Object.values(liveRecords[session.id]?.attendance || {}).some((claim) => normalizeStudentNumber(claim.studentNumber) === target);
+  };
+
+  const studentLiveMetrics = (student: StudentWithStats, scopedSessions: Session[]) => {
+    const target = normalizeStudentNumber(student.studentId);
+    let responses = 0;
+    let quizAnswered = 0;
+    let quizCorrect = 0;
+    scopedSessions.forEach((session) => {
+      const records = liveRecords[session.id];
+      if (!records) return;
+      const studentUid = Object.entries(records.attendance).find(([, claim]) => normalizeStudentNumber(claim.studentNumber) === target)?.[0];
+      if (!studentUid) return;
+      Object.values(records.responses).forEach((runResponses) => {
+        const response = runResponses[studentUid];
+        if (!response) return;
+        responses += 1;
+        const interaction = session.interactions?.find((candidate) => candidate.id === response.interactionId);
+        if (interaction?.type === 'quiz' && typeof response.optionIndex === 'number') {
+          quizAnswered += 1;
+          if (response.optionIndex === interaction.correctOptionIndex) quizCorrect += 1;
+        }
+      });
+    });
+    return { responses, quizAnswered, quizCorrect, quizPercentage: quizAnswered ? Math.round((quizCorrect / quizAnswered) * 100) : null };
+  };
+
   const visibleStudents = useMemo(() => {
     const inScope = selectedCourseId === 'all'
       ? students
-      : students.filter((student) => heldSessions.some((session) => hasStudent(session, student)));
+      : students.filter((student) => heldSessions.some((session) => attendedSession(session, student)));
     const query = search.trim().toLowerCase();
     return inScope
       .filter((student) => !query || student.name?.toLowerCase().includes(query) || student.studentId.toLowerCase().includes(query))
       .map((student) => {
-        const attended = heldSessions.filter((session) => hasStudent(session, student)).length;
+        const attendedSessions = heldSessions.filter((session) => attendedSession(session, student));
+        const attended = attendedSessions.length;
         const attendance = heldSessions.length ? Math.round((attended / heldSessions.length) * 100) : 0;
-        return { ...student, attended, attendance };
+        const lastSeen = [...attendedSessions].sort((a, b) => (b.startedAt?.toDate?.() || b.createdAt?.toDate?.() || new Date(0)).getTime() - (a.startedAt?.toDate?.() || a.createdAt?.toDate?.() || new Date(0)).getTime())[0];
+        return { ...student, attended, attendance, lastSeen, liveMetrics: studentLiveMetrics(student, heldSessions) };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [heldSessions, search, selectedCourseId, students]);
@@ -107,9 +175,9 @@ function ProgressContent() {
   const allScopedStudents = useMemo(() => {
     const inScope = selectedCourseId === 'all'
       ? students
-      : students.filter((student) => heldSessions.some((session) => hasStudent(session, student)));
+      : students.filter((student) => heldSessions.some((session) => attendedSession(session, student)));
     return inScope.map((student) => {
-      const attended = heldSessions.filter((session) => hasStudent(session, student)).length;
+      const attended = heldSessions.filter((session) => attendedSession(session, student)).length;
       return { ...student, attended, attendance: heldSessions.length ? Math.round((attended / heldSessions.length) * 100) : 0 };
     });
   }, [heldSessions, selectedCourseId, students]);
@@ -118,9 +186,7 @@ function ProgressContent() {
     ? Math.round(allScopedStudents.reduce((sum, student) => sum + student.attendance, 0) / allScopedStudents.length)
     : 0;
   const activeParticipants = allScopedStudents.filter((student) => student.attendance >= 75).length;
-  const needsFollowUp = allScopedStudents.filter((student) => (
-    (heldSessions.length >= 2 && student.attendance < 60) || (student.stats.totalResponses >= 3 && student.stats.correctPercentage < 60)
-  )).length;
+  const needsFollowUp = allScopedStudents.filter((student) => heldSessions.length >= 2 && student.attendance < 60).length;
   const recentSessions = [...heldSessions]
     .sort((a, b) => (b.startedAt?.toDate?.() || b.createdAt?.toDate?.() || new Date(0)).getTime() - (a.startedAt?.toDate?.() || a.createdAt?.toDate?.() || new Date(0)).getTime())
     .slice(0, 6)
@@ -132,10 +198,11 @@ function ProgressContent() {
       student.studentId,
       `${student.attended}/${heldSessions.length}`,
       `${student.attendance}%`,
-      `${student.stats.correctPercentage}%`,
-      student.stats.totalResponses,
+      student.attendance >= 75 ? 'Regular' : student.attendance >= 50 ? 'Building a routine' : 'May need follow-up',
+      student.liveMetrics.quizPercentage === null ? 'Not recorded' : `${student.liveMetrics.quizPercentage}%`,
+      student.lastSeen?.title || student.lastSeen?.caseStudyTitle || '',
     ]);
-    const csv = [['Student', 'Student ID', 'Sessions attended', 'Attendance', 'Overall correct', 'Responses'], ...rows]
+    const csv = [['Student', 'Student ID', 'Sessions attended', 'Attendance', 'Participation pattern', 'Knowledge checks', 'Last session'], ...rows]
       .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
       .join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -175,9 +242,9 @@ function ProgressContent() {
 
               <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
                 <div className="rounded-3xl border border-[#e3e5ed] bg-white p-5 sm:p-7">
-                  <div className="flex flex-col gap-4 border-b border-[#e3e5ed] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="seminar-eyebrow mb-2">Class roster</p><h2 className="seminar-display text-3xl text-[#101a38]">Individual progress</h2><p className="mt-1 text-sm text-[#697087]">Attendance is scoped to the selected class. Knowledge-check results are currently shown across recorded work.</p></div><div className="relative sm:w-72"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9298a8]" /><Input aria-label="Search students" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or ID" className="pl-9" /></div></div>
+                  <div className="flex flex-col gap-4 border-b border-[#e3e5ed] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="seminar-eyebrow mb-2">Class roster</p><h2 className="seminar-display text-3xl text-[#101a38]">Individual progress</h2><p className="mt-1 text-sm text-[#697087]">Attendance, live responses, and knowledge checks are scoped to the selected class.</p></div><div className="relative sm:w-72"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9298a8]" /><Input aria-label="Search students" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or ID" className="pl-9" /></div></div>
 
-                  {visibleStudents.length === 0 ? <div className="py-14 text-center"><UserCheck className="mx-auto h-8 w-8 text-[#9ca2b2]" /><h3 className="seminar-display mt-3 text-2xl text-[#101a38]">No progress to show yet.</h3><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#697087]">Students appear after joining a class session with their student number.</p></div> : <div className="overflow-x-auto"><table className="mt-2 w-full min-w-[720px] text-left"><thead><tr className="border-b border-[#e3e5ed] text-[11px] font-bold uppercase tracking-[0.07em] text-[#697087]"><th className="px-3 py-4">Student</th><th className="px-3 py-4">Attendance</th><th className="px-3 py-4">Knowledge checks</th><th className="px-3 py-4">Responses</th><th className="px-3 py-4 text-right">Details</th></tr></thead><tbody>{visibleStudents.map((student) => <tr key={student.id} className="border-b border-[#eceef3] last:border-0 hover:bg-[#fbfaff]"><td className="px-3 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f0efff] text-sm font-bold text-[#5146e5]">{student.name?.charAt(0).toUpperCase() || 'S'}</span><div><strong className="block text-sm text-[#101a38]">{student.name || 'Student'}</strong><span className="text-xs text-[#697087]">{student.studentId}</span></div></div></td><td className="px-3 py-4"><strong className="block text-sm text-[#101a38]">{student.attendance}%</strong><span className="text-xs text-[#697087]">{student.attended} of {heldSessions.length}</span></td><td className="px-3 py-4"><strong className="block text-sm text-[#101a38]">{student.stats.correctPercentage}%</strong><span className="text-xs text-[#697087]">Across recorded work</span></td><td className="px-3 py-4 text-sm font-semibold text-[#313950]">{student.stats.totalResponses}</td><td className="px-3 py-4 text-right"><Button size="sm" variant="ghost" onClick={() => setSelectedStudent(student)} className="gap-1.5"><Eye className="h-4 w-4" /> Review</Button></td></tr>)}</tbody></table></div>}
+                  {visibleStudents.length === 0 ? <div className="py-14 text-center"><UserCheck className="mx-auto h-8 w-8 text-[#9ca2b2]" /><h3 className="seminar-display mt-3 text-2xl text-[#101a38]">No progress to show yet.</h3><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#697087]">Students appear after joining a class session with their student number.</p></div> : <div className="overflow-x-auto"><table className="mt-2 w-full min-w-[860px] text-left"><thead><tr className="border-b border-[#e3e5ed] text-[11px] font-bold uppercase tracking-[0.07em] text-[#697087]"><th className="px-3 py-4">Student</th><th className="px-3 py-4">Attendance</th><th className="px-3 py-4">Participation</th><th className="px-3 py-4">Knowledge checks</th><th className="px-3 py-4">Last seen</th><th className="px-3 py-4 text-right">Details</th></tr></thead><tbody>{visibleStudents.map((student) => <tr key={student.id} className="border-b border-[#eceef3] last:border-0 hover:bg-[#fbfaff]"><td className="px-3 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f0efff] text-sm font-bold text-[#5146e5]">{student.name?.charAt(0).toUpperCase() || 'S'}</span><div><strong className="block text-sm text-[#101a38]">{student.name || 'Student'}</strong><span className="text-xs text-[#697087]">{student.studentId}</span></div></div></td><td className="px-3 py-4"><strong className="block text-sm text-[#101a38]">{student.attendance}%</strong><span className="text-xs text-[#697087]">{student.attended} of {heldSessions.length}</span></td><td className="px-3 py-4"><strong className={`block text-sm ${student.attendance < 60 ? 'text-[#b6533f]' : 'text-[#101a38]'}`}>{student.attendance >= 75 ? 'Regular' : student.attendance >= 50 ? 'Building a routine' : 'May need follow-up'}</strong><span className="text-xs text-[#697087]">{student.liveMetrics.responses} live responses</span></td><td className="px-3 py-4"><strong className="block text-sm text-[#101a38]">{student.liveMetrics.quizPercentage === null ? 'Not recorded' : `${student.liveMetrics.quizPercentage}%`}</strong><span className="text-xs text-[#697087]">{student.liveMetrics.quizAnswered ? `${student.liveMetrics.quizCorrect} of ${student.liveMetrics.quizAnswered} correct` : 'No quiz answers yet'}</span></td><td className="px-3 py-4"><strong className="block max-w-44 truncate text-sm text-[#101a38]">{student.lastSeen?.title || student.lastSeen?.caseStudyTitle || 'No session recorded'}</strong><span className="text-xs text-[#697087]">Most recent attendance</span></td><td className="px-3 py-4 text-right"><Button size="sm" variant="ghost" onClick={() => setSelectedStudent(student)} className="gap-1.5"><Eye className="h-4 w-4" /> Review</Button></td></tr>)}</tbody></table></div>}
                 </div>
 
                 <aside className="space-y-5">

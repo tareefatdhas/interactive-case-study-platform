@@ -75,8 +75,34 @@
 }
 
 .remote-room-stats { display: flex; flex-wrap: wrap; gap: 8px 15px; }
-.remote-room-stats span { display: flex; align-items: center; gap: 5px; color: var(--remote-muted); font-size: 12px; }
+.remote-room-stats span,
+.remote-room-stats button { display: flex; align-items: center; gap: 5px; color: var(--remote-muted); font: inherit; font-size: 12px; }
+.remote-room-stats button { min-height: 30px; margin: -5px; padding: 5px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.remote-room-stats button:hover { background: rgba(255,255,255,.7); }
 .remote-room-stats .has-questions { color: var(--remote-violet-deep); font-weight: 700; }
+
+.remote-question-panel,
+.remote-quick-ask-form {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(102, 84, 233, 0.18);
+  border-radius: 18px;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 14px 36px rgba(34,31,76,.07);
+}
+.remote-question-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.remote-question-heading > div { display: grid; gap: 2px; }
+.remote-question-heading small { color: var(--remote-violet-deep); font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.remote-question-heading strong { font-family: var(--font-display, Georgia, serif); font-size: 17px; font-weight: 500; }
+.remote-question-heading > button { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 10px; color: var(--remote-muted); background: #f1eff6; cursor: pointer; }
+.remote-question-list { display: grid; gap: 8px; margin-top: 13px; }
+.remote-question-list article { padding: 11px; border: 1px solid rgba(20,34,63,.09); border-radius: 13px; background: #fff; }
+.remote-question-list p { margin: 0; font-size: 12px; line-height: 1.45; }
+.remote-question-list article > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.remote-question-list article span { color: var(--remote-muted); font-size: 10px; font-weight: 700; }
+.remote-question-list article button { min-height: 32px; padding: 0 10px; border: 1px solid #d9d5fb; border-radius: 9px; color: var(--remote-violet-deep); background: #f6f4ff; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.remote-question-list article button.is-featured { color: #fff; border-color: var(--remote-violet); background: var(--remote-violet); }
+.remote-no-questions { padding: 8px 0; color: var(--remote-muted); }
 
 .remote-active-card,
 .remote-ready-card {
@@ -145,6 +171,13 @@
 .remote-ready-card small { color: var(--remote-violet-deep); font-size: 10px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
 .remote-ready-card h2 { margin: 5px 0 4px; font-family: var(--font-display, Georgia, serif); font-size: 21px; font-weight: 500; }
 .remote-ready-card p { margin: 0; color: var(--remote-muted); font-size: 12px; line-height: 1.5; }
+
+.remote-quick-ask-trigger { display: flex; width: 100%; min-height: 43px; margin-top: 10px; align-items: center; justify-content: center; gap: 7px; border: 1px dashed rgba(102,84,233,.34); border-radius: 13px; color: var(--remote-violet-deep); background: rgba(255,255,255,.52); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.remote-quick-ask-trigger:hover { border-style: solid; background: #fff; }
+.remote-quick-ask-form textarea { width: 100%; min-height: 74px; margin-top: 13px; resize: vertical; border: 1px solid #dedbe8; border-radius: 12px; padding: 10px; color: var(--remote-ink); background: #fff; font: inherit; font-size: 12px; line-height: 1.45; outline: none; }
+.remote-quick-ask-form textarea:focus { border-color: rgba(102,84,233,.6); box-shadow: 0 0 0 3px rgba(102,84,233,.12); }
+.remote-quick-ask-form > button { display: flex; width: 100%; min-height: 42px; margin-top: 8px; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 12px; color: #fff; background: var(--remote-violet-deep); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.remote-quick-ask-form > button:disabled { cursor: not-allowed; opacity: .4; }
 
 .remote-plan { margin-top: 20px; }
 .remote-section-title { display: flex; align-items: center; min-height: 30px; gap: 8px; color: var(--remote-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }

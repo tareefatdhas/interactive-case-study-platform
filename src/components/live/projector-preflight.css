@@ -1,0 +1,142 @@
+.projector-preflight-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(16 26 56 / 58%);
+  backdrop-filter: blur(8px);
+}
+
+.projector-preflight {
+  box-sizing: border-box;
+  position: relative;
+  width: min(520px, calc(100vw - 36px));
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  border: 1px solid #e3e5ed;
+  border-radius: 28px;
+  padding: 30px;
+  color: #101a38;
+  background: #fffefa;
+  box-shadow: 0 28px 90px rgb(16 26 56 / 28%);
+}
+
+.projector-preflight-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  color: #697087;
+  background: transparent;
+  cursor: pointer;
+}
+
+.projector-preflight-close:hover { background: #f3f1ec; }
+
+.projector-preflight-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 20px;
+  place-items: center;
+  border-radius: 15px;
+  color: #5146e5;
+  background: #f0efff;
+}
+
+.projector-preflight h2 {
+  max-width: 430px;
+  margin: 7px 0 0;
+  font-size: clamp(28px, 5vw, 38px);
+  line-height: 1.06;
+  overflow-wrap: anywhere;
+}
+
+.projector-preflight-copy {
+  margin: 14px 0 0;
+  color: #697087;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.projector-connection-state {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 22px;
+  border: 1px solid #e5d9bb;
+  border-radius: 16px;
+  padding: 15px;
+  color: #8a6421;
+  background: #fff9e9;
+}
+
+.projector-connection-state.is-connected {
+  border-color: #cfe7d5;
+  color: #2f7b47;
+  background: #f1faf3;
+}
+
+.projector-connection-state span { display: grid; gap: 3px; }
+.projector-connection-state strong { font-size: 14px; }
+.projector-connection-state small { color: #697087; font-size: 12px; line-height: 1.5; }
+
+.projector-preflight-steps {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.projector-preflight-steps li { display: flex; gap: 12px; align-items: flex-start; }
+.projector-preflight-steps li > span { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #5146e5; background: #f0efff; font-size: 12px; font-weight: 800; }
+.projector-preflight-steps p { display: grid; gap: 2px; margin: 0; }
+.projector-preflight-steps strong { font-size: 13px; }
+.projector-preflight-steps small { color: #697087; font-size: 12px; line-height: 1.45; }
+
+.projector-preflight-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 25px;
+}
+
+.projector-preflight-actions button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #d7dae5;
+  border-radius: 11px;
+  padding: 9px 14px;
+  color: #313950;
+  background: white;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.projector-preflight-actions button.is-primary { border-color: #5146e5; color: white; background: #5146e5; }
+.projector-preflight-actions button:disabled { cursor: not-allowed; opacity: .42; }
+.projector-preflight-actions button:focus-visible,
+.projector-preflight-close:focus-visible { outline: 3px solid #b9b4ff; outline-offset: 2px; }
+
+@media (max-width: 520px) {
+  .projector-preflight { border-radius: 22px; padding: 24px 20px; }
+  .projector-preflight-actions { flex-direction: column-reverse; }
+  .projector-preflight-actions button { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .projector-preflight-backdrop { backdrop-filter: none; }
+}

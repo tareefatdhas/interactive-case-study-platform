@@ -2,17 +2,23 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCourse, getSessionsByTeacher, updateCourse } from '@/lib/firebase/firestore';
+import { createCourse, getCourse, getCoursesByTeacher, getSessionsByTeacher, updateCourse } from '@/lib/firebase/firestore';
+import { Timestamp } from 'firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
+import Dialog from '@/components/ui/Dialog';
 import type { Course, Session, SessionInteraction, SessionInteractionType } from '@/types';
 import {
   ArrowLeft,
   ArrowRight,
+  Archive,
+  ArchiveRestore,
   BarChart3,
   CalendarPlus,
+  CalendarSync,
   Check,
   CircleHelp,
   Clock3,
@@ -26,6 +32,7 @@ import {
   Sparkles,
   Trash2,
   Users,
+  X,
 } from 'lucide-react';
 
 interface ClassWorkspaceProps {
@@ -75,13 +82,22 @@ const readableDate = (value?: string) => {
 export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const { id } = use(params);
   const { user } = useAuth();
+  const router = useRouter();
   const [course, setCourse] = useState<Course | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [templates, setTemplates] = useState<SessionInteraction[]>([]);
+  const [className, setClassName] = useState('');
+  const [classTerm, setClassTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [rolloverOpen, setRolloverOpen] = useState(false);
+  const [rollingOver, setRollingOver] = useState(false);
+  const [nextTerm, setNextTerm] = useState('');
+  const [nextCode, setNextCode] = useState('');
+  const [archiveAfterRollover, setArchiveAfterRollover] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -95,6 +111,8 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
         }
         setCourse(courseData);
         setTemplates(courseData.interactionTemplates || []);
+        setClassName(courseData.name);
+        setClassTerm(courseData.term || '');
         setSessions(sessionData.filter((session) => session.courseId === id || (!session.courseId && session.courseCode === courseData.code)));
       } catch (loadError) {
         console.error('Could not load class workspace:', loadError);
@@ -113,12 +131,41 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
     setTemplates((current) => current.map((template) => template.id === templateId ? { ...template, ...updates } : template));
   };
 
+  const updateTemplateOption = (templateId: string, optionIndex: number, value: string) => {
+    setTemplates((current) => current.map((template) => {
+      if (template.id !== templateId || !template.options) return template;
+      const options = [...template.options];
+      options[optionIndex] = value;
+      return { ...template, options };
+    }));
+    setSaved(false);
+  };
+
+  const removeTemplateOption = (templateId: string, optionIndex: number) => {
+    setTemplates((current) => current.map((template) => {
+      if (template.id !== templateId || !template.options || template.options.length <= 2) return template;
+      const options = template.options.filter((_, index) => index !== optionIndex);
+      const correctOptionIndex = template.correctOptionIndex === optionIndex
+        ? 0
+        : template.correctOptionIndex !== undefined && template.correctOptionIndex > optionIndex
+          ? template.correctOptionIndex - 1
+          : template.correctOptionIndex;
+      return { ...template, options, correctOptionIndex };
+    }));
+    setSaved(false);
+  };
+
   const saveLibrary = async () => {
     if (!course) return;
     setSaving(true);
     setError('');
     try {
-      await updateCourse(course.id, { interactionTemplates: templates });
+      await updateCourse(course.id, {
+        name: className.trim() || course.name,
+        term: classTerm.trim() || undefined,
+        interactionTemplates: templates,
+      });
+      setCourse((current) => current ? { ...current, name: className.trim() || current.name, term: classTerm.trim() || undefined, interactionTemplates: templates } : current);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2400);
     } catch (saveError) {
@@ -126,6 +173,68 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
       setError('Your interaction library could not be saved. Try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const archiveClass = async () => {
+    if (!course) return;
+    await updateCourse(course.id, { archived: true, archivedAt: Timestamp.now() });
+    setCourse((current) => current ? { ...current, archived: true, archivedAt: Timestamp.now() } : current);
+    setArchiveOpen(false);
+  };
+
+  const restoreClass = async () => {
+    if (!course) return;
+    setSaving(true);
+    try {
+      await updateCourse(course.id, { archived: false, archivedAt: null });
+      setCourse((current) => current ? { ...current, archived: false, archivedAt: null } : current);
+    } catch (restoreError) {
+      console.error('Could not restore class:', restoreError);
+      setError('The class could not be restored. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openRollover = () => {
+    if (!course) return;
+    setNextTerm('');
+    setNextCode(`${course.code}-${new Date().getFullYear() + 1}`);
+    setArchiveAfterRollover(true);
+    setRolloverOpen(true);
+  };
+
+  const createNextTerm = async () => {
+    if (!course || !user || !nextTerm.trim() || !nextCode.trim()) return;
+    setRollingOver(true);
+    setError('');
+    try {
+      const existingCourses = await getCoursesByTeacher(user.uid, true);
+      const normalizedNextCode = nextCode.trim().toUpperCase();
+      if (existingCourses.some((candidate) => candidate.code.trim().toUpperCase() === normalizedNextCode)) {
+        setError('That class code is already in use. Choose a different code so records stay separate.');
+        setRollingOver(false);
+        return;
+      }
+      const nextCourseId = await createCourse({
+        name: course.name,
+        code: normalizedNextCode,
+        term: nextTerm.trim(),
+        teacherId: user.uid,
+        studentIds: [],
+        interactionTemplates: templates.map((template) => ({ ...template, id: `${template.type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` })),
+        archived: false,
+        sourceCourseId: course.id,
+      });
+      if (archiveAfterRollover) {
+        await updateCourse(course.id, { archived: true, archivedAt: Timestamp.now() });
+      }
+      router.push(`/dashboard/classes/${nextCourseId}`);
+    } catch (rolloverError) {
+      console.error('Could not create next term:', rolloverError);
+      setError('The next term could not be created. Check the details and try again.');
+      setRollingOver(false);
     }
   };
 
@@ -145,14 +254,18 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
             <>
               <header className="mb-8 flex flex-col gap-5 border-b border-[#e3e5ed] pb-8 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#101a38] px-3 py-1 text-xs font-bold text-white">{course.code}</span>{course.term && <span className="text-xs font-semibold text-[#697087]">{course.term}</span>}</div>
+                  <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#101a38] px-3 py-1 text-xs font-bold text-white">{course.code}</span>{course.term && <span className="text-xs font-semibold text-[#697087]">{course.term}</span>}{course.archived && <span className="rounded-full bg-[#e7e5df] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#5f6472]">Archived</span>}</div>
                   <h1 className="seminar-display mt-4 text-4xl text-[#101a38] sm:text-5xl">{course.name}</h1>
                   <div className="mt-4 flex flex-wrap gap-5 text-sm text-[#697087]"><span className="flex items-center gap-2"><CalendarPlus className="h-4 w-4" /> {sessions.length} sessions</span><span className="flex items-center gap-2"><Users className="h-4 w-4" /> {studentCount} students seen</span><span className="flex items-center gap-2"><Library className="h-4 w-4" /> {templates.length} reusable interactions</span></div>
                 </div>
-                <div className="flex flex-wrap gap-3"><Link href={`/dashboard/progress?courseId=${course.id}`}><Button variant="outline">View progress</Button></Link><Link href={`/dashboard/sessions/new?courseId=${course.id}`}><Button className="gap-2"><CalendarPlus className="h-4 w-4" /> Plan next session</Button></Link></div>
+                <div className="flex flex-wrap gap-3">{course.archived ? <Button variant="outline" onClick={restoreClass} loading={saving} className="gap-2"><ArchiveRestore className="h-4 w-4" /> Restore class</Button> : <><Button variant="outline" onClick={openRollover} className="gap-2"><CalendarSync className="h-4 w-4" /> Start next term</Button><Link href={`/dashboard/progress?courseId=${course.id}`}><Button variant="outline">View progress</Button></Link><Link href={`/dashboard/sessions/new?courseId=${course.id}`}><Button className="gap-2"><CalendarPlus className="h-4 w-4" /> Plan next session</Button></Link></>}</div>
               </header>
 
-              <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+              {error && <p className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
+
+              {course.archived && <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[#dedbd2] bg-[#f8f7f3] p-4 text-sm leading-6 text-[#5f6472]"><Archive className="mt-0.5 h-4 w-4 shrink-0" /><span><strong className="block text-[#101a38]">This class is archived.</strong>Its teaching kit and history are read-only until you restore it.</span></div>}
+
+              <fieldset disabled={course.archived} className="m-0 grid min-w-0 items-start gap-8 border-0 p-0 xl:grid-cols-[minmax(0,1fr)_340px]">
                 <section className="rounded-3xl border border-[#e3e5ed] bg-white p-5 sm:p-7" aria-labelledby="library-title">
                   <div className="flex flex-col gap-4 border-b border-[#e3e5ed] pb-6 sm:flex-row sm:items-start sm:justify-between">
                     <div className="max-w-2xl"><p className="seminar-eyebrow mb-2">Reusable kit</p><h2 id="library-title" className="seminar-display text-3xl text-[#101a38]">Interaction library</h2><p className="mt-2 text-sm leading-6 text-[#697087]">Save the formats and wording you return to often. Adding one to a session creates an editable copy, so the original stays intact.</p></div>
@@ -179,7 +292,8 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                   <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[#697087]">{type?.label || template.type}</span>
                                 </div>
                                 <textarea aria-label={`${template.title} prompt`} value={template.prompt} onChange={(event) => updateTemplate(template.id, { prompt: event.target.value })} rows={2} className="mt-3 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
-                                {template.options && <div className="mt-3 flex flex-wrap gap-2">{template.options.map((option, optionIndex) => <span key={`${template.id}-${optionIndex}`} className="rounded-full border border-[#e0e2ec] bg-white px-3 py-1 text-xs text-[#555d73]">{option}</span>)}</div>}
+                                {template.options && <div className="mt-4 space-y-2"><p className="text-[11px] font-bold uppercase tracking-[0.07em] text-[#697087]">{template.type === 'quiz' ? 'Choices and correct answer' : 'Response choices'}</p>{template.options.map((option, optionIndex) => <div key={`${template.id}-${optionIndex}`} className="flex items-center gap-2"><input type="radio" name={`correct-${template.id}`} checked={template.type === 'quiz' && template.correctOptionIndex === optionIndex} onChange={() => template.type === 'quiz' && updateTemplate(template.id, { correctOptionIndex: optionIndex })} disabled={template.type !== 'quiz'} className={template.type === 'quiz' ? 'accent-[#5146e5]' : 'invisible'} aria-label={template.type === 'quiz' ? `Mark choice ${optionIndex + 1} correct` : undefined} /><input aria-label={`Choice ${optionIndex + 1}`} value={option} onChange={(event) => updateTemplateOption(template.id, optionIndex, event.target.value)} className="min-h-10 flex-1 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /><button type="button" onClick={() => removeTemplateOption(template.id, optionIndex)} disabled={template.options!.length <= 2} className="seminar-focus rounded-lg p-2 text-[#8b91a3] hover:bg-[#fff1ee] hover:text-[#b64936] disabled:opacity-25" aria-label={`Remove choice ${optionIndex + 1}`}><X className="h-3.5 w-3.5" /></button></div>)}{template.options.length < 6 && <button type="button" onClick={() => updateTemplate(template.id, { options: [...template.options!, `Option ${template.options!.length + 1}`] })} className="seminar-focus ml-6 rounded-lg px-2 py-1 text-xs font-bold text-[#5146e5] hover:bg-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Add choice</button>}</div>}
+                                {template.type === 'quiz' && <textarea aria-label={`${template.title} answer explanation`} value={template.explanation || ''} onChange={(event) => updateTemplate(template.id, { explanation: event.target.value })} rows={2} placeholder="Explain why the correct answer is right" className="mt-4 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />}
                                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-[#697087]"><span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> About {template.durationMinutes || 3} min</span><div className="flex gap-1"><button type="button" onClick={() => { setTemplates((current) => [...current, { ...template, id: `${template.id}-copy-${Date.now()}`, title: `${template.title} copy` }]); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-white" aria-label={`Duplicate ${template.title}`}><Copy className="h-4 w-4" /></button><button type="button" onClick={() => { setTemplates((current) => current.filter((item) => item.id !== template.id)); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Delete ${template.title}`}><Trash2 className="h-4 w-4" /></button></div></div>
                               </div>
                             </div>
@@ -189,20 +303,42 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                     </div>
                   )}
 
-                  <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#e3e5ed] pt-6"><span className={`flex items-center gap-1.5 text-sm font-semibold text-[#3a8b50] transition-opacity ${saved ? 'opacity-100' : 'opacity-0'}`} role="status"><Check className="h-4 w-4" /> Saved</span><Button onClick={saveLibrary} loading={saving} className="gap-2"><Save className="h-4 w-4" /> Save library</Button></div>
+                  <div className="mt-6 flex items-center justify-end gap-3 border-t border-[#e3e5ed] pt-6"><span className={`flex items-center gap-1.5 text-sm font-semibold text-[#3a8b50] transition-opacity ${saved ? 'opacity-100' : 'opacity-0'}`} role="status"><Check className="h-4 w-4" /> Saved</span><Button onClick={saveLibrary} loading={saving} className="gap-2"><Save className="h-4 w-4" /> Save changes</Button></div>
                 </section>
 
                 <aside className="space-y-5 xl:sticky xl:top-6">
-                  <section className="rounded-3xl border border-[#dcd8ff] bg-[#f7f6ff] p-6">
-                    <p className="seminar-eyebrow mb-2">Next step</p><h2 className="seminar-display text-3xl text-[#101a38]">Plan a session</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Choose from this library, add lesson-specific questions, and put everything in teaching order.</p><Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="mt-5 block"><Button className="w-full gap-2">Plan next session <ArrowRight className="h-4 w-4" /></Button></Link>
+                  <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6">
+                    <p className="seminar-eyebrow mb-2">Class details</p><h2 className="seminar-display text-2xl text-[#101a38]">Keep the workspace current</h2>
+                    <label className="mt-5 grid gap-1.5 text-xs font-bold text-[#697087]">Class name<input value={className} onChange={(event) => { setClassName(event.target.value); setSaved(false); }} className="min-h-11 rounded-xl border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                    <label className="mt-4 grid gap-1.5 text-xs font-bold text-[#697087]">Term<input value={classTerm} onChange={(event) => { setClassTerm(event.target.value); setSaved(false); }} placeholder="Fall 2026" className="min-h-11 rounded-xl border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                    <p className="mt-3 text-xs leading-5 text-[#697087]">The class code stays fixed so older attendance and session records remain connected.</p>
+                    {!course.archived && <button type="button" onClick={() => setArchiveOpen(true)} className="seminar-focus mt-5 inline-flex items-center gap-2 rounded-lg text-sm font-bold text-[#8a4b3d] hover:text-[#b64936]"><Archive className="h-4 w-4" /> Archive this class</button>}
                   </section>
+                  {!course.archived && <section className="rounded-3xl border border-[#dcd8ff] bg-[#f7f6ff] p-6">
+                    <p className="seminar-eyebrow mb-2">Next step</p><h2 className="seminar-display text-3xl text-[#101a38]">Plan a session</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Choose from this library, add lesson-specific questions, and put everything in teaching order.</p><Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="mt-5 block"><Button className="w-full gap-2">Plan next session <ArrowRight className="h-4 w-4" /></Button></Link>
+                  </section>}
 
                   <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6">
                     <div className="flex items-center justify-between"><div><p className="seminar-eyebrow mb-2">Session history</p><h2 className="seminar-display text-2xl text-[#101a38]">Recent sessions</h2></div><span className="text-sm font-bold text-[#101a38]">{sessions.length}</span></div>
                     <div className="mt-5 space-y-1">{sessions.slice(0, 5).map((session) => <Link key={session.id} href={`/dashboard/sessions/${session.id}`} className="group flex items-center justify-between gap-3 rounded-xl px-2 py-3 hover:bg-[#f8f7fb]"><div className="min-w-0"><strong className="block truncate text-sm text-[#101a38]">{session.title || 'Untitled session'}</strong><span className="text-xs text-[#697087]">{session.active ? 'Live now' : readableDate(session.scheduledFor)}</span></div><ArrowRight className="h-4 w-4 shrink-0 text-[#a0a5b5] group-hover:text-[#5146e5]" /></Link>)}{sessions.length === 0 && <p className="py-5 text-sm leading-6 text-[#697087]">No sessions yet. Your first plan will appear here.</p>}</div>
                   </section>
                 </aside>
-              </div>
+              </fieldset>
+
+              <Dialog isOpen={archiveOpen} onClose={() => setArchiveOpen(false)} onConfirm={archiveClass} title="Archive this class?" message="It will move out of your current classes. Sessions, attendance, student progress, and reusable interactions will be kept." confirmText="Archive class" variant="destructive" />
+
+              {rolloverOpen && (
+                <div className="fixed inset-0 z-[80] grid place-items-center bg-[#101a38]/55 p-4" role="presentation">
+                  <section className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-[0_28px_80px_rgba(16,26,56,0.25)] sm:p-8" role="dialog" aria-modal="true" aria-labelledby="rollover-title">
+                    <div className="flex items-start justify-between gap-4"><div><p className="seminar-eyebrow mb-2">New teaching period</p><h2 id="rollover-title" className="seminar-display text-3xl text-[#101a38]">Start the next term</h2></div><button type="button" onClick={() => setRolloverOpen(false)} disabled={rollingOver} className="seminar-focus rounded-lg p-2 text-[#697087] hover:bg-[#f8f7fb]" aria-label="Close"><X className="h-5 w-5" /></button></div>
+                    <p className="mt-3 text-sm leading-6 text-[#697087]">Your interaction library will be copied. Students, attendance, responses, and sessions will start fresh.</p>
+                    <label className="mt-6 grid gap-1.5 text-xs font-bold text-[#697087]">New term<input value={nextTerm} onChange={(event) => setNextTerm(event.target.value)} placeholder="Spring 2027" className="min-h-11 rounded-xl border border-[#d7dae5] px-3 text-sm text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                    <label className="mt-4 grid gap-1.5 text-xs font-bold text-[#697087]">New class code<input value={nextCode} onChange={(event) => setNextCode(event.target.value)} className="min-h-11 rounded-xl border border-[#d7dae5] px-3 text-sm uppercase text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /><span className="font-normal leading-5">Use a new code so student and session records never mix across terms.</span></label>
+                    <label className="mt-5 flex items-start gap-3 rounded-xl bg-[#f7f6ff] p-4 text-sm leading-6 text-[#3f465b]"><input type="checkbox" checked={archiveAfterRollover} onChange={(event) => setArchiveAfterRollover(event.target.checked)} className="mt-1 accent-[#5146e5]" /><span><strong className="block text-[#101a38]">Archive the current class</strong>Keep its history available under Archived classes.</span></label>
+                    <div className="mt-7 flex justify-end gap-3"><Button variant="ghost" onClick={() => setRolloverOpen(false)} disabled={rollingOver}>Cancel</Button><Button onClick={createNextTerm} loading={rollingOver} disabled={!nextTerm.trim() || !nextCode.trim()} className="gap-2"><CalendarSync className="h-4 w-4" /> Create next term</Button></div>
+                  </section>
+                </div>
+              )}
             </>
           )}
         </main>

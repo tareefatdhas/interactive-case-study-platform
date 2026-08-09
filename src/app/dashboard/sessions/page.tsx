@@ -4,14 +4,15 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCaseStudiesByTeacher, getSessionsByTeacher, checkAndTimeoutInactiveSessions, endSession, deleteSession, updateSession } from '@/lib/firebase/firestore';
+import { createSession, generateSessionCode, getCaseStudiesByTeacher, getSessionsByTeacher, checkAndTimeoutInactiveSessions, endSession, deleteSession, updateSession } from '@/lib/firebase/firestore';
 import { deleteInstructorClassroomData, endInstructorClassroom } from '@/lib/firebase/live-classroom';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Dialog from '@/components/ui/Dialog';
 import type { CaseStudy, Session } from '@/types';
-import { Play, Plus, Users, Clock, QrCode, Square, Trash2, StopCircle, Calendar, Activity, BarChart3, Eye, Filter, SortDesc, TrendingUp, Monitor } from 'lucide-react';
+import { Play, Plus, Users, Clock, QrCode, Trash2, StopCircle, Calendar, Activity, BarChart3, Eye, Filter, SortDesc, Monitor, Copy } from 'lucide-react';
 
 export default function SessionsPage() {
   const { user } = useAuth();
@@ -23,6 +24,8 @@ export default function SessionsPage() {
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'ended'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'students'>('newest');
+  const [pendingAction, setPendingAction] = useState<{ type: 'end' | 'delete' | 'end-all'; sessionId?: string } | null>(null);
+  const [toast, setToast] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -125,9 +128,10 @@ export default function SessionsPage() {
 
 
   const handleEndSession = async (sessionId: string) => {
-    if (!confirm('Are you sure you want to end this session? Students will no longer be able to join or submit responses.')) {
-      return;
-    }
+    setPendingAction({ type: 'end', sessionId });
+  };
+
+  const confirmEndSession = async (sessionId: string) => {
 
     setActionLoading(prev => ({ ...prev, [sessionId]: true }));
     try {
@@ -143,16 +147,18 @@ export default function SessionsPage() {
       }
     } catch (error) {
       console.error('Error ending session:', error);
-      alert('Failed to end session. Please try again.');
+      setToast('The session could not be ended. Check your connection and try again.');
     } finally {
       setActionLoading(prev => ({ ...prev, [sessionId]: false }));
+      setPendingAction(null);
     }
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm('Are you sure you want to delete this session? This action cannot be undone and will remove all associated data.')) {
-      return;
-    }
+    setPendingAction({ type: 'delete', sessionId });
+  };
+
+  const confirmDeleteSession = async (sessionId: string) => {
 
     setActionLoading(prev => ({ ...prev, [sessionId]: true }));
     try {
@@ -168,22 +174,74 @@ export default function SessionsPage() {
       }
     } catch (error) {
       console.error('Error deleting session:', error);
-      alert('Failed to delete session. Please try again.');
+      setToast('The session could not be deleted. Try again.');
     } finally {
       setActionLoading(prev => ({ ...prev, [sessionId]: false }));
+      setPendingAction(null);
     }
+  };
+
+  const handleDuplicateSession = async (session: Session) => {
+    if (!user) return;
+    setActionLoading(prev => ({ ...prev, [session.id]: true }));
+    try {
+      const duplicateId = await createSession({
+        sessionCode: generateSessionCode(),
+        sessionType: session.sessionType,
+        caseStudyId: session.caseStudyId,
+        caseStudyTitle: session.caseStudyTitle,
+        teacherId: user.uid,
+        courseId: session.courseId,
+        courseCode: session.courseCode,
+        courseName: session.courseName,
+        presentationMode: session.presentationMode || 'external',
+        interactions: (session.interactions || []).map((interaction, index) => ({
+          ...interaction,
+          id: `${interaction.type}-${Date.now()}-${index}`,
+        })),
+        active: false,
+        studentsJoined: [],
+        releasedSections: [],
+        currentReleasedSection: -1,
+        title: `${session.title || session.caseStudyTitle || 'Class session'} copy`,
+        description: session.description,
+        sections: session.sections,
+      });
+
+      if (session.sessionType === 'standalone') {
+        const { createLiveSession } = await import('@/lib/firebase/realtime');
+        await createLiveSession(duplicateId, {
+          status: { active: false, currentSection: -1, releasedSections: [] },
+        });
+      }
+      router.push(`/dashboard/sessions/${duplicateId}`);
+    } catch (duplicateError) {
+      console.error('Could not duplicate session:', duplicateError);
+      setToast('The session could not be copied. Try again.');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [session.id]: false }));
+    }
+  };
+
+  const getSessionState = (session: Session) => {
+    if (session.active) return { label: 'Live', className: 'bg-[#edf8ef] text-[#28733a]' };
+    if (session.endedAt) return { label: 'Completed', className: 'bg-[#f1f2f6] text-[#5e667a]' };
+    return { label: 'Ready', className: 'bg-[#f0efff] text-[#5146e5]' };
   };
 
   const handleEndAllActiveSessions = async () => {
     const activeSessions = sessions.filter(s => s.active);
     if (activeSessions.length === 0) {
-      alert('No active sessions to end.');
+      setToast('There are no live sessions to end.');
       return;
     }
 
-    if (!confirm(`Are you sure you want to end all ${activeSessions.length} active sessions? Students will no longer be able to join or submit responses to any of these sessions.`)) {
-      return;
-    }
+    setPendingAction({ type: 'end-all' });
+  };
+
+  const confirmEndAllActiveSessions = async () => {
+    const activeSessions = sessions.filter(s => s.active);
+    if (activeSessions.length === 0) return;
 
     setBulkActionLoading(true);
     try {
@@ -200,11 +258,25 @@ export default function SessionsPage() {
       }
     } catch (error) {
       console.error('Error ending sessions:', error);
-      alert('Failed to end some sessions. Please try again.');
+      setToast('Some sessions could not be ended. Check your connection and try again.');
     } finally {
       setBulkActionLoading(false);
+      setPendingAction(null);
     }
   };
+
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return;
+    if (pendingAction.type === 'end' && pendingAction.sessionId) return confirmEndSession(pendingAction.sessionId);
+    if (pendingAction.type === 'delete' && pendingAction.sessionId) return confirmDeleteSession(pendingAction.sessionId);
+    if (pendingAction.type === 'end-all') return confirmEndAllActiveSessions();
+  };
+
+  const pendingDialog = pendingAction?.type === 'delete'
+    ? { title: 'Delete this session?', message: 'This permanently removes the session and its live classroom data. This cannot be undone.', confirmText: 'Delete session', destructive: true }
+    : pendingAction?.type === 'end-all'
+      ? { title: `End ${sessions.filter((session) => session.active).length} live sessions?`, message: 'Students will no longer be able to join or submit responses in any of these sessions.', confirmText: 'End all sessions', destructive: true }
+      : { title: 'End this session?', message: 'Students will no longer be able to join or submit responses. You can still review the session afterward.', confirmText: 'End session', destructive: false };
 
   // Get session counts for display
   const activeSessions = sessions.filter(s => s.active);
@@ -418,28 +490,12 @@ export default function SessionsPage() {
               <CardContent className="p-12 text-center">
                 <QrCode className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  {caseStudies.length === 0 ? 'No case studies available' : 'No sessions yet'}
+                  No sessions yet
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  {caseStudies.length === 0 
-                    ? 'You need to create a case study before you can start a session.'
-                    : 'Start your first live session to engage with students.'}
+                  Prepare a pulse, poll, quiz, or short response for the class you teach next.
                 </p>
-                {caseStudies.length > 0 ? (
-                  <Link href="/dashboard/sessions/new">
-                    <Button>
-                      <Play className="w-4 h-4 mr-2" />
-                      Start Session
-                    </Button>
-                  </Link>
-                ) : (
-                  <Link href="/dashboard/case-studies/new">
-                    <Button>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Case Study
-                    </Button>
-                  </Link>
-                )}
+                <Link href="/dashboard/classes"><Button><Plus className="w-4 h-4 mr-2" /> Choose a class</Button></Link>
               </CardContent>
             </Card>
           ) : (
@@ -451,14 +507,10 @@ export default function SessionsPage() {
                       <div className="flex-1 min-w-0">
                         <CardTitle className="flex items-center space-x-3 mb-3">
                           <span className="text-lg font-semibold text-gray-900 truncate">
-                            {session.caseStudyTitle || caseStudyTitles[session.caseStudyId || ''] || 'Unknown Case Study'}
+                            {session.title || session.caseStudyTitle || caseStudyTitles[session.caseStudyId || ''] || 'Untitled session'}
                           </span>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            session.active 
-                              ? 'bg-gray-100 text-gray-700' 
-                              : 'bg-gray-50 text-gray-600'
-                          }`}>
-                            {session.active ? 'Active' : 'Ended'}
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${getSessionState(session).className}`}>
+                            {getSessionState(session).label}
                           </span>
                         </CardTitle>
                         
@@ -496,9 +548,7 @@ export default function SessionsPage() {
                             <Clock className="w-5 h-5 text-gray-500" />
                             <div>
                               <p className="font-medium text-gray-900">{formatTime(session.createdAt)}</p>
-                              <p className="text-gray-500">
-                                {session.active ? 'Running' : `Ended ${getRelativeTime(session.endedAt)}`}
-                              </p>
+                              <p className="text-gray-500">{session.active ? 'Running now' : session.endedAt ? `Completed ${getRelativeTime(session.endedAt)}` : `${session.interactions?.length || 0} interactions ready`}</p>
                             </div>
                           </div>
                         </div>
@@ -532,7 +582,7 @@ export default function SessionsPage() {
                               End Session
                             </Button>
                           </>
-                        ) : (
+                        ) : session.endedAt ? (
                           <>
                             <Link href={`/dashboard/sessions/${session.id}`}>
                               <Button variant="outline" size="sm" className="w-full">
@@ -540,6 +590,9 @@ export default function SessionsPage() {
                                 View Results
                               </Button>
                             </Link>
+                            <Button size="sm" variant="outline" onClick={() => handleDuplicateSession(session)} loading={actionLoading[session.id]} disabled={actionLoading[session.id]} className="w-full">
+                              <Copy className="w-4 h-4 mr-2" /> Use again
+                            </Button>
                             <Button 
                               size="sm" 
                               variant="destructive"
@@ -552,6 +605,12 @@ export default function SessionsPage() {
                               Delete
                             </Button>
                           </>
+                        ) : (
+                          <>
+                            <Link href={`/dashboard/sessions/${session.id}`}><Button size="sm" className="w-full"><Play className="w-4 h-4 mr-2" /> Open session</Button></Link>
+                            <Button size="sm" variant="outline" onClick={() => handleDuplicateSession(session)} loading={actionLoading[session.id]} disabled={actionLoading[session.id]} className="w-full"><Copy className="w-4 h-4 mr-2" /> Make a copy</Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleDeleteSession(session.id)} loading={actionLoading[session.id]} disabled={actionLoading[session.id]} className="w-full"><Trash2 className="w-4 h-4 mr-2" /> Delete</Button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -561,6 +620,8 @@ export default function SessionsPage() {
             </div>
           )}
         </div>
+        {toast && <div className="fixed bottom-5 right-5 z-[80] rounded-xl bg-[#101a38] px-4 py-3 text-sm font-semibold text-white shadow-xl" role="status">{toast}</div>}
+        <Dialog isOpen={Boolean(pendingAction)} onClose={() => setPendingAction(null)} onConfirm={confirmPendingAction} title={pendingDialog.title} message={pendingDialog.message} confirmText={pendingDialog.confirmText} variant={pendingDialog.destructive ? 'destructive' : 'default'} />
       </DashboardLayout>
     </ProtectedRoute>
   );

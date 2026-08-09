@@ -14,6 +14,7 @@ export default function MarketingFooter() {
           <span className="font-semibold text-[var(--seminar-ink)]">Classfully</span>
           <Link href="/instructors">For instructors</Link>
           <Link href="/students">For students</Link>
+          <Link href="/pricing">Pricing</Link>
           <Link href="/resources">Resources</Link>
         </nav>
         <nav className="grid gap-2 text-sm" aria-label="Account and policy links">

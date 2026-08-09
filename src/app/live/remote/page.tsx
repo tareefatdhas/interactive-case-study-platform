@@ -190,6 +190,25 @@ export default function InstructorRemotePage() {
     if (!classroomIds) sendDemoCommand('finish');
   };
 
+  const featureQuestion = (questionId: number) => {
+    updateRemoteState((current) => ({
+      ...current,
+      featuredQuestionId: current.featuredQuestionId === questionId ? null : questionId,
+    }));
+  };
+
+  const launchUnplanned = (prompt: string) => {
+    launch({
+      id: `unplanned-${Date.now()}`,
+      type: 'open-response',
+      label: 'Short response',
+      title: 'Unplanned question',
+      prompt,
+      resultVisibility: 'instructor-only',
+      plannedTime: 'Asked live',
+    });
+  };
+
   const openDisplay = () => {
     const url = classroomIds
       ? `/live/display?sessionId=${encodeURIComponent(classroomIds.sessionId)}&ownerUid=${encodeURIComponent(classroomIds.ownerUid)}`
@@ -229,6 +248,8 @@ export default function InstructorRemotePage() {
       results={state.interactionResults}
       connectedStudents={connectedStudents}
       questionCount={state.questions.length}
+      questions={state.questions}
+      featuredQuestionId={state.featuredQuestionId}
       displayConnected={displayConnected}
       syncConnected={syncConnected}
       onLaunch={launch}
@@ -237,6 +258,8 @@ export default function InstructorRemotePage() {
       onFinish={finish}
       onOpenDisplay={openDisplay}
       onOpenConsole={openConsole}
+      onFeatureQuestion={featureQuestion}
+      onLaunchUnplanned={launchUnplanned}
     />
   );
 }

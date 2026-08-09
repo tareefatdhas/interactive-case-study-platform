@@ -13,7 +13,7 @@ export type RewardRedemption = {
   id: string;
   rewardId: string;
   rewardName: string;
-  cost: number;
+  pointsRequired: number;
   status: 'pending' | 'approved' | 'declined';
   requestedAt: number;
 };
@@ -32,7 +32,7 @@ export type CourseReward = {
   id: string;
   name: string;
   description: string;
-  cost: number;
+  pointsRequired: number;
 };
 
 export const COURSE_REWARDS: CourseReward[] = [
@@ -40,19 +40,19 @@ export const COURSE_REWARDS: CourseReward[] = [
     id: 'case-choice',
     name: 'Choose a class example',
     description: 'Suggest the case or market the class applies next.',
-    cost: 70,
+    pointsRequired: 70,
   },
   {
     id: 'deadline-pass',
     name: 'One-day deadline pass',
     description: 'Valid on one eligible low-stakes assignment.',
-    cost: 120,
+    pointsRequired: 120,
   },
   {
     id: 'extra-credit',
-    name: 'Extra-credit token',
+    name: 'Small extra-credit reward',
     description: 'A small course-capped bonus after instructor approval.',
-    cost: 150,
+    pointsRequired: 150,
   },
 ];
 
@@ -94,7 +94,15 @@ export function loadRewardState(scope: string, demo = false): StudentRewardState
   const stored = window.localStorage.getItem(storageKey(scope));
   if (!stored) return createInitialRewardState(demo);
   try {
-    return { ...createInitialRewardState(demo), ...JSON.parse(stored) } as StudentRewardState;
+    const parsed = JSON.parse(stored) as Omit<StudentRewardState, 'redemptions'> & { redemptions?: Array<RewardRedemption & { cost?: number }> };
+    return {
+      ...createInitialRewardState(demo),
+      ...parsed,
+      redemptions: (parsed.redemptions || []).map((redemption) => ({
+        ...redemption,
+        pointsRequired: redemption.pointsRequired ?? redemption.cost ?? 0,
+      })),
+    } as StudentRewardState;
   } catch {
     return createInitialRewardState(demo);
   }
@@ -133,7 +141,7 @@ export function requestCourseReward(
   state: StudentRewardState,
   reward: CourseReward,
 ): StudentRewardState {
-  if (state.seminarPoints < reward.cost) return state;
+  if (state.seminarPoints < reward.pointsRequired) return state;
   if (state.redemptions.some((redemption) => redemption.rewardId === reward.id && redemption.status === 'pending')) return state;
   return {
     ...state,
@@ -141,7 +149,7 @@ export function requestCourseReward(
       id: crypto.randomUUID(),
       rewardId: reward.id,
       rewardName: reward.name,
-      cost: reward.cost,
+      pointsRequired: reward.pointsRequired,
       status: 'pending',
       requestedAt: Date.now(),
     }, ...state.redemptions],

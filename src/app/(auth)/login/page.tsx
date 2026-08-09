@@ -25,8 +25,9 @@ export default function LoginPage() {
     try {
       await signInTeacher(formData.email, formData.password);
       router.push('/dashboard');
-    } catch (error: any) {
-      setError(error.message || 'We could not sign you in. Check your email and password, then try again.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '';
+      setError(message || 'We could not sign you in. Check your email and password, then try again.');
     } finally {
       setLoading(false);
     }
@@ -50,6 +51,7 @@ export default function LoginPage() {
                 value={formData.email}
                 onChange={handleInputChange}
                 required
+                autoComplete="email"
                 placeholder="you@university.edu"
               />
               
@@ -60,6 +62,7 @@ export default function LoginPage() {
                 value={formData.password}
                 onChange={handleInputChange}
                 required
+                autoComplete="current-password"
                 placeholder="Your password"
               />
 
