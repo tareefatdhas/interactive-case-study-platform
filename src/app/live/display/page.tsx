@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'react-qr-code';
-import { Activity, CheckCircle2, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Users, Waves } from 'lucide-react';
+import { Activity, CheckCircle2, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
 import LivingMoodField from '@/components/live/LivingMoodField';
 import { joinDisplayPresence, subscribeToStudentPublicState } from '@/lib/firebase/live-classroom';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
@@ -43,6 +43,25 @@ const DEFAULT_STATE: LessonDisplayState = {
 };
 
 const RESULT_COLORS = ['#5146e5', '#2f73df', '#d99f18', '#df664e', '#2f8b63'];
+
+function ProjectorTimer({ timer }: { timer: NonNullable<LessonDisplayState['timer']> }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [timer.id]);
+  const remaining = Math.max(0, Math.ceil((timer.endsAt - now) / 1000));
+  const progress = timer.durationSeconds ? Math.max(0, Math.min(1, remaining / timer.durationSeconds)) : 0;
+  const time = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
+  return (
+    <aside className={`projector-timer ${remaining === 0 ? 'is-complete' : ''}`} aria-live="polite" aria-label={`${timer.label}: ${time} remaining`}>
+      <span className="projector-timer-icon"><Timer size={25} /></span>
+      <div><small>{remaining === 0 ? 'Time is up' : timer.label}</small><strong>{time}</strong></div>
+      <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="20" /><circle className="is-progress" cx="24" cy="24" r="20" pathLength="1" strokeDasharray="1" strokeDashoffset={1 - progress} /></svg>
+    </aside>
+  );
+}
 
 type ProjectorFlight = {
   id: number;
@@ -559,6 +578,7 @@ export default function ClassroomDisplayPage() {
       </header>
 
       {projectorFlights.map((flight) => <ProjectorTransportFlight key={flight.id} flight={flight} />)}
+      {lessonState.timer && <ProjectorTimer timer={lessonState.timer} />}
 
       {remoteUnavailable ? (
         <>

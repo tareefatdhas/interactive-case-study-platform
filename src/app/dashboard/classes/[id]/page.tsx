@@ -19,6 +19,7 @@ import {
   BarChart3,
   CalendarPlus,
   CalendarSync,
+  CalendarDays,
   Check,
   CircleHelp,
   Clock3,
@@ -28,6 +29,8 @@ import {
   LoaderCircle,
   MessageCircle,
   Plus,
+  Play,
+  Radio,
   Save,
   Sparkles,
   Trash2,
@@ -91,6 +94,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState<'sessions' | 'library'>('sessions');
   const [addOpen, setAddOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [rolloverOpen, setRolloverOpen] = useState(false);
@@ -125,6 +129,12 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   }, [id, user]);
 
   const studentCount = useMemo(() => new Set(sessions.flatMap((session) => session.studentsJoined || [])).size, [sessions]);
+  const orderedSessions = useMemo(() => [...sessions].sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    const aTime = a.scheduledFor ? new Date(a.scheduledFor).getTime() : 0;
+    const bTime = b.scheduledFor ? new Date(b.scheduledFor).getTime() : 0;
+    return bTime - aTime;
+  }), [sessions]);
 
   const updateTemplate = (templateId: string, updates: Partial<SessionInteraction>) => {
     setSaved(false);
@@ -265,6 +275,58 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
 
               {course.archived && <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[#dedbd2] bg-[#f8f7f3] p-4 text-sm leading-6 text-[#5f6472]"><Archive className="mt-0.5 h-4 w-4 shrink-0" /><span><strong className="block text-[#101a38]">This class is archived.</strong>Its teaching kit and history are read-only until you restore it.</span></div>}
 
+              <div className="mb-7 flex gap-1 overflow-x-auto rounded-2xl bg-[#f1f0f5] p-1.5" role="tablist" aria-label="Class workspace views">
+                <button type="button" role="tab" aria-selected={workspaceView === 'sessions'} onClick={() => setWorkspaceView('sessions')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-bold transition ${workspaceView === 'sessions' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><CalendarDays className="h-4 w-4" /> Sessions <span className="rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5]">{sessions.length}</span></button>
+                <button type="button" role="tab" aria-selected={workspaceView === 'library'} onClick={() => setWorkspaceView('library')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-bold transition ${workspaceView === 'library' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><Library className="h-4 w-4" /> Activity library <span className="rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5]">{templates.length}</span></button>
+                <Link role="tab" aria-selected="false" href={`/dashboard/progress?courseId=${course.id}`} className="seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-bold text-[#697087] transition hover:text-[#101a38]"><Users className="h-4 w-4" /> Students</Link>
+              </div>
+
+              {workspaceView === 'sessions' ? (
+                <div className="grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
+                  <section className="overflow-hidden rounded-3xl border border-[#e3e5ed] bg-white" aria-labelledby="class-sessions-title">
+                    <div className="flex flex-col gap-4 border-b border-[#e3e5ed] bg-[linear-gradient(110deg,#fff_0%,#faf9ff_70%,#fff5f0_100%)] p-6 sm:flex-row sm:items-end sm:justify-between sm:p-7">
+                      <div><p className="seminar-eyebrow mb-2">Teaching sequence</p><h2 id="class-sessions-title" className="seminar-display text-3xl text-[#101a38]">Sessions</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#697087]">Each session has its own ordered flow of activities, ready to launch beside your slides.</p></div>
+                      {!course.archived && <Link href={`/dashboard/sessions/new?courseId=${course.id}`}><Button className="gap-2"><Plus className="h-4 w-4" /> New session</Button></Link>}
+                    </div>
+
+                    {orderedSessions.length === 0 ? (
+                      <div className="px-6 py-14 text-center sm:px-10">
+                        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f0efff] text-[#5146e5]"><CalendarPlus className="h-7 w-7" /></span>
+                        <h3 className="seminar-display mt-5 text-3xl text-[#101a38]">Plan the first meeting.</h3>
+                        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#697087]">Give it a title, then add only the polls, quizzes, check-ins, or modules you expect to use.</p>
+                        {!course.archived && <Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="mt-6 inline-block"><Button className="gap-2">Plan session 1 <ArrowRight className="h-4 w-4" /></Button></Link>}
+                      </div>
+                    ) : (
+                      <ol className="divide-y divide-[#e8e8ee]">
+                        {orderedSessions.map((session, index) => {
+                          const sessionNumber = Math.max(1, sessions.length - index);
+                          return (
+                            <li key={session.id} className="group grid gap-4 p-5 transition-colors hover:bg-[#faf9ff] sm:grid-cols-[54px_minmax(0,1fr)_auto] sm:items-center sm:p-6">
+                              <span className={`flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-bold ${session.active ? 'bg-[#e8f7ed] text-[#28733a]' : 'bg-[#f0efff] text-[#5146e5]'}`}>{session.active ? <Radio className="h-5 w-5" /> : sessionNumber}</span>
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.07em]"><span className={session.active ? 'text-[#28733a]' : 'text-[#5146e5]'}>{session.active ? 'Live now' : `Session ${sessionNumber}`}</span><span className="text-[#9aa0b1]">{readableDate(session.scheduledFor)}</span></div>
+                                <h3 className="mt-1 truncate text-lg font-bold text-[#101a38]">{session.title || 'Untitled session'}</h3>
+                                <p className="mt-1 flex items-center gap-2 text-xs text-[#697087]"><Library className="h-3.5 w-3.5" /> {session.interactions?.length || 0} activities in this flow</p>
+                              </div>
+                              <Link href={session.active ? `/live?sessionId=${session.id}` : `/dashboard/sessions/${session.id}`}><Button variant={session.active ? 'primary' : 'outline'} className="w-full gap-2 sm:w-auto">{session.active ? <Play className="h-4 w-4" /> : null}{session.active ? 'Open live controls' : 'Open session'} <ArrowRight className="h-4 w-4" /></Button></Link>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                  </section>
+
+                  <aside className="space-y-5 xl:sticky xl:top-6">
+                    {!course.archived && <section className="rounded-3xl border border-[#dcd8ff] bg-[#f7f6ff] p-6">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#5146e5] shadow-sm"><CalendarPlus className="h-5 w-5" /></span>
+                      <p className="seminar-eyebrow mb-2 mt-5">Next meeting</p><h2 className="seminar-display text-3xl text-[#101a38]">Build the session flow</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Put activities in teaching order. They remain private until you launch each one.</p><Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="mt-5 block"><Button className="w-full gap-2">Plan next session <ArrowRight className="h-4 w-4" /></Button></Link>
+                    </section>}
+                    <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6">
+                      <p className="seminar-eyebrow mb-2">Class tools</p><h2 className="seminar-display text-2xl text-[#101a38]">Reuse what works</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Keep check-ins and question formats you use often in this class.</p><button type="button" onClick={() => setWorkspaceView('library')} className="seminar-focus mt-5 inline-flex items-center gap-2 rounded-lg text-sm font-bold text-[#5146e5]">Open activity library <ArrowRight className="h-4 w-4" /></button>
+                    </section>
+                  </aside>
+                </div>
+              ) : (
               <fieldset disabled={course.archived} className="m-0 grid min-w-0 items-start gap-8 border-0 p-0 xl:grid-cols-[minmax(0,1fr)_340px]">
                 <section className="rounded-3xl border border-[#e3e5ed] bg-white p-5 sm:p-7" aria-labelledby="library-title">
                   <div className="flex flex-col gap-4 border-b border-[#e3e5ed] pb-6 sm:flex-row sm:items-start sm:justify-between">
@@ -324,6 +386,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                   </section>
                 </aside>
               </fieldset>
+              )}
 
               <Dialog isOpen={archiveOpen} onClose={() => setArchiveOpen(false)} onConfirm={archiveClass} title="Archive this class?" message="It will move out of your current classes. Sessions, attendance, student progress, and reusable interactions will be kept." confirmText="Archive class" variant="destructive" />
 

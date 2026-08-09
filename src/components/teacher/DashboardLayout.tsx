@@ -8,9 +8,8 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import Button from '@/components/ui/Button';
 import ClassfullyMark from '@/components/brand/ClassfullyMark';
 import { 
-  BookOpen, 
+  BookOpen,
   Home, 
-  Users, 
   BarChart, 
   Settings, 
   LogOut,
@@ -25,14 +24,19 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
-const navigation = [
+const primaryNavigation = [
   { name: 'Home', href: '/dashboard', icon: Home },
   { name: 'Classes', href: '/dashboard/classes', icon: GraduationCap },
-  { name: 'Sessions', href: '/dashboard/sessions', icon: Users },
-  { name: 'Lesson library', href: '/dashboard/case-studies', icon: BookOpen },
   { name: 'Student progress', href: '/dashboard/progress', icon: UserCheck },
-  { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Review', href: '/dashboard/analytics', icon: BarChart },
+];
+
+const teachingTools = [
+  { name: 'Case studies', href: '/dashboard/case-studies', icon: BookOpen },
+  { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
+];
+
+const accountNavigation = [
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
@@ -76,9 +80,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </button>
         </div>
 
-        <nav className="mt-6 px-4">
+        <nav className="mt-6 px-4" aria-label="Instructor workspace">
+          <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa0b1]">Teach</p>
           <ul className="space-y-1">
-            {navigation.map((item) => {
+            {primaryNavigation.map((item) => {
               const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
               const Icon = item.icon;
               
@@ -92,6 +97,44 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         : 'text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38]'
                     }`}
                   >
+                    <Icon className="mr-3 h-5 w-5" />
+                    {item.name}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+
+          <p className="mt-7 px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa0b1]">Modules</p>
+          <ul className="space-y-1">
+            {teachingTools.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const Icon = item.icon;
+              return (
+                <li key={item.name}>
+                  <Link
+                    href={item.href}
+                    className={`flex min-h-10 items-center rounded-[10px] px-3 py-2 text-sm font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-[#f0efff] text-[#4137c7]'
+                        : 'text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38]'
+                    }`}
+                  >
+                    <Icon className="mr-3 h-5 w-5" />
+                    {item.name}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+
+          <ul className="mt-7 border-t border-[#ececf1] pt-4">
+            {accountNavigation.map((item) => {
+              const isActive = pathname === item.href;
+              const Icon = item.icon;
+              return (
+                <li key={item.name}>
+                  <Link href={item.href} className={`flex min-h-10 items-center rounded-[10px] px-3 py-2 text-sm font-semibold transition-colors ${isActive ? 'bg-[#f0efff] text-[#4137c7]' : 'text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38]'}`}>
                     <Icon className="mr-3 h-5 w-5" />
                     {item.name}
                   </Link>
@@ -129,7 +172,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 lg:pl-0">
+      <div className="min-w-0 flex-1 lg:pl-0">
         {/* Mobile header */}
         <div className="border-b border-[#e3e5ed] bg-white lg:hidden">
           <div className="flex items-center justify-between h-16 px-6">
@@ -149,7 +192,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
 
         {/* Page content */}
-        <main className="flex-1">
+        <main className="min-w-0 flex-1">
           {children}
         </main>
       </div>

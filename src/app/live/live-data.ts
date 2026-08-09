@@ -46,6 +46,13 @@ export type LiveQuestion = {
   votes: number;
 };
 
+export type LiveTimer = {
+  id: string;
+  label: string;
+  durationSeconds: number;
+  endsAt: number;
+};
+
 export type LiveSessionContext = {
   sessionId?: string;
   ownerUid?: string;
@@ -72,6 +79,7 @@ export type LessonDisplayState = {
   interactionResults: InteractionResults | null;
   featuredQuestionId: number | null;
   questions: LiveQuestion[];
+  timer?: LiveTimer | null;
   updatedAt: number;
 };
 

@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { IconContext, Pulse as Activity, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, Fire as Flame, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Trophy, UsersThree as Users } from '@phosphor-icons/react';
+import { IconContext, Pulse as Activity, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, Fire as Flame, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UsersThree as Users } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
 import {
   getStudentQuestionVotes,
@@ -74,6 +74,18 @@ const DEFAULT_STATE: LessonDisplayState = {
 const ParticipationSignal = dynamic(() => import('@/components/live/ParticipationSignal'), { ssr: false });
 
 const OPTION_COLORS = ['#5146e5', '#2f73df', '#d99f18', '#df664e', '#2f8b63'];
+
+function StudentTimerBanner({ timer }: { timer: NonNullable<LessonDisplayState['timer']> }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [timer.id]);
+  const remaining = Math.max(0, Math.ceil((timer.endsAt - now) / 1000));
+  const time = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
+  return <div className={`student-timer-banner ${remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label={`${timer.label}: ${time} remaining`}><span><Timer size={20} /></span><div><small>{remaining === 0 ? 'Time is up' : timer.label}</small><strong>{time}</strong></div><p>{remaining === 0 ? 'Look up when you are ready.' : 'Visible on the classroom screen.'}</p></div>;
+}
 
 function confirmResponseHaptic() {
   if (typeof navigator === 'undefined' || !navigator.vibrate) return;
@@ -858,6 +870,7 @@ export default function StudentWelcomePage() {
       </header>
 
       <section className="student-welcome-content" ref={contentRef}>
+        {!remoteUnavailable && lessonState.timer && <StudentTimerBanner timer={lessonState.timer} />}
         {remoteUnavailable && (
           <div className="student-ready-state" role="status">
             <span className="student-round-icon is-success"><Check size={30} /></span>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { createSession, generateSessionCode, getCaseStudiesByTeacher, getCourse } from '@/lib/firebase/firestore';
+import { createSession, generateSessionCode, getCaseStudiesByTeacher, getCourse, getSession, updateSession } from '@/lib/firebase/firestore';
 import { auth } from '@/lib/firebase/config';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
@@ -97,6 +97,7 @@ function NewSessionContent() {
   const searchParams = useSearchParams();
   const preselectedCaseStudyId = searchParams.get('caseStudyId');
   const preselectedCourseId = searchParams.get('courseId');
+  const editingSessionId = searchParams.get('sessionId');
 
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
@@ -120,21 +121,37 @@ function NewSessionContent() {
     const loadPlanningData = async () => {
       if (!user) return;
       try {
-        const [studies, course] = await Promise.all([
+        const [studies, session] = await Promise.all([
           getCaseStudiesByTeacher(user.uid),
-          preselectedCourseId ? getCourse(preselectedCourseId) : Promise.resolve(null),
+          editingSessionId ? getSession(editingSessionId) : Promise.resolve(null),
         ]);
+        if (editingSessionId && (!session || session.teacherId !== user.uid)) {
+          setError('This session could not be found.');
+          return;
+        }
+
+        const courseId = preselectedCourseId || session?.courseId;
+        const course = courseId ? await getCourse(courseId) : null;
         setCaseStudies(studies);
 
         if (course && course.teacherId === user.uid) {
           setSelectedCourse(course);
           setCourseCode(course.code);
           setCourseName(course.name);
-          setInteractions([]);
+          if (!session) setInteractions([]);
+        } else if (session) {
+          setCourseCode(session.courseCode || '');
+          setCourseName(session.courseName || '');
+        }
+
+        if (session) {
+          setSessionTitle(session.title || '');
+          setScheduledFor(session.scheduledFor || '');
+          setInteractions(session.interactions || []);
         }
 
         const selectedCase = studies.find((study) => study.id === preselectedCaseStudyId);
-        if (selectedCase) {
+        if (selectedCase && !session) {
           setInteractions((current) => [
             ...current,
             {
@@ -157,7 +174,7 @@ function NewSessionContent() {
     };
 
     loadPlanningData();
-  }, [preselectedCaseStudyId, preselectedCourseId, user]);
+  }, [editingSessionId, preselectedCaseStudyId, preselectedCourseId, user]);
 
   const estimatedMinutes = useMemo(
     () => interactions.reduce((total, interaction) => total + (interaction.durationMinutes || 0), 0),
@@ -316,12 +333,26 @@ function NewSessionContent() {
     }
   };
 
-  const handleCreateSession = async () => {
+  const handleSaveSession = async () => {
     if (!user || !courseCode.trim() || !sessionTitle.trim()) return;
     setCreating(true);
     setError('');
 
     try {
+      if (editingSessionId) {
+        await updateSession(editingSessionId, {
+          title: sessionTitle.trim(),
+          ...(selectedCourse?.id ? { courseId: selectedCourse.id } : {}),
+          courseCode: courseCode.trim(),
+          courseName: courseName.trim(),
+          ...(scheduledFor ? { scheduledFor } : {}),
+          presentationMode: 'external',
+          interactions,
+        });
+        router.push(`/dashboard/sessions/${editingSessionId}`);
+        return;
+      }
+
       const sessionId = await createSession({
         sessionCode: generateSessionCode(),
         sessionType: 'standalone',
@@ -347,7 +378,7 @@ function NewSessionContent() {
 
       router.push(`/dashboard/sessions/${sessionId}`);
     } catch (createError: unknown) {
-      setError(createError instanceof Error ? createError.message : 'The session plan could not be saved. Try again.');
+      setError(createError instanceof Error ? createError.message : 'The session flow could not be saved. Try again.');
     } finally {
       setCreating(false);
     }
@@ -375,13 +406,13 @@ function NewSessionContent() {
 
           <div className="mb-9 max-w-3xl">
             <p className="seminar-eyebrow mb-3">Presentation companion</p>
-            <h1 className="seminar-display text-4xl leading-tight text-[#101a38] sm:text-5xl">Prepare the moments between your slides.</h1>
-            <p className="mt-4 max-w-2xl text-lg leading-8 text-[#697087]">Keep your presentation in PowerPoint, Keynote, or Google Slides. Plan the interactions here, then bring each one onto the projector when the class needs it.</p>
+            <h1 className="seminar-display text-4xl leading-tight text-[#101a38] sm:text-5xl">{editingSessionId ? 'Refine the moments between your slides.' : 'Prepare the moments between your slides.'}</h1>
+            <p className="mt-4 max-w-2xl text-lg leading-8 text-[#697087]">Keep your presentation in PowerPoint, Keynote, or Google Slides. Plan the activities here, then bring each one onto the projector when the class needs it.</p>
           </div>
 
           <section className="mb-8 flex items-start gap-4 rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-5 sm:items-center" aria-label="How companion mode works">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#5146e5]"><Laptop className="h-5 w-5" /></span>
-            <div className="flex-1"><p className="font-semibold text-[#101a38]">Your presentation stays where it is.</p><p className="mt-1 text-sm leading-6 text-[#697087]">Open the classroom display once. Show a prepared interaction when you need it, discuss the result, then switch back to your slides.</p></div>
+            <div className="flex-1"><p className="font-semibold text-[#101a38]">Your presentation stays where it is.</p><p className="mt-1 text-sm leading-6 text-[#697087]">Open the classroom display once. Launch a prepared activity when you need it, discuss the result, then switch back to your slides.</p></div>
             <span className="hidden rounded-full bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5] sm:inline">Companion mode</span>
           </section>
 
@@ -405,13 +436,13 @@ function NewSessionContent() {
               <section className="rounded-2xl border border-[#e3e5ed] bg-white p-6 sm:p-7" aria-labelledby="interaction-plan-title">
                 <div className="flex flex-col gap-4 border-b border-[#e3e5ed] pb-6 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="seminar-eyebrow mb-2">Session plan</p>
-                    <h2 id="interaction-plan-title" className="seminar-display text-3xl text-[#101a38]">Prepared interactions</h2>
-                    <p className="mt-2 text-sm text-[#697087]">These stay private until you choose to show one.</p>
+                    <p className="seminar-eyebrow mb-2">Session flow</p>
+                    <h2 id="interaction-plan-title" className="seminar-display text-3xl text-[#101a38]">Activities in teaching order</h2>
+                    <p className="mt-2 text-sm text-[#697087]">Add only what you expect to use. Every activity stays private until you launch it.</p>
                   </div>
                   <div className="relative">
                     <Button type="button" variant="outline" onClick={() => setAddMenuOpen((open) => !open)} className="gap-2">
-                      <Plus className="h-4 w-4" /> Add interaction
+                      <Plus className="h-4 w-4" /> Add activity
                     </Button>
                     {addMenuOpen && (
                       <div className="absolute right-0 z-20 mt-2 w-80 rounded-2xl border border-[#e3e5ed] bg-white p-2 shadow-[0_18px_50px_rgba(16,26,56,0.14)]">
@@ -439,7 +470,7 @@ function NewSessionContent() {
                 {selectedCourse && (selectedCourse.interactionTemplates?.length || 0) > 0 && (
                   <section className="mt-6 rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-5" aria-labelledby="class-library-title">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                      <div><p className="seminar-eyebrow mb-2">From {selectedCourse.code}</p><h3 id="class-library-title" className="seminar-display text-2xl text-[#101a38]">Choose from your class library</h3><p className="mt-1 text-sm leading-6 text-[#697087]">Add only what this session needs. Each copy can be edited below.</p></div>
+                      <div><p className="seminar-eyebrow mb-2">From {selectedCourse.code}</p><h3 id="class-library-title" className="seminar-display text-2xl text-[#101a38]">Choose from your activity library</h3><p className="mt-1 text-sm leading-6 text-[#697087]">Add only what this session needs. Each copy can be edited below.</p></div>
                       <span className="text-xs font-semibold text-[#697087]">{selectedCourse.interactionTemplates?.length} saved</span>
                     </div>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -501,7 +532,7 @@ function NewSessionContent() {
                   <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs leading-5 text-[#5a6278]">Creates one pulse, poll, quiz, and short response. You can edit or remove every draft.</p>
                     <Button type="button" onClick={handleGenerateInteractions} loading={generatingInteractions} disabled={lessonContent.trim().length < 80} className="shrink-0 gap-2">
-                      <Sparkles className="h-4 w-4" /> Draft interactions
+                      <Sparkles className="h-4 w-4" /> Draft activities
                     </Button>
                   </div>
                 </section>
@@ -575,12 +606,12 @@ function NewSessionContent() {
 
             <aside className="space-y-5 xl:sticky xl:top-6">
               <section className="rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-6">
-                <p className="seminar-eyebrow mb-2">Ready for class</p>
+                <p className="seminar-eyebrow mb-2">Session summary</p>
                 <h2 className="seminar-display text-3xl text-[#101a38]">{sessionTitle || 'Untitled session'}</h2>
                 <p className="mt-2 text-sm text-[#697087]">{courseCode}{courseName ? ` · ${courseName}` : ''}</p>
                 <div className="mt-6 space-y-3 border-y border-[#dcd8ff] py-5 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-[#697087]">Prepared interactions</span><strong className="text-[#101a38]">{interactions.length}</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-[#697087]">Interaction time</span><strong className="text-[#101a38]">About {estimatedMinutes} min</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-[#697087]">Activities</span><strong className="text-[#101a38]">{interactions.length}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-[#697087]">Activity time</span><strong className="text-[#101a38]">About {estimatedMinutes} min</strong></div>
                   <div className="flex items-center justify-between"><span className="text-[#697087]">Presentation</span><strong className="text-[#101a38]">Stays separate</strong></div>
                 </div>
                 <div className="mt-5 flex gap-3 text-sm leading-6 text-[#4f576d]"><Check className="mt-1 h-4 w-4 shrink-0 text-[#3aa45a]" /><span>You can add an unplanned question during class without changing this plan.</span></div>
@@ -588,8 +619,8 @@ function NewSessionContent() {
 
               {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700" role="alert">{error}</div>}
 
-              <Button type="button" onClick={handleCreateSession} loading={creating} disabled={!courseCode.trim() || !sessionTitle.trim()} size="lg" className="w-full gap-2">
-                <Save className="h-4 w-4" /> Save session plan
+              <Button type="button" onClick={handleSaveSession} loading={creating} disabled={!courseCode.trim() || !sessionTitle.trim()} size="lg" className="w-full gap-2">
+                <Save className="h-4 w-4" /> {editingSessionId ? 'Save changes' : 'Save session flow'}
               </Button>
               <Button type="button" variant="ghost" onClick={() => router.back()} className="w-full">Cancel</Button>
             </aside>

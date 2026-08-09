@@ -68,6 +68,7 @@ import {
   type LessonDisplayState,
   type LiveSessionContext,
   type LiveInteraction,
+  type LiveTimer,
   type MoodKey,
   type OnboardingStep,
 } from './live-data';
@@ -176,6 +177,7 @@ export default function LiveLessonPrototype() {
   const [endingClass, setEndingClass] = useState(false);
   const [activeInteraction, setActiveInteraction] = useState<LiveInteraction | null>(null);
   const [interactionResults, setInteractionResults] = useState<InteractionResults | null>(null);
+  const [liveTimer, setLiveTimer] = useState<LiveTimer | null>(null);
   const [toast, setToast] = useState('');
   const [incomingMood, setIncomingMood] = useState<MoodKey | null>(null);
   const [displayConnected, setDisplayConnected] = useState(false);
@@ -277,9 +279,10 @@ export default function LiveLessonPrototype() {
       interactionResults: publicResults,
       featuredQuestionId: activeQuestion,
       questions: classQuestions,
+      timer: liveTimer,
       updatedAt: Date.now(),
     };
-  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, incomingMood, interactionResults, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
+  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, incomingMood, interactionResults, liveTimer, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
   const displayStateRef = useRef(displayState);
 
   useEffect(() => {
@@ -342,6 +345,7 @@ export default function LiveLessonPrototype() {
         interactionResults: null,
         featuredQuestionId: null,
         questions: [],
+        timer: null,
         updatedAt: Date.now(),
       });
       const privateActiveInteraction = remoteState.activeInteraction
@@ -359,6 +363,7 @@ export default function LiveLessonPrototype() {
       setInteractionResults(remoteState.interactionResults || null);
       setLiveQuestions((remoteState.questions || []).map((question) => ({ ...question, votes: 0 })));
       setActiveQuestion(remoteState.featuredQuestionId || null);
+      setLiveTimer(remoteState.timer || null);
       if (!session.active) {
         await updateSession(sessionId, { active: true, startedAt: Timestamp.now() });
       }
@@ -509,6 +514,7 @@ export default function LiveLessonPrototype() {
         setInteractionResults(remoteState.interactionResults);
         setPaused(Boolean(remoteState.paused));
         setActiveQuestion(remoteState.featuredQuestionId || null);
+        setLiveTimer(remoteState.timer || null);
       },
     );
   }, [remoteClassroomReady, sessionContext.ownerUid, sessionContext.sessionId]);
@@ -704,6 +710,22 @@ export default function LiveLessonPrototype() {
   const toggleInteractionResponses = () => {
     setInteractionResults((current) => current ? { ...current, open: !current.open } : current);
     setToast(interactionResults?.open ? 'Responses locked' : 'Responses reopened');
+  };
+
+  const startLiveTimer = (durationSeconds: number) => {
+    setLiveTimer({
+      id: `timer-${Date.now()}`,
+      label: 'Class timer',
+      durationSeconds,
+      endsAt: Date.now() + durationSeconds * 1000,
+    });
+    if (!displayConnected) openClassroomDisplay();
+    setToast(`${durationSeconds / 60} minute timer is visible to the class`);
+  };
+
+  const clearLiveTimer = () => {
+    setLiveTimer(null);
+    setToast('Timer cleared');
   };
 
   const shareWrittenResponse = (responseId: string) => {
@@ -1321,6 +1343,7 @@ export default function LiveLessonPrototype() {
           questions={classQuestions}
           featuredQuestionId={activeQuestion}
           displayConnected={displayConnected}
+          timer={liveTimer}
           onLaunch={launchInteraction}
           onToggleResponses={toggleInteractionResponses}
           onReveal={revealInteractionResults}
@@ -1337,6 +1360,8 @@ export default function LiveLessonPrototype() {
             resultVisibility: 'instructor-only',
             plannedTime: 'Asked live',
           })}
+          onStartTimer={startLiveTimer}
+          onClearTimer={clearLiveTimer}
         />,
         floatingRemoteWindow.document.body,
       )}

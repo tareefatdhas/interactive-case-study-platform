@@ -149,6 +149,26 @@ body:has(.student-welcome-shell) {
   animation: student-step-in 260ms ease both;
 }
 
+.student-timer-banner {
+  display: grid;
+  grid-template-columns: 40px auto 1fr;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 18px !important;
+  padding: 11px 12px;
+  border: 1px solid #d9d5fb;
+  border-radius: 15px;
+  background: linear-gradient(110deg,#f6f4ff,#fff);
+  box-shadow: 0 8px 24px rgba(81,70,229,.08);
+}
+.student-timer-banner > span { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 12px; color: #fff; background: var(--student-violet); }
+.student-timer-banner > div { display: grid; gap: 1px; }
+.student-timer-banner small { color: var(--student-muted); font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.student-timer-banner strong { color: var(--student-ink); font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+.student-timer-banner p { justify-self: end; text-align: right; font-size: 9px !important; line-height: 1.35 !important; }
+.student-timer-banner.is-complete { border-color: #f1c6b9; background: #fff7f3; }
+.student-timer-banner.is-complete > span { background: #cf6248; }
+
 .student-kicker {
   color: var(--student-violet);
   text-transform: uppercase;

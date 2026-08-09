@@ -23,6 +23,40 @@ body:has(.classroom-display) {
   background: var(--display-paper);
 }
 
+.projector-timer {
+  position: fixed;
+  z-index: 45;
+  top: 96px;
+  right: 34px;
+  display: grid;
+  grid-template-columns: 54px auto 54px;
+  align-items: center;
+  gap: 15px;
+  min-width: 270px;
+  padding: 14px 16px;
+  border: 1px solid rgba(81, 70, 229, 0.22);
+  border-radius: 22px;
+  background: rgba(255, 255, 253, 0.92);
+  box-shadow: 0 20px 55px rgba(32, 26, 95, 0.15);
+  backdrop-filter: blur(18px);
+  animation: projector-timer-arrive 520ms cubic-bezier(.18,.88,.24,1.08) both;
+}
+.projector-timer-icon { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 18px; color: #fff; background: var(--display-violet); box-shadow: 0 9px 22px rgba(81,70,229,.25); }
+.projector-timer > div { display: grid; gap: 1px; }
+.projector-timer small { color: var(--display-muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.projector-timer strong { font-size: 34px; font-variant-numeric: tabular-nums; letter-spacing: -.05em; }
+.projector-timer svg { width: 50px; height: 50px; transform: rotate(-90deg); }
+.projector-timer svg circle { fill: none; stroke: #e8e5f2; stroke-width: 4; }
+.projector-timer svg .is-progress { stroke: var(--display-violet); stroke-linecap: round; transition: stroke-dashoffset 500ms linear; }
+.projector-timer.is-complete { border-color: rgba(207,98,72,.35); background: rgba(255,247,243,.96); }
+.projector-timer.is-complete .projector-timer-icon { background: #cf6248; }
+.projector-timer.is-complete svg .is-progress { stroke: #cf6248; }
+
+@keyframes projector-timer-arrive {
+  from { opacity: 0; transform: translateY(-18px) scale(.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .projector-transport-flight {
   --flight-color: #6654e9;
   --flight-delay: 0ms;

@@ -71,6 +71,28 @@ test('the live console and projector surfaces render', async ({ browser }) => {
   await context.close();
 });
 
+test('a quick timer reaches the instructor, projector, and student views', async ({ browser }) => {
+  const context = await browser.newContext();
+  const remotePage = await context.newPage();
+  const displayPage = await context.newPage();
+  const studentPage = await context.newPage();
+
+  await remotePage.goto('/live/remote');
+  await remotePage.getByRole('button', { name: /Quick tools/ }).click();
+  await remotePage.getByRole('button', { name: '2 min' }).click();
+
+  await expect(remotePage.getByText('Class timer')).toBeVisible();
+
+  await displayPage.goto('/live/display');
+  await studentPage.goto('/live/student');
+
+  await expect(displayPage.getByRole('complementary', { name: /Class timer/ })).toBeVisible();
+  await expect(studentPage.getByRole('timer', { name: /Class timer/ })).toBeVisible();
+  await expect(studentPage.getByText('Visible on the classroom screen.')).toBeVisible();
+
+  await context.close();
+});
+
 test('AI classroom endpoints reject unauthenticated requests', async ({ request }) => {
   for (const path of [
     '/api/generate-session-interactions',

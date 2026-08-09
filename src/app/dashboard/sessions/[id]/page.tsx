@@ -456,6 +456,11 @@ export default function SessionPage({ params }: SessionPageProps) {
                 </p>
               </div>
               <div className="flex gap-3">
+                {session?.sessionType === 'standalone' && !session?.active && <Link href={`/dashboard/sessions/new?sessionId=${session?.id}`}>
+                  <Button variant="outline" className="flex items-center">
+                    <ListChecks className="mr-2 h-4 w-4" /> Edit flow
+                  </Button>
+                </Link>}
                 {(session?.sessionType !== 'standalone' || session?.active) && <Link href={session?.sessionType === 'standalone' ? `/live?sessionId=${session?.id}` : `/dashboard/sessions/${session?.id}/presentation`}>
                   <Button
                     variant="outline"

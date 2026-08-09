@@ -15,12 +15,10 @@ import {
   CalendarPlus,
   CheckCircle2,
   GraduationCap,
-  HeartPulse,
   Layers3,
   LoaderCircle,
   Plus,
   Sparkles,
-  Users,
   X,
 } from 'lucide-react';
 
@@ -144,7 +142,7 @@ export default function ClassesPage() {
             <div className="max-w-2xl">
               <p className="seminar-eyebrow mb-3">Teaching workspace</p>
               <h1 className="seminar-display text-4xl text-[#101a38] sm:text-5xl">Your classes</h1>
-              <p className="mt-3 text-base leading-7 text-[#697087]">Keep a reusable interaction library for each class, then shape it around what you are teaching in each session.</p>
+              <p className="mt-3 text-base leading-7 text-[#697087]">Create each course once, then organize its meetings into sessions with a clear flow of classroom activities.</p>
             </div>
             <Button onClick={() => setShowCreate(true)} className="gap-2 self-start sm:self-auto">
               <Plus className="h-4 w-4" /> Add class
@@ -154,8 +152,8 @@ export default function ClassesPage() {
           <section className="mb-8 grid gap-3 rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-5 sm:grid-cols-3" aria-label="Class planning model">
             {[
               [GraduationCap, 'Set up the class', 'Add the course once, including its name and term.'],
-              [Layers3, 'Build a reusable kit', 'Keep check-ins, polls, and questions you use often.'],
-              [CalendarPlus, 'Plan each session', 'Choose from the kit, then tailor the wording for that day.'],
+              [CalendarPlus, 'Plan each session', 'Create the meetings you expect to teach this term.'],
+              [Layers3, 'Build the activity flow', 'Add polls, quizzes, check-ins, or modules in teaching order.'],
             ].map(([Icon, title, copy], index) => {
               const StepIcon = Icon as typeof GraduationCap;
               return (
@@ -201,9 +199,9 @@ export default function ClassesPage() {
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#fff2ed] text-[#c85540]"><Sparkles className="h-5 w-5" /></span>
                   </div>
                   <div className="mt-6 grid grid-cols-3 gap-3 border-y border-[#e3e5ed] py-5">
-                    <div><strong className="block text-xl text-[#101a38]">{course.interactionTemplates?.length || 0}</strong><span className="text-xs text-[#697087]">reusable interactions</span></div>
                     <div><strong className="block text-xl text-[#101a38]">{courseSessions.length}</strong><span className="text-xs text-[#697087]">sessions</span></div>
                     <div><strong className="block text-xl text-[#101a38]">{students}</strong><span className="text-xs text-[#697087]">students seen</span></div>
+                    <div><strong className="block text-xl text-[#101a38]">{course.interactionTemplates?.length || 0}</strong><span className="text-xs text-[#697087]">saved activities</span></div>
                   </div>
                   <div className="mt-5 flex items-center justify-between gap-4">
                     <div className="min-w-0 text-xs leading-5 text-[#697087]">

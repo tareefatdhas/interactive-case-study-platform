@@ -53,6 +53,7 @@ function createDemoState(): LessonDisplayState {
     interactionResults: null,
     featuredQuestionId: null,
     questions: [],
+    timer: null,
     updatedAt: Date.now(),
   };
 }
@@ -149,6 +150,10 @@ export default function InstructorRemotePage() {
       publishInstructorState(classroomIds.ownerUid, classroomIds.sessionId, protectStudentView(next))
         .then(() => setSyncConnected(true))
         .catch(() => setSyncConnected(false));
+    } else {
+      const publicState = protectStudentView(next);
+      window.localStorage.setItem(LESSON_STORAGE_KEY, JSON.stringify(publicState));
+      channelRef.current?.postMessage({ type: 'lesson-state', state: publicState });
     }
   }, [classroomIds]);
 
@@ -209,6 +214,22 @@ export default function InstructorRemotePage() {
     });
   };
 
+  const startTimer = (durationSeconds: number) => {
+    updateRemoteState((current) => ({
+      ...current,
+      timer: {
+        id: `timer-${Date.now()}`,
+        label: 'Class timer',
+        durationSeconds,
+        endsAt: Date.now() + durationSeconds * 1000,
+      },
+    }));
+  };
+
+  const clearTimer = () => {
+    updateRemoteState((current) => ({ ...current, timer: null }));
+  };
+
   const openDisplay = () => {
     const url = classroomIds
       ? `/live/display?sessionId=${encodeURIComponent(classroomIds.sessionId)}&ownerUid=${encodeURIComponent(classroomIds.ownerUid)}`
@@ -251,6 +272,7 @@ export default function InstructorRemotePage() {
       questions={state.questions}
       featuredQuestionId={state.featuredQuestionId}
       displayConnected={displayConnected}
+      timer={state.timer}
       syncConnected={syncConnected}
       onLaunch={launch}
       onToggleResponses={toggleResponses}
@@ -260,6 +282,8 @@ export default function InstructorRemotePage() {
       onOpenConsole={openConsole}
       onFeatureQuestion={featureQuestion}
       onLaunchUnplanned={launchUnplanned}
+      onStartTimer={startTimer}
+      onClearTimer={clearTimer}
     />
   );
 }
