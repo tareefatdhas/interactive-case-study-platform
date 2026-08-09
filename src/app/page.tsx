@@ -46,14 +46,14 @@ export default function Home() {
             <small>Four sessions, one course story</small>
           </div>
           <div className="max-w-5xl">
-            <p className="seminar-eyebrow mb-5">The participation layer for university courses</p>
-            <h1 className="seminar-display text-5xl leading-[0.94] text-[var(--seminar-ink)] sm:text-7xl lg:text-[6.6rem]">
-              Make every class <em>count toward the next.</em>
+            <p className="seminar-eyebrow mb-5">The interactive layer for university courses</p>
+            <h1 className="seminar-display text-5xl leading-[0.98] text-[var(--seminar-ink)] sm:text-7xl lg:text-[5.8rem]">
+              Make the classroom interactive. <em>Build every student’s journey.</em>
             </h1>
           </div>
           <div className="mt-8 grid gap-7 lg:grid-cols-[1fr_auto] lg:items-end">
             <p className="max-w-2xl text-lg leading-8 text-[#4f576d] sm:text-xl">
-              Run questions, check-ins, quizzes, and discussions beside your slides. Each session builds a record of attendance, understanding, and progress.
+              Run live questions, check-ins, quizzes, and discussions beside your slides. Every response adds to a course-long record of participation, understanding, and progress.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first class <ArrowRight className="h-4 w-4" /></Link>

@@ -34,7 +34,7 @@ export default function OpenGraphImage() {
 
           <div style={{ display: 'flex', flexDirection: 'column', maxWidth: 890 }}>
             <div style={{ color: '#5146e5', fontSize: 20, fontWeight: 700, letterSpacing: 3, marginBottom: 22, textTransform: 'uppercase' }}>Built for university classrooms</div>
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 72, letterSpacing: -3, lineHeight: 1.04 }}>Make every class count toward the next.</div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 68, letterSpacing: -3, lineHeight: 1.04 }}>Make the classroom interactive. Build every student’s journey.</div>
             <div style={{ color: '#596177', fontSize: 25, lineHeight: 1.45, marginTop: 24 }}>Live participation today. A clearer course story tomorrow.</div>
           </div>
 
