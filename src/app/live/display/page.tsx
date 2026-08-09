@@ -255,7 +255,7 @@ function ClassroomWelcome({ lessonState, joinUrl }: { lessonState: LessonDisplay
             </article>
           ))}
         </div>
-        <div className="welcome-privacy-strip"><Lock size={17} /> Individual wellbeing responses stay private. The projector only shows the class total.</div>
+        <div className="welcome-privacy-strip"><Lock size={17} /> Individual pulse responses stay private. The projector only shows the class total.</div>
       </section>
     );
   }
@@ -605,8 +605,8 @@ export default function ClassroomDisplayPage() {
           <section className="display-content">
         <div className="display-prompt">
           <div>
-            <span className="display-eyebrow"><Waves size={20} /> Student wellbeing check-in</span>
-            <h1>How are you feeling today?</h1>
+            <span className="display-eyebrow"><Waves size={20} /> Class Pulse</span>
+            <h1>How are you arriving today?</h1>
             <p><Lock size={16} /> Your response is private. Only the class total is shown.</p>
           </div>
           <div className="display-response-count"><Users size={22} /><strong>{responseTotal}</strong><span>{responseTotal === 1 ? 'response' : 'responses'}</span></div>

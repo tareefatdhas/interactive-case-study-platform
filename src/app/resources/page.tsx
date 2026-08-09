@@ -1,15 +1,16 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, Check, ClipboardCheck, Clock3, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
 import MarketingPage from '@/components/marketing/MarketingPage';
+import { createPageMetadata } from '@/lib/metadata';
 
-export const metadata: Metadata = {
-  title: 'Classroom resources | Classfully',
-  description: 'Practical checklists and interaction guidance for running a Classfully session.',
-};
+export const metadata = createPageMetadata({
+  title: 'Classroom engagement resources',
+  description: 'Practical checklists and interaction guidance for running clear, engaging Classfully sessions in university classrooms.',
+  path: '/resources',
+});
 
 const activityGuide = [
-  { name: 'Pulse', use: 'Use when you need a fast read on pace, confidence, agreement, or wellbeing.', avoid: 'Do not use a personal pulse for grades or public comparison.' },
+  { name: 'Class Pulse', use: 'Use when you need a fast read on pace, confidence, agreement, or how the room feels.', avoid: 'Do not use a personal pulse for grades or public comparison.' },
   { name: 'Opinion poll', use: 'Use before discussion when seeing differences will give the room something concrete to explore.', avoid: 'Do not reveal results early if they may pull later answers toward the majority.' },
   { name: 'Knowledge check', use: 'Use after a concept when the next part depends on understanding it.', avoid: 'Do not reward speed. Close responses before revealing the correct answer.' },
   { name: 'Short response', use: 'Use for questions, reflection, examples, or the muddiest point.', avoid: 'Do not put raw student writing on the projector without reviewing it first.' },

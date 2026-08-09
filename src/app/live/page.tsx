@@ -898,14 +898,14 @@ export default function LiveLessonPrototype() {
         <section className="lesson-content">
           <div className="content-heading">
             <div>
-              <div className="eyebrow"><HeartPulse size={18} /> Student wellbeing check-in</div>
-              <h1>How are you feeling today?</h1>
-              <p>{selectedWeek === 0 ? 'Responses update live as students check in.' : HISTORY[selectedWeek].lesson}</p>
+              <div className="eyebrow"><HeartPulse size={18} /> Class Pulse</div>
+              <h1>How are you arriving today?</h1>
+              <p>{selectedWeek === 0 ? 'See how the room is arriving as responses come in.' : HISTORY[selectedWeek].lesson}</p>
             </div>
             <div className="privacy-note"><Lock size={15} /> Individual responses stay private</div>
           </div>
 
-          {!sessionContext.sessionId && <div className="history-toolbar" aria-label="Wellbeing history controls">
+          {!sessionContext.sessionId && <div className="history-toolbar" aria-label="Class Pulse history controls">
             <div className="history-periods">
               {HISTORY.map((week, index) => (
                 <button
@@ -1060,7 +1060,7 @@ export default function LiveLessonPrototype() {
                 </div>
               ) : (
                 <>
-                  <span className="preview-title">How are you feeling today?</span>
+                  <span className="preview-title">How are you arriving today?</span>
                   <div className="preview-clusters" aria-hidden="true">
                     {MOODS.map((mood) => (
                       <div className="preview-cluster-row" key={mood.key}>

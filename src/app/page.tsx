@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { IconContext, ArrowRight, Medal as Award, ChartBar as BarChart3, BookOpenText as BookOpen, Brain, Check, Question as CircleHelp, Eye, Fire as Flame, Gift, Heartbeat as HeartPulse, LockKey as Lock, ChatCircleDots as MessageCircleQuestion, Broadcast as Radio, ShieldCheck, DeviceMobile as Smartphone, Sparkle as Sparkles, Target, UsersThree as Users } from '@phosphor-icons/react';
+import { IconContext, ArrowRight, Medal as Award, ChartBar as BarChart3, BookOpenText as BookOpen, Brain, Check, Question as CircleHelp, Eye, Fire as Flame, FileText, Gift, Heartbeat as HeartPulse, LockKey as Lock, ChatCircleDots as MessageCircleQuestion, Broadcast as Radio, ShieldCheck, DeviceMobile as Smartphone, Sparkle as Sparkles, Target, UsersThree as Users } from '@phosphor-icons/react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import MarketingPage from '@/components/marketing/MarketingPage';
 import ClassroomStage from '@/components/marketing/ClassroomStage';
@@ -11,9 +11,10 @@ import SlideCompanionVisual from '@/components/marketing/SlideCompanionVisual';
 import WaitingStateVisual from '@/components/marketing/WaitingStateVisual';
 import ClassTrendVisual from '@/components/marketing/ClassTrendVisual';
 import CourseContinuityVisual from '@/components/marketing/CourseContinuityVisual';
+import HomeJsonLd from '@/components/seo/HomeJsonLd';
 
 const classroomMoves = [
-  { icon: Radio, label: 'Pulse', question: 'Do we need to slow down?', answer: 'Check pace, confidence, agreement, or wellbeing in under a minute.' },
+  { icon: Radio, label: 'Class Pulse', question: 'Do we need to slow down?', answer: 'Check pace, confidence, agreement, or how the room feels in under a minute.' },
   { icon: Users, label: 'Opinion poll', question: 'Where does the room differ?', answer: 'Show the spread, then ask why.' },
   { icon: Check, label: 'Knowledge check', question: 'Did the concept land?', answer: 'Close voting before revealing the answer.' },
   { icon: MessageCircleQuestion, label: 'Short response', question: 'What is still unclear?', answer: 'Collect questions and share what helps the room.' },
@@ -35,6 +36,7 @@ export default function Home() {
 
   return (
     <IconContext.Provider value={{ weight: 'duotone' }}>
+    <HomeJsonLd />
     <MarketingPage>
       <section className="world-hero">
         <div className="world-hero-copy mx-auto max-w-7xl px-5 pt-16 sm:px-8 sm:pt-24 lg:pt-28">
@@ -218,7 +220,7 @@ export default function Home() {
             <p className="mt-6 text-lg leading-8 text-[var(--seminar-muted)]">Students build streaks, earn points for meaningful participation, and track their understanding. Instructors decide what counts and which rewards fit.</p>
             <ul className="progress-principles">
               <li><Check /> Reward showing up, thinking, and improving</li>
-              <li><Check /> Keep wellbeing out of grades and rankings</li>
+              <li><Check /> Keep personal pulse answers out of grades and rankings</li>
               <li><Check /> Approve every course reward</li>
             </ul>
           </div>
@@ -262,6 +264,25 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="legal-trust-section">
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
+          <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
+            <div>
+              <ShieldCheck className="h-6 w-6 text-[var(--seminar-success)]" />
+              <p className="seminar-eyebrow mt-5">Legal and trust</p>
+              <h2 className="seminar-display mt-4 text-4xl leading-[1.02] text-[var(--seminar-ink)] sm:text-5xl">Know what happens to classroom information.</h2>
+            </div>
+            <p className="max-w-2xl text-lg leading-8 text-[var(--seminar-muted)]">Our policies explain what Classfully collects, what instructors control, what students can choose, and how to ask for help or exercise data rights.</p>
+          </div>
+          <div className="legal-trust-grid">
+            <Link href="/data-policy" className="legal-trust-card seminar-focus"><ShieldCheck /><span>01</span><h3 className="seminar-display">Data Policy</h3><p>Collection, use, providers, retention, security, and your rights.</p><b>Read the policy <ArrowRight /></b></Link>
+            <Link href="/terms" className="legal-trust-card seminar-focus"><FileText /><span>02</span><h3 className="seminar-display">Terms & Conditions</h3><p>Clear responsibilities for instructors, institutions, and students.</p><b>Read the terms <ArrowRight /></b></Link>
+            <Link href="/privacy" className="legal-trust-card seminar-focus"><Lock /><span>03</span><h3 className="seminar-display">Student privacy</h3><p>A short classroom notice students can read before they join.</p><b>Read the notice <ArrowRight /></b></Link>
+          </div>
+          <p className="legal-trust-operator">Classfully is operated by Tareef Jafferi. Policy questions and data requests: <a href="mailto:tareef@happily.ai">tareef@happily.ai</a>.</p>
+        </div>
+      </section>
+
       <section className="homepage-faq">
         <div className="mx-auto grid max-w-7xl gap-12 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-[0.7fr_1.3fr] lg:gap-20">
           <div>
@@ -273,7 +294,7 @@ export default function Home() {
             {[
               ['Do I need to move my slides into Classfully?', 'No. Keep your presentation where it is. Open Classfully when students should respond.'],
               ['What does a student need?', 'A phone, tablet, or laptop, plus the class code and their student number. There is no app to install.'],
-              ['What appears on the projector?', 'Only class totals and responses you choose. Student IDs, private questions, and wellbeing stay hidden.'],
+              ['What appears on the projector?', 'Only class totals and responses you choose. Student IDs, private questions, and personal pulse answers stay hidden.'],
               ['Can I ask something I did not prepare?', 'Yes. Launch a pulse, poll, quiz, or short response from the instructor console.'],
               ['What continues after class?', 'Attendance, participation, quiz results, questions, and reflections stay with the course. Students see personal progress. Instructors see class patterns.'],
               ['Can points become course rewards?', 'Yes, if they fit the course and university policy. Instructors approve every academic reward.'],

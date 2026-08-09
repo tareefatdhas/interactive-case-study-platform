@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { privateRouteMetadata } from '@/lib/metadata';
 
 export const metadata: Metadata = {
-  title: 'Live lesson | Classfully',
+  ...privateRouteMetadata,
+  title: 'Live lesson',
   description: 'A live classroom pulse and feedback console for university instructors.',
 };
 

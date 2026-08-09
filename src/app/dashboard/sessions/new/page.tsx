@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { createSession, generateSessionCode, getCaseStudiesByTeacher } from '@/lib/firebase/firestore';
+import { createSession, generateSessionCode, getCaseStudiesByTeacher, getCourse } from '@/lib/firebase/firestore';
 import { auth } from '@/lib/firebase/config';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import type { CaseStudy, SessionInteraction, SessionInteractionType } from '@/types';
+import type { CaseStudy, Course, SessionInteraction, SessionInteractionType } from '@/types';
 import {
   ArrowDown,
   ArrowLeft,
@@ -41,7 +41,7 @@ const interactionOptions: Array<{
   description: string;
   icon: typeof HeartPulse;
 }> = [
-  { type: 'pulse', label: 'Pulse', description: 'Check pace, confidence, or wellbeing.', icon: HeartPulse },
+  { type: 'pulse', label: 'Class Pulse', description: 'Check pace, confidence, or how the room feels.', icon: HeartPulse },
   { type: 'poll', label: 'Opinion poll', description: 'Open a discussion with the room’s starting view.', icon: BarChart3 },
   { type: 'quiz', label: 'Knowledge check', description: 'Reveal a misconception while there is time to reteach it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', description: 'Gather questions or a brief reflection for review.', icon: MessageCircle },
@@ -96,8 +96,10 @@ function NewSessionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedCaseStudyId = searchParams.get('caseStudyId');
+  const preselectedCourseId = searchParams.get('courseId');
 
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [courseCode, setCourseCode] = useState('');
   const [courseName, setCourseName] = useState('');
   const [sessionTitle, setSessionTitle] = useState('');
@@ -115,11 +117,21 @@ function NewSessionContent() {
   const lessonFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const loadCaseStudies = async () => {
+    const loadPlanningData = async () => {
       if (!user) return;
       try {
-        const studies = await getCaseStudiesByTeacher(user.uid);
+        const [studies, course] = await Promise.all([
+          getCaseStudiesByTeacher(user.uid),
+          preselectedCourseId ? getCourse(preselectedCourseId) : Promise.resolve(null),
+        ]);
         setCaseStudies(studies);
+
+        if (course && course.teacherId === user.uid) {
+          setSelectedCourse(course);
+          setCourseCode(course.code);
+          setCourseName(course.name);
+          setInteractions([]);
+        }
 
         const selectedCase = studies.find((study) => study.id === preselectedCaseStudyId);
         if (selectedCase) {
@@ -144,8 +156,8 @@ function NewSessionContent() {
       }
     };
 
-    loadCaseStudies();
-  }, [preselectedCaseStudyId, user]);
+    loadPlanningData();
+  }, [preselectedCaseStudyId, preselectedCourseId, user]);
 
   const estimatedMinutes = useMemo(
     () => interactions.reduce((total, interaction) => total + (interaction.durationMinutes || 0), 0),
@@ -175,6 +187,13 @@ function NewSessionContent() {
       },
     ]);
     setAddMenuOpen(false);
+  };
+
+  const addLibraryInteraction = (template: SessionInteraction) => {
+    setInteractions((current) => [
+      ...current,
+      { ...template, id: `session-${template.type}-${Date.now()}-${current.length}` },
+    ]);
   };
 
   const updateInteraction = (id: string, updates: Partial<SessionInteraction>) => {
@@ -307,6 +326,7 @@ function NewSessionContent() {
         sessionCode: generateSessionCode(),
         sessionType: 'standalone',
         title: sessionTitle.trim(),
+        courseId: selectedCourse?.id,
         courseCode: courseCode.trim(),
         courseName: courseName.trim(),
         scheduledFor: scheduledFor || undefined,
@@ -350,7 +370,7 @@ function NewSessionContent() {
       <DashboardLayout>
         <main className="mx-auto max-w-7xl p-5 sm:p-8 lg:p-10">
           <button type="button" onClick={() => router.back()} className="seminar-focus mb-6 inline-flex items-center gap-2 rounded-lg text-sm font-semibold text-[#697087] hover:text-[#101a38]">
-            <ArrowLeft className="h-4 w-4" /> Back to sessions
+            <ArrowLeft className="h-4 w-4" /> {selectedCourse ? `Back to ${selectedCourse.code}` : 'Back to sessions'}
           </button>
 
           <div className="mb-9 max-w-3xl">
@@ -373,8 +393,8 @@ function NewSessionContent() {
                   <h2 id="class-details-title" className="seminar-display text-2xl text-[#101a38]">Class and session</h2>
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <Input label="Class code" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="ECON 302" />
-                  <Input label="Class name" value={courseName} onChange={(event) => setCourseName(event.target.value)} placeholder="Intermediate Microeconomics" />
+                  <Input label="Class code" value={courseCode} onChange={(event) => setCourseCode(event.target.value)} placeholder="ECON 302" disabled={Boolean(selectedCourse)} />
+                  <Input label="Class name" value={courseName} onChange={(event) => setCourseName(event.target.value)} placeholder="Intermediate Microeconomics" disabled={Boolean(selectedCourse)} />
                   <div className="sm:col-span-2">
                     <Input label="Session title" value={sessionTitle} onChange={(event) => setSessionTitle(event.target.value)} placeholder="Week 6 · Platform strategy" />
                   </div>
@@ -415,6 +435,28 @@ function NewSessionContent() {
                     )}
                   </div>
                 </div>
+
+                {selectedCourse && (selectedCourse.interactionTemplates?.length || 0) > 0 && (
+                  <section className="mt-6 rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-5" aria-labelledby="class-library-title">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                      <div><p className="seminar-eyebrow mb-2">From {selectedCourse.code}</p><h3 id="class-library-title" className="seminar-display text-2xl text-[#101a38]">Choose from your class library</h3><p className="mt-1 text-sm leading-6 text-[#697087]">Add only what this session needs. Each copy can be edited below.</p></div>
+                      <span className="text-xs font-semibold text-[#697087]">{selectedCourse.interactionTemplates?.length} saved</span>
+                    </div>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      {selectedCourse.interactionTemplates?.map((template) => {
+                        const option = interactionOptions.find((item) => item.type === template.type);
+                        const Icon = option?.icon || Sparkles;
+                        return (
+                          <button key={template.id} type="button" onClick={() => addLibraryInteraction(template)} className="seminar-focus group flex min-h-20 items-center gap-3 rounded-xl border border-[#e0ddff] bg-white p-3 text-left transition duration-150 hover:-translate-y-0.5 hover:border-[#bfb9ff] hover:shadow-sm">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0efff] text-[#5146e5]"><Icon className="h-4 w-4" /></span>
+                            <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#101a38]">{template.title}</strong><small className="mt-0.5 block line-clamp-1 text-[#697087]">{template.prompt}</small></span>
+                            <Plus className="h-4 w-4 shrink-0 text-[#8e94a6] group-hover:text-[#5146e5]" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
 
                 <section className="mt-6 rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-5" aria-labelledby="lesson-material-title">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

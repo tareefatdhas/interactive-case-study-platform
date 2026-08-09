@@ -1,12 +1,13 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, Medal as Award, Check, Eye, Fire as Flame, LockKey as Lock, DeviceMobile as Smartphone, Target } from '@phosphor-icons/react/ssr';
 import MarketingPage from '@/components/marketing/MarketingPage';
+import { createPageMetadata } from '@/lib/metadata';
 
-export const metadata: Metadata = {
-  title: 'For students | Classfully',
-  description: 'Join class from your phone, make your voice heard, and build a useful record of participation and progress across your course.',
-};
+export const metadata = createPageMetadata({
+  title: 'For university students',
+  description: 'Join class from your phone, make your voice heard, and build a useful record of attendance, participation, and progress across your course.',
+  path: '/students',
+});
 
 export default function StudentsPage() {
   return (
@@ -81,8 +82,8 @@ export default function StudentsPage() {
         <div className="mx-auto max-w-3xl px-5 py-16 sm:px-8 sm:py-20">
           <h2 className="seminar-display text-4xl text-[var(--seminar-ink)]">What counts, and what never should</h2>
           <ul className="mt-7 grid gap-4 text-sm leading-6 text-[var(--seminar-text)]">
-            <li className="flex gap-3"><Check className="mt-1 h-4 w-4 shrink-0 text-[var(--seminar-success)]" />Wellbeing check-ins include a way to prefer not to say.</li>
-            <li className="flex gap-3"><Check className="mt-1 h-4 w-4 shrink-0 text-[var(--seminar-success)]" />Correct answers and useful participation may earn points. Wellbeing responses never do.</li>
+            <li className="flex gap-3"><Check className="mt-1 h-4 w-4 shrink-0 text-[var(--seminar-success)]" />Personal Class Pulse prompts include a way to prefer not to say.</li>
+            <li className="flex gap-3"><Check className="mt-1 h-4 w-4 shrink-0 text-[var(--seminar-success)]" />Correct answers and useful participation may earn points. Personal pulse answers never do.</li>
             <li className="flex gap-3"><Check className="mt-1 h-4 w-4 shrink-0 text-[var(--seminar-success)]" />Your instructor decides what earns points and approves any academic reward.</li>
             <li className="flex gap-3"><Check className="mt-1 h-4 w-4 shrink-0 text-[var(--seminar-success)]" />If the classroom connection drops, keep the page open while it reconnects.</li>
           </ul>

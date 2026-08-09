@@ -887,7 +887,7 @@ export default function StudentWelcomePage() {
               <article><span><MessageCircle size={21} /></span><div><strong>Ask or upvote</strong><small>Surface a question without interrupting.</small></div></article>
               <article><span><Activity size={21} /></span><div><strong>Signal the pace</strong><small>Let the instructor know you need a pause.</small></div></article>
             </div>
-            <div className="student-privacy-note"><Lock size={16} /><span><strong>Your wellbeing response stays private.</strong> The projector shows class totals only.</span></div>
+            <div className="student-privacy-note"><Lock size={16} /><span><strong>Your pulse response stays private.</strong> The projector shows class totals only.</span></div>
           </div>
         )}
 

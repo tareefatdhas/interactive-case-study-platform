@@ -1,6 +1,15 @@
 import Link from 'next/link';
-import { ArrowLeft, Database, Eye, FileText, Lock, Scale, ShieldCheck, Trash2 } from 'lucide-react';
+import { Database, Eye, FileText, Lock, Scale, ShieldCheck, Trash2 } from 'lucide-react';
+import MarketingPage from '@/components/marketing/MarketingPage';
 import { STUDENT_PRIVACY_NOTICE_VERSION } from '@/lib/privacy';
+import { CLASSFULLY_CONTACT, CLASSFULLY_OPERATOR } from '@/lib/legal';
+import { createPageMetadata } from '@/lib/metadata';
+
+export const metadata = createPageMetadata({
+  title: 'Student privacy notice',
+  description: 'A clear guide to what Classfully records during class, who can see it, how it is used, and the choices students have.',
+  path: '/privacy',
+});
 
 const sections = [
   {
@@ -15,13 +24,13 @@ const sections = [
   },
   {
     icon: ShieldCheck,
-    title: 'Optional wellbeing check-ins',
-    content: 'Wellbeing questions are optional. You can choose “Prefer not to say” or wait without answering. They should be used to adjust teaching, never for grades, rewards, discipline, or public rankings.',
+    title: 'Optional Class Pulse prompts',
+    content: 'Personal pulse questions are optional. You can choose “Prefer not to say” or wait without answering. They should be used to adjust teaching, never for grades, rewards, discipline, or public rankings.',
   },
   {
     icon: FileText,
     title: 'AI question drafting',
-    content: 'Only lesson material supplied by an instructor is sent to the configured AI service to draft class questions. Student attendance, responses, wellbeing answers, and reward records are not included in that request.',
+    content: 'Only lesson material supplied by an instructor is sent to the configured AI service to draft class questions. Student attendance, responses, personal pulse answers, and reward records are not included in that request.',
   },
   {
     icon: Trash2,
@@ -31,26 +40,18 @@ const sections = [
   {
     icon: Scale,
     title: 'Your choices and rights',
-    content: 'Contact your instructor or university privacy contact to request access, correction, deletion, restriction, objection, or a portable copy. You can also withdraw from optional wellbeing processing without losing access to ordinary class activities.',
+    content: 'Contact your instructor or university privacy contact to request access, correction, deletion, restriction, objection, or a portable copy. You can also stop answering optional personal pulse questions without losing access to ordinary class activities.',
   },
 ];
 
 export default function PrivacyPage() {
-  const controllerName = process.env.NEXT_PUBLIC_PDPA_CONTROLLER_NAME?.trim();
-  const privacyContact = process.env.NEXT_PUBLIC_PDPA_CONTACT?.trim();
-
   return (
-    <main className="min-h-screen bg-[#fffefa] px-5 pb-20 text-[#101a38] sm:px-8">
-      <header className="mx-auto flex max-w-5xl items-center justify-between py-5">
-        <Link href="/" className="classfully-wordmark seminar-focus text-xl sm:text-2xl">Classfully</Link>
-        <Link href="/join" className="seminar-focus inline-flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-[#555d73] hover:text-[#101a38]"><ArrowLeft className="h-4 w-4" /> Join a class</Link>
-      </header>
-
-      <article className="mx-auto max-w-5xl pt-10 sm:pt-16">
+    <MarketingPage>
+      <article className="mx-auto max-w-5xl px-5 py-14 text-[#101a38] sm:px-8 sm:py-20">
         <div className="max-w-3xl">
           <p className="seminar-eyebrow mb-4">Student privacy notice · Version {STUDENT_PRIVACY_NOTICE_VERSION}</p>
           <h1 className="seminar-display text-5xl leading-[1.02] sm:text-6xl">What the classroom records.</h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-[#697087]">{controllerName || 'Your university or instructor'} decides why class information is used and acts as the data controller. Classfully processes it to run the class, record attendance, and preserve course progress.</p>
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-[#697087]">Your instructor or institution normally decides why classroom information is used. Classfully, operated by {CLASSFULLY_OPERATOR}, processes it to run the class, record attendance, and preserve course progress.</p>
         </div>
 
         <div className="mt-12 grid gap-4 md:grid-cols-2">
@@ -74,10 +75,10 @@ export default function PrivacyPage() {
         </section>
 
         <section className="mt-6 border-t border-[#e3e5ed] pt-7 text-sm leading-6 text-[#697087]">
-          <p><strong className="text-[#101a38]">Questions or requests:</strong> Contact {privacyContact || 'your instructor or university privacy contact'}. They can verify your identity and connect your request to the correct class record.</p>
-          {(!controllerName || !privacyContact) && <p className="mt-3">This notice supports the pilot product. The deploying institution must add its legal name, contact details, lawful bases, final retention schedule, and cross-border transfer arrangements before production use.</p>}
+          <p><strong className="text-[#101a38]">Questions or requests:</strong> Contact your instructor or institution first so they can verify your identity and find the correct class record. You can also contact Classfully at <a className="font-semibold text-[#5146e5]" href={`mailto:${CLASSFULLY_CONTACT}`}>{CLASSFULLY_CONTACT}</a>.</p>
+          <p className="mt-3">For the wider platform policy, read the <Link href="/data-policy" className="font-semibold text-[#5146e5] underline underline-offset-4">Data Policy</Link>. Use of Classfully is also subject to the <Link href="/terms" className="font-semibold text-[#5146e5] underline underline-offset-4">Terms & Conditions</Link>.</p>
         </section>
       </article>
-    </main>
+    </MarketingPage>
   );
 }

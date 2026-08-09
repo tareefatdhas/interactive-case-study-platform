@@ -137,6 +137,44 @@ export const unarchiveCaseStudy = async (caseStudyId: string): Promise<void> => 
   });
 };
 
+// Courses
+export const createCourse = async (
+  course: Omit<Course, 'id' | 'createdAt' | 'updatedAt'>,
+): Promise<string> => {
+  const now = Timestamp.now();
+  const docRef = await addDoc(collection(db, COLLECTIONS.COURSES), {
+    ...omitUndefinedValues(course),
+    createdAt: now,
+    updatedAt: now,
+  });
+  return docRef.id;
+};
+
+export const getCourse = async (id: string): Promise<Course | null> => {
+  const snapshot = await getDoc(doc(db, COLLECTIONS.COURSES, id));
+  return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } as Course : null;
+};
+
+export const getCoursesByTeacher = async (teacherId: string): Promise<Course[]> => {
+  const snapshot = await getDocs(query(
+    collection(db, COLLECTIONS.COURSES),
+    where('teacherId', '==', teacherId),
+  ));
+  return snapshot.docs
+    .map((courseDoc) => ({ id: courseDoc.id, ...courseDoc.data() } as Course))
+    .sort((a, b) => a.code.localeCompare(b.code));
+};
+
+export const updateCourse = async (
+  id: string,
+  updates: Partial<Omit<Course, 'id' | 'teacherId' | 'createdAt'>>,
+): Promise<void> => {
+  await updateDoc(doc(db, COLLECTIONS.COURSES, id), {
+    ...omitUndefinedValues(updates),
+    updatedAt: Timestamp.now(),
+  });
+};
+
 // Sessions
 function omitUndefinedValues<T>(value: T): T {
   if (Array.isArray(value)) return value.map(omitUndefinedValues) as T;

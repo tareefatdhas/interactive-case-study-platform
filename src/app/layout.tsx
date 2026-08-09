@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
+import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/metadata";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -15,23 +16,66 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://classfully.com'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || SITE_URL),
   title: {
-    default: "Classfully | Classroom participation that builds over time",
-    template: "%s",
+    default: "Classfully | Interactive classroom engagement for universities",
+    template: "%s | Classfully",
   },
-  description: "The participation layer for university courses. Run live classroom interactions and build a useful record of attendance, understanding, questions, and progress.",
-  applicationName: "Classfully",
+  description: DEFAULT_DESCRIPTION,
+  applicationName: SITE_NAME,
+  authors: [{ name: 'Tareef Jafferi', url: SITE_URL }],
+  creator: 'Tareef Jafferi',
+  publisher: SITE_NAME,
+  category: 'education',
+  keywords: [
+    'classroom engagement platform',
+    'interactive classroom',
+    'university classroom polling',
+    'student participation',
+    'live classroom quizzes',
+    'student attendance tracking',
+    'classroom feedback',
+    'higher education technology',
+  ],
+  alternates: {
+    canonical: '/',
+    languages: { en: '/' },
+  },
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
+  },
   openGraph: {
-    title: "Classfully",
-    description: "Make every class count toward the next.",
-    siteName: "Classfully",
+    title: "Classfully | Interactive classroom engagement for universities",
+    description: DEFAULT_DESCRIPTION,
+    url: '/',
+    siteName: SITE_NAME,
+    locale: 'en_US',
     type: "website",
+    images: [{
+      url: '/opengraph-image',
+      width: 1200,
+      height: 630,
+      alt: 'Classfully, classroom participation that builds over time',
+    }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Classfully",
-    description: "Make every class count toward the next.",
+    title: "Classfully | Interactive classroom engagement for universities",
+    description: DEFAULT_DESCRIPTION,
+    images: ['/twitter-image'],
   },
 };
 

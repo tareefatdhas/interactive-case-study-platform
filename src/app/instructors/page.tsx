@@ -1,12 +1,13 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, Check, Laptop, MonitorPlay as MonitorUp, Presentation, DeviceMobile as Smartphone, UsersThree as Users } from '@phosphor-icons/react/ssr';
 import MarketingPage from '@/components/marketing/MarketingPage';
+import { createPageMetadata } from '@/lib/metadata';
 
-export const metadata: Metadata = {
-  title: 'For instructors | Classfully',
-  description: 'Run classroom interactions beside your slides and build a useful record of attendance, understanding, questions, and progress across the course.',
-};
+export const metadata = createPageMetadata({
+  title: 'For university instructors',
+  description: 'Run classroom interactions beside your slides and build a useful record of attendance, understanding, questions, and progress across every session.',
+  path: '/instructors',
+});
 
 const stages = [
   { label: 'Prepare', title: 'Plan the moments that need a response.', body: 'Name the class and session, then add a check-in, poll, knowledge check, or short response. Use lesson material to draft questions when it is useful.' },

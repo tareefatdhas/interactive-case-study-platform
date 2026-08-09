@@ -3,24 +3,26 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCaseStudiesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { getCaseStudiesByTeacher, getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
-import type { CaseStudy, Session } from '@/types';
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Clock3, LoaderCircle, MonitorUp, Plus } from 'lucide-react';
+import type { CaseStudy, Course, Session } from '@/types';
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Clock3, GraduationCap, LoaderCircle, MonitorUp, Plus } from 'lucide-react';
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([getCaseStudiesByTeacher(user.uid), getSessionsByTeacher(user.uid)])
-      .then(([studies, teacherSessions]) => {
+    Promise.all([getCaseStudiesByTeacher(user.uid), getCoursesByTeacher(user.uid), getSessionsByTeacher(user.uid)])
+      .then(([studies, teacherCourses, teacherSessions]) => {
         setCaseStudies(studies);
+        setCourses(teacherCourses);
         setSessions(teacherSessions);
       })
       .catch((error) => console.error('Could not load the instructor overview:', error))
@@ -39,7 +41,7 @@ export default function DashboardPage() {
               <h1 className="seminar-display text-4xl leading-tight text-[#101a38] sm:text-5xl">What does your class need next?</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-[#697087]">Prepare the next session, return to a recent class, or review what attendance, questions, and understanding are showing across the course.</p>
             </div>
-            <Link href="/dashboard/sessions/new"><Button size="lg" className="gap-2 whitespace-nowrap"><Plus className="h-4 w-4" /> Prepare a session</Button></Link>
+            <Link href={courses.length ? `/dashboard/classes/${courses[0].id}` : '/dashboard/classes'}><Button size="lg" className="gap-2 whitespace-nowrap">{courses.length ? <CalendarDays className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{courses.length ? 'Choose a class' : 'Add your first class'}</Button></Link>
           </header>
 
           {loading ? (
@@ -55,7 +57,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="grid divide-y divide-[#e3e5ed] md:grid-cols-3 md:divide-x md:divide-y-0">
                     {[
-                      { icon: CalendarDays, title: 'Name the class and session', copy: 'Add the course, topic, and date.' },
+                      { icon: GraduationCap, title: 'Set up the class once', copy: 'Add its name, term, and reusable interaction kit.' },
                       { icon: CheckCircle2, title: 'Prepare one or two prompts', copy: 'Choose a pulse, poll, quiz, or short response.' },
                       { icon: MonitorUp, title: 'Open the display and teach', copy: 'Show a prompt, discuss the result, then return to your slides.' },
                     ].map(({ icon: Icon, title, copy }) => (
@@ -64,7 +66,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex flex-col gap-3 border-t border-[#e3e5ed] p-6 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm text-[#697087]">Most instructors can prepare the first session in a few minutes.</p>
-                    <Link href="/dashboard/sessions/new"><Button className="gap-2">Prepare the first session <ArrowRight className="h-4 w-4" /></Button></Link>
+                    <Link href={courses.length ? `/dashboard/classes/${courses[0].id}` : '/dashboard/classes'}><Button className="gap-2">{courses.length ? 'Open class workspace' : 'Add your first class'} <ArrowRight className="h-4 w-4" /></Button></Link>
                   </div>
                 </section>
               ) : (

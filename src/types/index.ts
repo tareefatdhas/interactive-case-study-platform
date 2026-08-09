@@ -65,6 +65,7 @@ export interface Session {
   caseStudyId?: string; // Optional for standalone sessions
   caseStudyTitle?: string; // Store title to avoid orphaned references
   teacherId: string;
+  courseId?: string;
   courseCode?: string;
   courseName?: string;
   scheduledFor?: string;
@@ -176,7 +177,10 @@ export interface Course {
   code: string;
   teacherId: string;
   studentIds: string[];
+  term?: string;
+  interactionTemplates?: SessionInteraction[];
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface SessionProgress {

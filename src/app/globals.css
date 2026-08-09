@@ -359,10 +359,26 @@ footer nav a:hover { color: var(--seminar-ink); }
 .privacy-surface-list h3 { color: var(--seminar-ink); font-size: 0.9rem; }
 .privacy-surface-list p { color: var(--seminar-muted); font-size: 0.84rem; line-height: 1.6; }
 
+.legal-document-hero { border-bottom: 1px solid var(--seminar-line); background: #fffaf4; }
+.legal-document-meta { display: flex; flex-wrap: wrap; gap: 0.6rem 1.5rem; margin-top: 2rem; color: var(--seminar-muted); font-size: 0.75rem; }.legal-document-meta span { display: inline-flex; align-items: center; gap: 0.4rem; }.legal-document-meta span::before { width: 6px; height: 6px; border-radius: 50%; background: var(--seminar-success); content: ''; }
+.legal-document { display: grid; gap: 0; }
+.legal-document > section:not(.legal-contact-card) { display: grid; grid-template-columns: minmax(210px,0.42fr) minmax(0,1fr); gap: 2.5rem; border-bottom: 1px solid var(--seminar-line); padding: 2rem 0; }
+.legal-document > section:not(.legal-contact-card) h2 { color: var(--seminar-ink); font-family: var(--seminar-font-display); font-size: 1.75rem; font-weight: 400; line-height: 1.15; }
+.legal-document > section:not(.legal-contact-card) > p, .legal-document > section:not(.legal-contact-card) > ul { grid-column: 2; }
+.legal-document > section:not(.legal-contact-card) > p + p, .legal-document > section:not(.legal-contact-card) > ul + p { margin-top: 0.85rem; }
+.legal-document p, .legal-document li { color: var(--seminar-muted); font-size: 0.92rem; line-height: 1.75; }.legal-document ul { display: grid; gap: 0.7rem; padding-left: 1.1rem; list-style: disc; }.legal-document strong { color: var(--seminar-ink); }
+.legal-document a { color: var(--seminar-violet); font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
+.legal-contact-card { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: start; margin-top: 2.5rem; border: 1px solid #d9d6fb; border-radius: 20px; padding: 1.5rem; background: #f4f1ff; }.legal-contact-card > svg { width: 25px; color: var(--seminar-violet); }.legal-contact-card h2 { color: var(--seminar-ink); font-size: 1rem; }.legal-contact-card p { margin-top: 0.25rem; }
+.legal-policy-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; }
+.legal-policy-card { display: flex; min-height: 310px; flex-direction: column; border: 1px solid var(--seminar-line); border-radius: 22px; padding: 1.6rem; background: white; color: var(--seminar-text); box-shadow: var(--seminar-shadow-soft); text-decoration: none; transition: transform 220ms ease, box-shadow 220ms ease; }.legal-policy-card:hover { box-shadow: var(--seminar-shadow-raised); transform: translateY(-4px); }.legal-policy-card > svg { width: 26px; color: var(--seminar-violet); }.legal-policy-card h2 { margin-top: 3.5rem; color: var(--seminar-ink); font-size: 2.25rem; line-height: 1.05; }.legal-policy-card p { margin-top: 0.85rem; color: var(--seminar-muted); font-size: 0.84rem; line-height: 1.65; }.legal-policy-card span { display: inline-flex; align-items: center; gap: 0.45rem; margin-top: auto; padding-top: 1.5rem; color: var(--seminar-violet); font-size: 0.76rem; font-weight: 800; }.legal-policy-card span svg { width: 14px; }
+.legal-operator-card { display: grid; grid-template-columns: auto 1fr auto; gap: 1.2rem; align-items: center; margin-top: 1rem; border-radius: 22px; padding: 1.6rem; background: var(--seminar-mint); }.legal-operator-card > svg { width: 32px; color: #22703f; }.legal-operator-card h2 { margin-top: 0.3rem; color: var(--seminar-ink); font-size: 1.65rem; }.legal-operator-card p:not(.seminar-eyebrow) { margin-top: 0.4rem; color: #53705e; font-size: 0.8rem; }.legal-operator-card a { color: var(--seminar-ink); font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }.legal-operator-card > span { color: #53705e; font-size: 0.68rem; }
+
 @media (max-width: 900px) {
   .interaction-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .student-steps { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .activity-guide article { grid-template-columns: 0.45fr 1fr 1fr; gap: 1rem; }
+  .legal-policy-grid, .legal-trust-grid { grid-template-columns: 1fr; }
+  .legal-policy-card, .legal-trust-card { min-height: 230px; }
 }
 
 @media (max-width: 640px) {
@@ -374,6 +390,10 @@ footer nav a:hover { color: var(--seminar-ink); }
   .activity-guide article > div + div { margin-top: 0.4rem; }
   .privacy-surface-list > div { grid-template-columns: auto 1fr; }
   .privacy-surface-list > div p { grid-column: 2; }
+  .legal-document > section:not(.legal-contact-card) { grid-template-columns: 1fr; gap: 0.8rem; padding: 1.6rem 0; }
+  .legal-document > section:not(.legal-contact-card) > p, .legal-document > section:not(.legal-contact-card) > ul { grid-column: 1; }
+  .legal-document > section:not(.legal-contact-card) h2 { font-size: 1.55rem; }
+  .legal-operator-card { grid-template-columns: auto 1fr; }.legal-operator-card > span { grid-column: 2; }
   .device-relationship { min-height: 320px; padding: 1rem; }
 }
 
@@ -567,6 +587,11 @@ footer nav a:hover { color: var(--seminar-ink); }
 .case-module-visual { position: relative; display: grid; min-height: 430px; grid-template-columns: repeat(2,110px); grid-template-rows: repeat(2,90px); gap: 0.8rem; align-content: end; justify-content: end; overflow: hidden; border: 1px solid var(--seminar-line); border-radius: 24px; padding: 2rem; background: white; box-shadow: 0 24px 60px rgba(16,26,56,0.08); }
 .case-page { position: absolute; top: 2rem; left: 2rem; width: 62%; min-height: 290px; border: 1px solid var(--seminar-line); border-radius: 15px; padding: 1.5rem; background: var(--seminar-paper); transform: rotate(-2deg); }.case-page h3 { margin-top: 0.8rem; color: var(--seminar-ink); font-size: 2.15rem; line-height: 1.02; }.case-page p { margin-top: 1rem; color: var(--seminar-muted); font-size: 0.72rem; }.case-page i { display: block; height: 5px; margin-top: 0.6rem; border-radius: 999px; background: var(--seminar-line); }.case-page i:nth-of-type(1) { width: 92%; margin-top: 1.3rem; }.case-page i:nth-of-type(2) { width: 84%; }.case-page i:nth-of-type(3) { width: 89%; }.case-page i:nth-of-type(4) { width: 58%; }
 .case-activity { position: relative; z-index: 2; display: grid; place-items: center; border: 1px solid #d9d6fb; border-radius: 13px; background: var(--seminar-violet-soft); }.case-activity span { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 50%; background: white; color: var(--seminar-violet); font-size: 0.65rem; font-weight: 800; }.case-activity strong { color: var(--seminar-ink); font-size: 0.68rem; }
+.legal-trust-section { border-bottom: 1px solid var(--seminar-line); background: #eef8f2; }
+.legal-trust-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; margin-top: 3rem; }
+.legal-trust-card { position: relative; display: flex; min-height: 285px; flex-direction: column; overflow: hidden; border: 1px solid rgba(16,26,56,0.12); border-radius: 22px; padding: 1.5rem; background: white; color: var(--seminar-text); box-shadow: var(--seminar-shadow-soft); text-decoration: none; transition: transform 220ms ease, box-shadow 220ms ease; }
+.legal-trust-card:hover { box-shadow: var(--seminar-shadow-raised); transform: translateY(-4px); }.legal-trust-card > svg { width: 23px; color: var(--seminar-violet); }.legal-trust-card > span { position: absolute; top: 1.3rem; right: 1.4rem; color: #a1a7b7; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.08em; }.legal-trust-card h3 { margin-top: 3.2rem; color: var(--seminar-ink); font-size: 2rem; line-height: 1.05; }.legal-trust-card p { margin-top: 0.85rem; color: var(--seminar-muted); font-size: 0.82rem; line-height: 1.65; }.legal-trust-card b { display: inline-flex; align-items: center; gap: 0.45rem; margin-top: auto; padding-top: 1.5rem; color: var(--seminar-violet); font-size: 0.74rem; }.legal-trust-card b svg { width: 14px; }
+.legal-trust-card:nth-child(2) { background: #f1efff; }.legal-trust-card:nth-child(3) { background: #fff5d7; }.legal-trust-operator { margin-top: 1.5rem; color: var(--seminar-muted); font-size: 0.75rem; }.legal-trust-operator a { color: var(--seminar-violet); font-weight: 750; }
 .homepage-faq { border-bottom: 1px solid var(--seminar-line); background: white; }
 .world-final-cta { position: relative; overflow: hidden; background: var(--seminar-violet-soft); }
 .world-final-signal { position: absolute; inset: 0; }.world-final-signal i { position: absolute; top: 50%; left: 50%; width: var(--final-size); height: var(--final-size); border-radius: 50%; background: var(--seminar-violet); opacity: 0.16; transform: rotate(var(--final-angle)) translateX(var(--final-radius)); animation: final-signal 6s ease-in-out infinite alternate; }.world-final-signal i:nth-child(3n) { background: var(--seminar-brand-coral); }
