@@ -56,7 +56,7 @@ export function parseMarkdown(markdown: string): string {
     .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
     .replace(/\*(.*)\*/gim, '<em>$1</em>')
     .replace(/^\* (.*$)/gim, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/gims, '<ul>$1</ul>')
+    .replace(/(<li>[\s\S]*<\/li>)/gim, '<ul>$1</ul>')
     .replace(/\n/gim, '<br/>');
 }
 

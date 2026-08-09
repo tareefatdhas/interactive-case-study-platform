@@ -1,0 +1,28 @@
+html:has(.classfully-remote),
+body:has(.classfully-remote) {
+  min-width: 300px;
+  min-height: 100%;
+  margin: 0;
+  background: #faf9f6;
+}
+
+.remote-route-message {
+  display: flex;
+  min-height: 100vh;
+  padding: 28px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 9px;
+  color: #14223f;
+  background: radial-gradient(circle at 85% 10%, #eeeaff, transparent 38%), #faf9f6;
+  font-family: var(--font-inter), sans-serif;
+  text-align: center;
+}
+
+.remote-route-message > svg { color: #6654e9; }
+.remote-route-message > strong { font-family: var(--font-fraunces), Georgia, serif; font-size: 24px; font-weight: 500; }
+.remote-route-message > span { max-width: 300px; color: #70778b; font-size: 13px; line-height: 1.5; }
+.remote-route-brand { margin-bottom: 18px; font-family: var(--font-fraunces), Georgia, serif; font-size: 25px; }
+.remote-route-brand span { color: #6654e9; }
+.remote-route-message button { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 12px; padding: 0 17px; border: 0; border-radius: 13px; color: #fff; background: #14223f; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; }

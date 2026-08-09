@@ -3,6 +3,7 @@
 import { useState, useEffect, use, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { auth } from '@/lib/firebase/config';
 import { 
   getSession, 
   getCaseStudy, 
@@ -99,10 +100,13 @@ export default function PresentationPage({ params }: PresentationPageProps) {
     };
 
     try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Sign in again before summarizing responses.');
       const response = await fetch('/api/summarize-responses', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify(requestBody),
       });
@@ -160,7 +164,12 @@ export default function PresentationPage({ params }: PresentationPageProps) {
     }
   };
 
-  const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL}/session/${session?.sessionCode}`;
+  const [appUrl, setAppUrl] = useState(process.env.NEXT_PUBLIC_APP_URL || '');
+  const joinUrl = `${appUrl}/session/${session?.sessionCode}`;
+
+  useEffect(() => {
+    setAppUrl(window.location.origin);
+  }, []);
 
   // Update time every second
   useEffect(() => {
@@ -1149,7 +1158,7 @@ export default function PresentationPage({ params }: PresentationPageProps) {
                               <div className="text-2xl font-light text-green-400">
                                 {questionAnalysis[selectedQuestionIndex].averageScore 
                                   ? Math.round(questionAnalysis[selectedQuestionIndex].averageScore! * 10) / 10
-                                  : '—'
+                                  : 'Not available'
                                 }
                               </div>
                               <div className="text-sm text-gray-400 uppercase tracking-wide">

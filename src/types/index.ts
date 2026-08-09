@@ -42,6 +42,22 @@ export interface CaseStudy {
 
 export type SessionType = 'case-study' | 'standalone';
 
+export type SessionInteractionType = 'pulse' | 'poll' | 'quiz' | 'open-response' | 'reflection' | 'case-study';
+
+export interface SessionInteraction {
+  id: string;
+  type: SessionInteractionType;
+  title: string;
+  prompt: string;
+  plannedTime?: string;
+  durationMinutes?: number;
+  caseStudyId?: string;
+  options?: string[];
+  correctOptionIndex?: number;
+  explanation?: string;
+  resultVisibility?: 'live' | 'after-reveal' | 'instructor-only';
+}
+
 export interface Session {
   id: string;
   sessionCode: string;
@@ -49,6 +65,11 @@ export interface Session {
   caseStudyId?: string; // Optional for standalone sessions
   caseStudyTitle?: string; // Store title to avoid orphaned references
   teacherId: string;
+  courseCode?: string;
+  courseName?: string;
+  scheduledFor?: string;
+  presentationMode?: 'external';
+  interactions?: SessionInteraction[];
   active: boolean;
   studentsJoined: string[];
   releasedSections: number[]; // Array of section indices that have been released (0-based)
@@ -78,6 +99,7 @@ export interface StandaloneSection {
 
 export interface Student {
   id: string;
+  authorUid?: string;
   studentId: string;
   studentIdNormalized: string; // For duplicate detection and searching
   name: string;
@@ -88,6 +110,7 @@ export interface Student {
 
 export interface Response {
   id: string;
+  authorUid?: string;
   studentId: string;
   sessionId: string;
   caseStudyId: string;
@@ -267,6 +290,7 @@ export interface Achievement {
 
 export interface StudentAchievement {
   id: string;
+  authorUid?: string;
   studentId: string;
   achievementId: string;
   achievementName: string; // Cache for display

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 export type FABState = 'default' | 'highlight' | 'progress' | 'achievement';
 
-interface FABNotification {
+export interface FABNotification {
   type: 'highlight' | 'progress' | 'achievement';
   count?: number;
   message?: string;
@@ -28,17 +28,17 @@ const stateConfig = {
   highlight: {
     icon: Sparkles,
     bgColor: 'bg-yellow-500 hover:bg-yellow-600',
-    title: 'New highlight created! View your notes'
+    title: 'Highlight saved. View your notes.'
   },
   progress: {
     icon: TrendingUp,
     bgColor: 'bg-green-500 hover:bg-green-600',
-    title: 'Progress updated! Check your achievements'
+    title: 'Progress updated. Check your milestones.'
   },
   achievement: {
     icon: Award,
     bgColor: 'bg-purple-500 hover:bg-purple-600',
-    title: 'New achievement unlocked!'
+    title: 'Milestone reached.'
   }
 };
 
@@ -113,7 +113,6 @@ export default function FloatingActionButton({
           state === 'highlight' && 'focus:ring-yellow-500',
           state === 'progress' && 'focus:ring-green-500',
           state === 'achievement' && 'focus:ring-purple-500',
-          isAnimating && 'animate-bounce',
           showPulse ? 'scale-110' : 'hover:scale-105'
         )}
         title={config.title}
@@ -133,17 +132,6 @@ export default function FloatingActionButton({
           </div>
         )}
 
-        {/* Sparkle effect for achievements */}
-        {state === 'achievement' && (
-          <div className="absolute inset-0 rounded-full overflow-hidden">
-            <div className="absolute top-1 right-2 w-1 h-1 bg-white rounded-full animate-ping" 
-                 style={{ animationDelay: '0ms' }} />
-            <div className="absolute top-3 left-1 w-1 h-1 bg-white rounded-full animate-ping" 
-                 style={{ animationDelay: '200ms' }} />
-            <div className="absolute bottom-2 right-1 w-1 h-1 bg-white rounded-full animate-ping" 
-                 style={{ animationDelay: '400ms' }} />
-          </div>
-        )}
       </button>
 
       {/* Floating notification tooltip */}

@@ -121,7 +121,7 @@ export function useFABState(context: FABStateContext): UseFABStateReturn {
         type: 'achievement',
         count: recentActivity.achievements.length,
         message: recentActivity.achievements.length === 1
-          ? `Achievement unlocked: ${latestAchievement.title}`
+          ? `Milestone reached: ${latestAchievement.title}`
           : `${recentActivity.achievements.length} new achievements!`
       });
     }

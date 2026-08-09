@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { getCaseStudiesByTeacher, getSessionsByTeacher, checkAndTimeoutInactiveSessions, endSession, deleteSession, updateSession } from '@/lib/firebase/firestore';
+import { deleteInstructorClassroomData, endInstructorClassroom } from '@/lib/firebase/live-classroom';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -130,6 +131,10 @@ export default function SessionsPage() {
 
     setActionLoading(prev => ({ ...prev, [sessionId]: true }));
     try {
+      const session = sessions.find((candidate) => candidate.id === sessionId);
+      if (session?.sessionType === 'standalone') {
+        await endInstructorClassroom(session.teacherId, session.id);
+      }
       await endSession(sessionId);
       // Refresh sessions list
       if (user) {
@@ -151,6 +156,10 @@ export default function SessionsPage() {
 
     setActionLoading(prev => ({ ...prev, [sessionId]: true }));
     try {
+      const session = sessions.find((candidate) => candidate.id === sessionId);
+      if (session?.sessionType === 'standalone') {
+        await deleteInstructorClassroomData(session.teacherId, session.id);
+      }
       await deleteSession(sessionId);
       // Refresh sessions list
       if (user) {
@@ -178,7 +187,12 @@ export default function SessionsPage() {
 
     setBulkActionLoading(true);
     try {
-      await Promise.all(activeSessions.map(session => endSession(session.id)));
+      await Promise.all(activeSessions.map(async (session) => {
+        if (session.sessionType === 'standalone') {
+          await endInstructorClassroom(session.teacherId, session.id);
+        }
+        await endSession(session.id);
+      }));
       // Refresh sessions list
       if (user) {
         const sessionsData = await getSessionsByTeacher(user.uid);
@@ -233,9 +247,10 @@ export default function SessionsPage() {
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Sessions</h1>
+              <p className="seminar-eyebrow mb-2">Classroom control</p>
+              <h1 className="seminar-display text-4xl text-[#101a38]">Live sessions</h1>
               <p className="text-gray-600 mt-1">
-                Manage your live case study sessions and start new ones.
+                Start a class, open its projector view, or review an earlier session.
                 {sessions.length > 0 && (
                   <span className="ml-2 text-sm">
                     ({activeSessions.length} active, {endedSessions.length} ended)
@@ -256,21 +271,12 @@ export default function SessionsPage() {
                   End All Active ({activeSessions.length})
                 </Button>
               )}
-              {caseStudies.length > 0 ? (
-                <Link href="/dashboard/sessions/new">
-                  <Button>
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Session
-                  </Button>
-                </Link>
-              ) : (
-                <Link href="/dashboard/case-studies/new">
-                  <Button>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Case Study First
-                  </Button>
-                </Link>
-              )}
+              <Link href="/dashboard/sessions/new">
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Prepare session
+                </Button>
+              </Link>
             </div>
           </div>
 

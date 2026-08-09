@@ -137,9 +137,10 @@ export default function AnalyticsPage() {
         <div className="p-6 lg:p-8">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
+            <p className="seminar-eyebrow mb-2">Class patterns</p>
+            <h1 className="seminar-display text-4xl text-[#101a38]">Insights</h1>
             <p className="text-gray-600 mt-1">
-              Track engagement, performance, and learning outcomes across your case studies.
+              See response and attendance patterns across recent class sessions.
             </p>
           </div>
 
@@ -173,7 +174,7 @@ export default function AnalyticsPage() {
                   value={analyticsData.totalStudents}
                   change={`${analyticsData.totalResponses} responses`}
                   icon={Users}
-                  description="Unique students engaged"
+                  description="Students across all sessions"
                 />
                 <StatCard
                   title="Completion Rate"
@@ -183,11 +184,11 @@ export default function AnalyticsPage() {
                   description="Students completing sessions"
                 />
                 <StatCard
-                  title="Avg. Engagement"
+                  title="Responses per student"
                   value={analyticsData.averageEngagement}
                   change="responses per student"
                   icon={Award}
-                  description="Average participation level"
+                  description="Average across recent sessions"
                 />
               </div>
 
@@ -198,10 +199,10 @@ export default function AnalyticsPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center">
                       <BookOpen className="w-5 h-5 mr-2" />
-                      Case Studies Performance
+                      Case study activity
                     </CardTitle>
                     <CardDescription>
-                      Engagement metrics for each case study
+                      Sessions and responses linked to each case
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -210,7 +211,7 @@ export default function AnalyticsPage() {
                         <BarChart className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                         <p className="text-gray-500">No case studies available</p>
                         <p className="text-sm text-gray-400 mt-1">
-                          Create case studies to see performance analytics
+                          Add a case and use it in class to see its session history
                         </p>
                       </div>
                     ) : (
@@ -331,10 +332,10 @@ export default function AnalyticsPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center">
                     <Target className="w-5 h-5 mr-2" />
-                    AI Assessment Insights
+                    Response assessment
                   </CardTitle>
                   <CardDescription>
-                    Learning outcomes and milestone achievements powered by AI analysis
+                    Learning objectives estimated from scored responses
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -343,7 +344,7 @@ export default function AnalyticsPage() {
                       <Target className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                       <p className="text-gray-500">No assessment data available</p>
                       <p className="text-sm text-gray-400 mt-1">
-                        Conduct sessions to generate AI-powered insights on student learning
+                        Run a scored activity to see response-based estimates here
                       </p>
                     </div>
                   ) : (
@@ -354,7 +355,7 @@ export default function AnalyticsPage() {
                           <p className="text-2xl font-bold text-blue-700">
                             {responses.filter(r => r.assessment).length}
                           </p>
-                          <p className="text-sm text-blue-600">AI-assessed responses</p>
+                          <p className="text-sm text-blue-600">Responses assessed</p>
                         </div>
                         <div className="bg-green-50 p-4 rounded-lg">
                           <h4 className="font-medium text-green-900 mb-2">Average Score</h4>

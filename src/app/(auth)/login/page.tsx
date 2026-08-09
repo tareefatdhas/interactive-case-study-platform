@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { signInTeacher } from '@/lib/firebase/auth';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,7 +26,7 @@ export default function LoginPage() {
       await signInTeacher(formData.email, formData.password);
       router.push('/dashboard');
     } catch (error: any) {
-      setError(error.message || 'Failed to sign in');
+      setError(error.message || 'We could not sign you in. Check your email and password, then try again.');
     } finally {
       setLoading(false);
     }
@@ -40,25 +40,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-blue-50 to-white">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Interactive Case Studies
-          </h1>
-          <p className="mt-2 text-gray-600">
-            Sign in to your teacher account
-          </p>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Welcome back</CardTitle>
-            <CardDescription>
-              Enter your credentials to access your dashboard
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+    <SeminarAuthShell eyebrow="Instructor sign in" title="Welcome back." description="Sign in to prepare a lesson, open your classroom display, or continue a live class.">
+      <div className="rounded-2xl border border-[#e3e5ed] bg-white p-6 shadow-[0_18px_50px_rgba(16,26,56,0.06)] sm:p-7">
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 label="Email"
@@ -67,7 +50,7 @@ export default function LoginPage() {
                 value={formData.email}
                 onChange={handleInputChange}
                 required
-                placeholder="teacher@school.edu"
+                placeholder="you@university.edu"
               />
               
               <Input
@@ -77,7 +60,7 @@ export default function LoginPage() {
                 value={formData.password}
                 onChange={handleInputChange}
                 required
-                placeholder="Enter your password"
+                placeholder="Your password"
               />
 
               {error && (
@@ -86,35 +69,27 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <Button
-                type="submit"
-                loading={loading}
-                className="w-full"
-              >
-                Sign In
-              </Button>
+              <Button type="submit" loading={loading} className="w-full">Sign in</Button>
             </form>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
-                Don't have an account?{' '}
+                Don&apos;t have an account?{' '}
                 <Link
                   href="/signup"
-                  className="font-medium text-blue-900 hover:text-blue-800"
+                  className="font-semibold text-[#5146e5] hover:text-[#4137c7]"
                 >
-                  Sign up here
+                  Create one
                 </Link>
               </p>
               <Link
                 href="/forgot-password"
-                className="text-sm text-gray-500 hover:text-gray-700 mt-2 inline-block"
+                className="mt-2 inline-block text-sm text-[#697087] hover:text-[#313950]"
               >
                 Forgot your password?
               </Link>
             </div>
-          </CardContent>
-        </Card>
       </div>
-    </div>
+    </SeminarAuthShell>
   );
 }

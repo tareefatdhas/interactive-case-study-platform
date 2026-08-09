@@ -1,195 +1,98 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCaseStudiesByTeacher } from '@/lib/firebase/firestore';
+import { getCaseStudiesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import type { CaseStudy } from '@/types';
-import { BookOpen, Users, Play, Plus } from 'lucide-react';
+import type { CaseStudy, Session } from '@/types';
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Clock3, LoaderCircle, MonitorUp, Plus } from 'lucide-react';
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadCaseStudies = async () => {
-      if (user) {
-        try {
-          const studies = await getCaseStudiesByTeacher(user.uid);
-          setCaseStudies(studies);
-        } catch (error) {
-          console.error('Error loading case studies:', error);
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadCaseStudies();
+    if (!user) return;
+    Promise.all([getCaseStudiesByTeacher(user.uid), getSessionsByTeacher(user.uid)])
+      .then(([studies, teacherSessions]) => {
+        setCaseStudies(studies);
+        setSessions(teacherSessions);
+      })
+      .catch((error) => console.error('Could not load the instructor overview:', error))
+      .finally(() => setLoading(false));
   }, [user]);
 
-  const stats = {
-    totalCaseStudies: caseStudies.length,
-    totalSessions: 0, // TODO: Calculate from sessions
-    totalStudents: 0, // TODO: Calculate from sessions
-    averageScore: 0, // TODO: Calculate from responses
-  };
+  const recentSessions = sessions.slice(0, 3);
 
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <div className="p-6 lg:p-8">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">
-              Welcome back, {user?.name}
-            </h1>
-            <p className="text-gray-600 mt-1">
-              Here's what's happening with your case studies today.
-            </p>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <BookOpen className="h-8 w-8 text-blue-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Case Studies</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.totalCaseStudies}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <Play className="h-8 w-8 text-green-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Active Sessions</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.totalSessions}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <Users className="h-8 w-8 text-purple-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Total Students</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.totalStudents}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
-                    <span className="text-orange-600 font-bold">%</span>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Avg Score</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.averageScore}%</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/dashboard/case-studies/new">
-                <Button className="flex items-center">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Case Study
-                </Button>
-              </Link>
-              <Link href="/dashboard/sessions/new">
-                <Button variant="outline" className="flex items-center">
-                  <Play className="w-4 h-4 mr-2" />
-                  Start Session
-                </Button>
-              </Link>
+        <main className="mx-auto max-w-6xl p-6 lg:p-10">
+          <header className="mb-9 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="seminar-eyebrow mb-2">Instructor home</p>
+              <h1 className="seminar-display text-4xl leading-tight text-[#101a38] sm:text-5xl">What does your class need next?</h1>
+              <p className="mt-3 max-w-2xl text-base leading-7 text-[#697087]">Prepare the next session, return to a recent class, or review what attendance, questions, and understanding are showing across the course.</p>
             </div>
-          </div>
+            <Link href="/dashboard/sessions/new"><Button size="lg" className="gap-2 whitespace-nowrap"><Plus className="h-4 w-4" /> Prepare a session</Button></Link>
+          </header>
 
-          {/* Recent Case Studies */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Recent Case Studies</h2>
-              <Link href="/dashboard/case-studies">
-                <Button variant="ghost" size="sm">View All</Button>
-              </Link>
-            </div>
+          {loading ? (
+            <div className="flex min-h-80 items-center justify-center" role="status"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /><span className="sr-only">Loading your sessions</span></div>
+          ) : (
+            <>
+              {sessions.length === 0 ? (
+                <section className="overflow-hidden rounded-2xl border border-[#dcd8ff] bg-white" aria-labelledby="first-session-title">
+                  <div className="border-b border-[#e3e5ed] bg-[#f7f6ff] p-6 sm:p-8">
+                    <p className="seminar-eyebrow mb-2">Your first classroom</p>
+                    <h2 id="first-session-title" className="seminar-display text-3xl text-[#101a38] sm:text-4xl">Start the course record with one useful interaction.</h2>
+                    <p className="mt-3 max-w-2xl text-sm leading-6 text-[#697087]">A check-in at the beginning or one knowledge check after a difficult idea is enough. Each later session can build on what this class reveals.</p>
+                  </div>
+                  <div className="grid divide-y divide-[#e3e5ed] md:grid-cols-3 md:divide-x md:divide-y-0">
+                    {[
+                      { icon: CalendarDays, title: 'Name the class and session', copy: 'Add the course, topic, and date.' },
+                      { icon: CheckCircle2, title: 'Prepare one or two prompts', copy: 'Choose a pulse, poll, quiz, or short response.' },
+                      { icon: MonitorUp, title: 'Open the display and teach', copy: 'Show a prompt, discuss the result, then return to your slides.' },
+                    ].map(({ icon: Icon, title, copy }) => (
+                      <div className="p-6" key={title}><Icon className="h-5 w-5 text-[#5146e5]" /><h3 className="mt-4 font-semibold text-[#101a38]">{title}</h3><p className="mt-1 text-sm leading-6 text-[#697087]">{copy}</p></div>
+                    ))}
+                  </div>
+                  <div className="flex flex-col gap-3 border-t border-[#e3e5ed] p-6 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-[#697087]">Most instructors can prepare the first session in a few minutes.</p>
+                    <Link href="/dashboard/sessions/new"><Button className="gap-2">Prepare the first session <ArrowRight className="h-4 w-4" /></Button></Link>
+                  </div>
+                </section>
+              ) : (
+                <section aria-labelledby="recent-sessions-title">
+                  <div className="mb-4 flex items-center justify-between"><div><p className="seminar-eyebrow mb-1">Teach</p><h2 id="recent-sessions-title" className="seminar-display text-3xl text-[#101a38]">Your sessions</h2></div><Link href="/dashboard/sessions" className="seminar-focus rounded-lg text-sm font-semibold text-[#5146e5]">View all</Link></div>
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    {recentSessions.map((session) => (
+                      <article className="flex min-h-52 flex-col rounded-2xl border border-[#e3e5ed] bg-white p-5" key={session.id}>
+                        <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5]">{session.courseCode || 'Class session'}</span>{session.active && <span className="rounded-full bg-[#edf8ef] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[#28733a]">Live</span>}</div>
+                        <h3 className="seminar-display mt-3 text-2xl leading-tight text-[#101a38]">{session.title || session.caseStudyTitle || 'Untitled session'}</h3>
+                        <div className="mt-3 flex items-center gap-2 text-xs text-[#697087]"><Clock3 className="h-3.5 w-3.5" />{session.interactions?.length || 0} prepared interactions</div>
+                        <Link className="mt-auto pt-5" href={`/dashboard/sessions/${session.id}`}><Button variant="outline" className="w-full gap-2">{session.active ? 'Return to class' : 'Open session'} <ArrowRight className="h-4 w-4" /></Button></Link>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
 
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900"></div>
-              </div>
-            ) : caseStudies.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {caseStudies.slice(0, 6).map((caseStudy) => (
-                  <Card key={caseStudy.id} className="hover:shadow-md transition-shadow">
-                    <CardHeader>
-                      <CardTitle className="text-base">{caseStudy.title}</CardTitle>
-                      <CardDescription 
-                        className="line-clamp-2 [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:pl-6 [&_ol]:pl-6 [&_li]:list-item [&_li]:mb-1"
-                        dangerouslySetInnerHTML={{ __html: caseStudy.description }}
-                      />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center justify-between text-sm text-gray-500">
-                        <span>{caseStudy.sections.length} sections</span>
-                        <span>{caseStudy.totalPoints} points</span>
-                      </div>
-                      <div className="mt-4 flex gap-2">
-                        <Link href={`/dashboard/case-studies/${caseStudy.id}`}>
-                          <Button size="sm" variant="outline">
-                            Edit
-                          </Button>
-                        </Link>
-                        <Link href={`/dashboard/sessions/new?caseStudyId=${caseStudy.id}`}>
-                          <Button size="sm">
-                            Start Session
-                          </Button>
-                        </Link>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <BookOpen className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No case studies yet</h3>
-                  <p className="text-gray-600 mb-6">
-                    Get started by creating your first interactive case study.
-                  </p>
-                  <Link href="/dashboard/case-studies/new">
-                    <Button>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Your First Case Study
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
+              <section className="mt-10 border-t border-[#e3e5ed] pt-8" aria-labelledby="lesson-material-title">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div><p className="seminar-eyebrow mb-1">Optional module</p><h2 id="lesson-material-title" className="seminar-display text-3xl text-[#101a38]">Case material</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#697087]">Add a case when the lesson needs a shared decision or reading. It is not required for live polls and quizzes.</p></div>
+                  <div className="flex gap-2"><Link href="/dashboard/case-studies"><Button variant="ghost">View library</Button></Link><Link href="/dashboard/case-studies/new"><Button variant="outline" className="gap-2"><BookOpen className="h-4 w-4" /> Add case</Button></Link></div>
+                </div>
+                {caseStudies.length > 0 && <div className="mt-5 flex items-center gap-3 rounded-xl border border-[#e3e5ed] bg-white px-4 py-3 text-sm text-[#4f576d]"><BookOpen className="h-4 w-4 text-[#5146e5]" /><span><strong className="text-[#101a38]">{caseStudies.length}</strong> {caseStudies.length === 1 ? 'case is' : 'cases are'} ready in your lesson library.</span></div>}
+              </section>
+            </>
+          )}
+        </main>
       </DashboardLayout>
     </ProtectedRoute>
   );

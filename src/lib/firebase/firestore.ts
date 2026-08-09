@@ -138,10 +138,22 @@ export const unarchiveCaseStudy = async (caseStudyId: string): Promise<void> => 
 };
 
 // Sessions
+function omitUndefinedValues<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(omitUndefinedValues) as T;
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, child]) => child !== undefined)
+        .map(([key, child]) => [key, omitUndefinedValues(child)]),
+    ) as T;
+  }
+  return value;
+}
+
 export const createSession = async (session: Omit<Session, 'id' | 'createdAt'>) => {
   const now = Timestamp.now();
   const docRef = await addDoc(collection(db, COLLECTIONS.SESSIONS), {
-    ...session,
+    ...omitUndefinedValues(session),
     createdAt: now
   });
   return docRef.id;
@@ -645,6 +657,7 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
         );
         
         const totalQuestionsAvailable = studentSessions.reduce((total, session) => {
+          if (!session.caseStudyId) return total;
           const caseStudy = caseStudyMap.get(session.caseStudyId);
           if (caseStudy && session.releasedSections) {
             // Only count questions from sections that have been released to students
@@ -672,6 +685,7 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
           if (!responseSession || !responseSession.releasedSections) return false;
 
           // Find the case study and section for this response
+          if (!responseSession.caseStudyId) return false;
           const caseStudy = caseStudyMap.get(responseSession.caseStudyId);
           if (!caseStudy) return false;
 

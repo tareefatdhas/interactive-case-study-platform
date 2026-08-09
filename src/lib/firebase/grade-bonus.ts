@@ -39,7 +39,7 @@ export class GradeBonusService {
   static async applyAchievementBonuses(
     studentId: string,
     courseId: string,
-    newAchievements: StudentAchievement[]
+    newAchievements: Array<Omit<StudentAchievement, 'id'>>
   ): Promise<void> {
     try {
       // Get current student grade record

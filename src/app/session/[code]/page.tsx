@@ -93,6 +93,12 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   const [popularityOpacity, setPopularityOpacity] = useState(0.6);
   const [minimumStudents, setMinimumStudents] = useState(2);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [conclusionData, setConclusionData] = useState<{
+    keyInsights: string[];
+    learningMilestones: any;
+    reflectionPrompts: string[];
+  } | null>(null);
+  const [loadingConclusion, setLoadingConclusion] = useState(true);
 
   // Achievement notifications
   const { notifications, showAchievementNotification, closeNotification } = useAchievementNotifications();
@@ -190,7 +196,16 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
   // Load remembered student info from cookie
   useEffect(() => {
     const remembered = loadStudentInfoFromCookie();
-    if (remembered) {
+    const pendingStudentNumber = window.sessionStorage.getItem('living-seminar-pending-student-number');
+    window.sessionStorage.removeItem('living-seminar-pending-student-number');
+    if (pendingStudentNumber) {
+      setStudentInfo((current) => ({ ...current, studentId: pendingStudentNumber }));
+      if (remembered && normalizeStudentId(remembered.studentId) === normalizeStudentId(pendingStudentNumber)) {
+        setRememberedStudent(remembered);
+      } else {
+        setShowJoinAsOther(true);
+      }
+    } else if (remembered) {
       setRememberedStudent(remembered);
     }
   }, []);
@@ -417,6 +432,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         console.log('JOIN: Creating student...');
         try {
           const studentId = await createStudent({
+            authorUid: studentAuth.currentUser?.uid,
             studentId: studentInfo.studentId,
             studentIdNormalized: normalizeStudentId(studentInfo.studentId),
             name: studentInfo.name,
@@ -425,6 +441,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           console.log('JOIN: Student created successfully with ID:', studentId);
           studentData = {
             id: studentId,
+            authorUid: studentAuth.currentUser?.uid,
             studentId: studentInfo.studentId,
             studentIdNormalized: normalizeStudentId(studentInfo.studentId),
             name: studentInfo.name,
@@ -590,6 +607,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
           // Create the response in Firestore for persistence and assessment
           await createResponse({
+            authorUid: studentAuth.currentUser?.uid,
             studentId: student.id,
             sessionId: session.id,
             caseStudyId: caseStudy.id,
@@ -605,10 +623,13 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           // Only send to AI for assessment if not multiple choice (since MC is auto-graded)
           if (question.type !== 'multiple-choice' && question.type !== 'multiple-choice-feedback') {
             try {
+              const idToken = await studentAuth.currentUser?.getIdToken();
+              if (!idToken) throw new Error('Student sign-in is not ready.');
               await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
+                  Authorization: `Bearer ${idToken}`,
                 },
                 body: JSON.stringify({
                   message: responseText,
@@ -1028,6 +1049,101 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     }).length;
   }, [highlights]);
 
+  // Hooks must remain unconditional, so the conclusion is generated here and
+  // only activated when the student reaches the conclusion step.
+  useEffect(() => {
+    if (step !== 'conclusion' || !caseStudy || !student || !session) return;
+
+    let cancelled = false;
+    const totalPossiblePoints = caseStudy.sections.reduce((total, section) =>
+      total + section.questions.reduce((sectionTotal, question) => sectionTotal + question.points, 0), 0
+    );
+    const earnedPoints = responses.reduce((total, response) => total + (response.points || 0), 0);
+    const percentageScore = totalPossiblePoints > 0 ? Math.round((earnedPoints / totalPossiblePoints) * 100) : 0;
+    const totalQuestions = caseStudy.sections.reduce((total, section) => total + section.questions.length, 0);
+    const completionRate = totalQuestions > 0 ? Math.round((responses.length / totalQuestions) * 100) : 100;
+
+    const generateConclusion = async () => {
+      try {
+        setLoadingConclusion(true);
+        const responseData = responses.map(response => {
+          const question = caseStudy.sections
+            .flatMap(section => section.questions.map(q => ({ ...q, sectionTitle: section.title })))
+            .find(q => q.id === response.questionId);
+
+          return {
+            questionText: question?.text || 'Question not found',
+            studentResponse: response.response,
+            points: response.points || 0,
+            maxPoints: response.maxPoints,
+            sectionTitle: question?.sectionTitle || 'Unknown Section'
+          };
+        });
+
+        const idToken = await studentAuth.currentUser?.getIdToken();
+        if (!idToken) throw new Error('Student sign-in is not ready.');
+        const response = await fetch('/api/generate-conclusion', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            caseStudyTitle: caseStudy.title,
+            caseStudyDescription: caseStudy.description,
+            responses: responseData,
+            performance: {
+              totalScore: earnedPoints,
+              maxScore: totalPossiblePoints,
+              percentageScore,
+              completionRate
+            },
+            studentName: student.name,
+            teacherGuidance: caseStudy.conclusionGuidance
+          })
+        });
+
+        if (!response.ok) throw new Error(`API request failed: ${response.status}`);
+        const apiResult = await response.json();
+        if (!apiResult.success) throw new Error(apiResult.error || 'Failed to generate conclusion');
+        if (!cancelled) setConclusionData(apiResult.result);
+      } catch (error) {
+        console.error('Error generating AI conclusion:', error);
+        if (!cancelled) {
+          setConclusionData({
+            keyInsights: [
+              'The case study is complete. This summary is based on the submitted responses.',
+              'The response record is available below for review.',
+              'A more specific summary could not be generated at this time.'
+            ],
+            learningMilestones: Object.keys(DEFAULT_MILESTONES).reduce((acc, key) => {
+              acc[key] = {
+                name: DEFAULT_MILESTONES[key].name,
+                achieved: percentageScore >= 70,
+                progress: Math.min(1, percentageScore / 100),
+                evidence: 'Estimate based on the overall score only.',
+                confidence: 0.4
+              };
+              return acc;
+            }, {} as any),
+            reflectionPrompts: [
+              'What was the most important concept you learned from this case study?',
+              'How might you apply these insights in real-world situations?',
+              'What questions do you still have about this topic?'
+            ]
+          });
+        }
+      } finally {
+        if (!cancelled) setLoadingConclusion(false);
+      }
+    };
+
+    generateConclusion();
+    return () => {
+      cancelled = true;
+    };
+  }, [step, caseStudy, student, session, responses]);
+
 
   if (loading) {
     return (
@@ -1073,6 +1189,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         if (!studentData) {
           console.log('QUICK JOIN: Creating student...');
           const studentId = await createStudent({
+            authorUid: studentAuth.currentUser?.uid,
             studentId: rememberedStudent.studentId,
             studentIdNormalized: normalizeStudentId(rememberedStudent.studentId),
             name: rememberedStudent.name,
@@ -1080,6 +1197,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
           });
           studentData = {
             id: studentId,
+            authorUid: studentAuth.currentUser?.uid,
             studentId: rememberedStudent.studentId,
             studentIdNormalized: normalizeStudentId(rememberedStudent.studentId),
             name: rememberedStudent.name,
@@ -1630,102 +1748,6 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
     const answeredQuestions = responses.length;
     const completionRate = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 100;
     
-    // State for AI-generated conclusion data
-    const [conclusionData, setConclusionData] = useState<{
-      keyInsights: string[];
-      learningMilestones: any;
-      reflectionPrompts: string[];
-    } | null>(null);
-    const [loadingConclusion, setLoadingConclusion] = useState(true);
-
-    // Generate AI-powered conclusion when component mounts
-    useEffect(() => {
-      const generateConclusion = async () => {
-        try {
-          setLoadingConclusion(true);
-          
-          // Prepare response data for AI analysis
-          const responseData = responses.map(response => {
-            const question = caseStudy.sections
-              .flatMap(section => section.questions.map(q => ({ ...q, sectionTitle: section.title })))
-              .find(q => q.id === response.questionId);
-            
-            return {
-              questionText: question?.text || 'Question not found',
-              studentResponse: response.response,
-              points: response.points || 0,
-              maxPoints: response.maxPoints,
-              sectionTitle: question?.sectionTitle || 'Unknown Section'
-            };
-          });
-
-          // Call the API endpoint to generate AI conclusion
-          const response = await fetch('/api/generate-conclusion', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              caseStudyTitle: caseStudy.title,
-              caseStudyDescription: caseStudy.description,
-              responses: responseData,
-              performance: {
-                totalScore: earnedPoints,
-                maxScore: totalPossiblePoints,
-                percentageScore,
-                completionRate
-              },
-              studentName: student.name,
-              teacherGuidance: caseStudy.conclusionGuidance
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error(`API request failed: ${response.status}`);
-          }
-
-          const apiResult = await response.json();
-          
-          if (!apiResult.success) {
-            throw new Error(apiResult.error || 'Failed to generate conclusion');
-          }
-
-          const aiConclusion = apiResult.result;
-
-          setConclusionData(aiConclusion);
-        } catch (error) {
-          console.error('Error generating AI conclusion:', error);
-          // Fallback to basic conclusion
-          setConclusionData({
-            keyInsights: [
-              "You engaged thoughtfully with the case study material and demonstrated learning progress.",
-              "Your responses showed effort and engagement with the key concepts presented.",
-              "This learning experience has provided you with valuable insights to build upon."
-            ],
-            learningMilestones: Object.keys(DEFAULT_MILESTONES).reduce((acc, key) => {
-              acc[key] = {
-                name: DEFAULT_MILESTONES[key].name,
-                achieved: percentageScore >= 70,
-                progress: Math.min(1, percentageScore / 100),
-                evidence: "Assessment based on overall performance",
-                confidence: 0.7
-              };
-              return acc;
-            }, {} as any),
-            reflectionPrompts: [
-              "What was the most important concept you learned from this case study?",
-              "How might you apply these insights in real-world situations?",
-              "What questions do you still have about this topic?"
-            ]
-          });
-        } finally {
-          setLoadingConclusion(false);
-        }
-      };
-
-      generateConclusion();
-    }, [caseStudy, student, responses, earnedPoints, totalPossiblePoints, percentageScore, completionRate]);
-
     // Show loading state while generating conclusion
     if (loadingConclusion || !conclusionData) {
       return (
@@ -1810,13 +1832,13 @@ This summary was generated using AI analysis of your responses and performance.
             <div className="text-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-full text-sm font-medium mb-4">
                 <CheckCircle className="h-4 w-4" />
-                Case Study Completed
+                Case study complete
               </div>
               <h1 className="text-2xl sm:text-3xl font-light text-gray-900 mb-2">
                 {caseStudy.title}
               </h1>
               <p className="text-gray-600">
-                Congratulations on completing this learning journey!
+                Your responses and score are ready to review.
               </p>
             </div>
           </div>
@@ -1875,7 +1897,7 @@ This summary was generated using AI analysis of your responses and performance.
                     Learning Milestones
                   </CardTitle>
                   <CardDescription>
-                    AI-powered analysis of your progress on key learning objectives
+                    A response-based estimate for each learning objective
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1924,7 +1946,7 @@ This summary was generated using AI analysis of your responses and performance.
                   Key Insights
                 </CardTitle>
                 <CardDescription>
-                  Highlights from your learning journey
+                  Notes based on your submitted responses
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1949,7 +1971,7 @@ This summary was generated using AI analysis of your responses and performance.
                   Reflection Questions
                 </CardTitle>
                 <CardDescription>
-                  Personalized questions based on your learning journey
+                  Questions that connect to your responses
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1958,9 +1980,9 @@ This summary was generated using AI analysis of your responses and performance.
                     <div key={index} className="p-4 bg-orange-50 rounded-lg border-l-4 border-orange-400">
                       <p className="font-medium text-gray-900 mb-2">{prompt}</p>
                       <p className="text-sm text-gray-600">
-                        {index === 0 && "Consider the key insights that will stay with you beyond this session."}
-                        {index === 1 && "Think about practical applications of what you've learned."}
-                        {index === 2 && "Identify areas for continued learning and exploration."}
+                        {index === 0 && "Return to the response that most shaped your conclusion."}
+                        {index === 1 && "Name one situation where this idea could be tested."}
+                        {index === 2 && "Write down one question you would bring back to class."}
                       </p>
                     </div>
                   ))}
@@ -1976,7 +1998,7 @@ This summary was generated using AI analysis of your responses and performance.
                 className="flex-1 h-12 text-sm font-medium border-gray-300 text-gray-700 hover:bg-gray-50"
               >
                 <FileText className="w-4 h-4 mr-2" />
-                Download Learning Summary
+                Download response summary
               </Button>
               <Button
                 onClick={handleFinishCaseStudy}

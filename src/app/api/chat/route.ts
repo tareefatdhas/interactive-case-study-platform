@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assessStudentResponse, calculateSessionProgress, DEFAULT_MILESTONES } from '@/lib/ai/assessment';
 import { getResponsesByStudent, updateResponse } from '@/lib/firebase/firestore';
+import { firebaseRequestError, requireFirebaseUser } from '@/lib/firebase/server-auth';
+import { Timestamp } from 'firebase/firestore';
 
 export async function POST(request: NextRequest) {
   try {
+    await requireFirebaseUser(request, { allowAnonymous: true, requestsPerMinute: 12 });
     const body = await request.json();
     const { message, studentId, sessionId, questionId, context } = body;
 
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
           await updateResponse(responseToUpdate.id, {
             points: assessment.score,
             assessment: assessment,
-            gradedAt: new Date()
+            gradedAt: Timestamp.now()
           });
         }
       } catch (error) {
@@ -58,6 +61,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(response);
 
   } catch (error) {
+    const authError = firebaseRequestError(error);
+    if (authError) return NextResponse.json({ error: authError.error }, { status: authError.status });
     console.error('Chat API error:', error);
     
     // Return error response in the specified format

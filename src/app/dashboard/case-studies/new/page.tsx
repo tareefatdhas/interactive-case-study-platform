@@ -241,7 +241,8 @@ export default function NewCaseStudyPage() {
       <DashboardLayout>
         <div className="p-6 lg:p-8 max-w-4xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Create New Case Study</h1>
+            <p className="seminar-eyebrow mb-2">Lesson library</p>
+            <h1 className="seminar-display text-4xl text-[#101a38]">Create a case study</h1>
             <p className="text-gray-600 mt-1">
               Design an interactive case study with reading, discussion, and activity sections.
             </p>

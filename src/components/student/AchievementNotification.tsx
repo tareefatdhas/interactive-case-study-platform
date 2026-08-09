@@ -94,16 +94,11 @@ export default function AchievementNotification({
       {/* Notification Card */}
       <div
         className={cn(
-          'relative max-w-sm w-full bg-white border-2 rounded-2xl p-6 transform transition-all duration-500 animate-pulse',
+          'relative max-w-sm w-full bg-white border-2 rounded-2xl p-6 transition-all duration-300',
           rarityInfo.color,
           rarityInfo.glow,
-          isVisible ? 'scale-100 opacity-100 animate-bounce' : 'scale-95 opacity-0',
-          achievement.rarity === 'legendary' && 'animate-pulse'
+          isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         )}
-        style={{
-          animationDuration: achievement.rarity === 'legendary' ? '0.6s' : '0.4s',
-          animationIterationCount: achievement.rarity === 'legendary' ? '3' : '2'
-        }}
       >
         {/* Close Button */}
         <button
@@ -121,7 +116,7 @@ export default function AchievementNotification({
             rarityInfo.textColor
           )}>
             <Trophy className="h-4 w-4" />
-            Achievement Unlocked!
+            Milestone reached
           </div>
         </div>
 
@@ -257,7 +252,7 @@ export function AchievementToast({
             </div>
             
             <p className="text-xs text-gray-600 mb-2">
-              Achievement unlocked!
+              Milestone reached.
             </p>
             
             <div className="flex items-center gap-3">

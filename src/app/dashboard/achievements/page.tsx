@@ -557,26 +557,27 @@ export default function AchievementsPage() {
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Achievements</h1>
+                <p className="seminar-eyebrow mb-2">Student progress</p>
+                <h1 className="seminar-display text-4xl text-[#101a38]">Milestones</h1>
                 <p className="text-gray-600 mt-1">
-                  Manage achievement system to motivate and reward student engagement.
+                  Mark meaningful course progress without ranking students publicly.
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 {achievements.length === 0 ? (
                   <Button variant="outline" onClick={handleSeedDefaults}>
                     <Settings className="h-4 w-4 mr-2" />
-                    Add Default Achievements
+                    Add default milestones
                   </Button>
                 ) : (
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={handleSeedDefaults}>
                       <Plus className="h-4 w-4 mr-2" />
-                      Add New Defaults
+                      Add new defaults
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleReplaceDefaults}>
                       <Settings className="h-4 w-4 mr-2" />
-                      Update All Defaults
+                      Update all defaults
                     </Button>
                   </div>
                 )}

@@ -212,7 +212,7 @@ export async function generateLearningConclusion(params: {
     **Instructions:**
     Analyze the student's responses and performance to create a personalized learning conclusion. Generate:
 
-    1. **Key Insights** (3-4 insights): Specific, personalized observations about their learning journey, referencing actual content from their responses
+    1. **Key Insights** (3-4 insights): Specific observations about the student's work that reference actual content from their responses
     2. **Learning Milestones**: For each milestone, assess if achieved based on evidence from their responses
     3. **Reflection Prompts** (3 questions): Thoughtful questions that connect to their specific responses and the case study content
 
@@ -247,8 +247,11 @@ export async function generateLearningConclusion(params: {
     - Base insights on ACTUAL content from their responses, not generic statements
     - Reference specific sections or answers they provided
     - Make milestone assessments evidence-based from their work
-    - Create reflection questions that connect to their specific learning journey
-    - Be encouraging while providing constructive guidance
+    - Create reflection questions that connect to their specific responses
+    - Use plain classroom language and specific evidence
+    - Do not use em dashes, hype, congratulations, vague praise, or phrases such as learning journey, unlock, elevate, transform, powerful, or seamless
+    - Do not claim the student felt, understood, or improved unless their responses provide evidence
+    - If the evidence is incomplete, say so directly
     - Use the student's name naturally in insights when appropriate
   `;
 
@@ -287,16 +290,16 @@ export async function generateLearningConclusion(params: {
     // Return a fallback response if the API call fails
     return {
       keyInsights: [
-        "You engaged thoughtfully with the case study material and demonstrated learning progress.",
-        "Your responses showed effort and engagement with the key concepts presented.",
-        "This learning experience has provided you with valuable insights to build upon."
+        "The case study is complete. This summary is based on the submitted responses.",
+        "The response record is available below for review.",
+        "A more specific summary could not be generated at this time."
       ],
       learningMilestones: Object.keys(DEFAULT_MILESTONES).reduce((acc, key) => {
         acc[key] = {
           achieved: params.performance.percentageScore >= 70,
           progress: Math.min(1, params.performance.percentageScore / 100),
-          evidence: "Assessment temporarily unavailable",
-          confidence: 0.5
+          evidence: "Estimate based on the overall score only.",
+          confidence: 0.4
         };
         return acc;
       }, {} as any),

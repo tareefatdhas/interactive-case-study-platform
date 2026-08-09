@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOutUser } from '@/lib/firebase/auth';
 import { useAuth } from '@/lib/hooks/useAuth';
 import Button from '@/components/ui/Button';
+import ClassfullyMark from '@/components/brand/ClassfullyMark';
 import { 
   BookOpen, 
   Home, 
@@ -16,7 +17,6 @@ import {
   Menu,
   X,
   UserCheck,
-  Award
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -24,12 +24,11 @@ interface DashboardLayoutProps {
 }
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: Home },
-  { name: 'Case Studies', href: '/dashboard/case-studies', icon: BookOpen },
+  { name: 'Home', href: '/dashboard', icon: Home },
   { name: 'Sessions', href: '/dashboard/sessions', icon: Users },
+  { name: 'Lesson library', href: '/dashboard/case-studies', icon: BookOpen },
   { name: 'Students', href: '/dashboard/students', icon: UserCheck },
-  { name: 'Achievements', href: '/dashboard/achievements', icon: Award },
-  { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart },
+  { name: 'Review', href: '/dashboard/analytics', icon: BarChart },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
@@ -49,41 +48,44 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="flex min-h-screen bg-[#fffefa]">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
+          <div className="fixed inset-0 bg-[#101a38]/55" onClick={() => setSidebarOpen(false)} />
         </div>
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}>
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-          <h1 className="text-lg font-semibold text-gray-900">Case Studies</h1>
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-[#e3e5ed] bg-white ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-200 ease-in-out lg:static lg:inset-0 lg:translate-x-0`}>
+        <div className="flex h-20 items-center justify-between border-b border-[#e3e5ed] px-6">
+          <Link href="/dashboard" className="classfully-lockup text-xl" aria-label="Classfully dashboard">
+            <ClassfullyMark className="classfully-mark" />
+            <span className="classfully-wordmark">Classfully</span>
+          </Link>
           <button
             type="button"
-            className="lg:hidden text-gray-500 hover:text-gray-700"
+            className="seminar-focus rounded-lg p-1 text-[#697087] hover:text-[#101a38] lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <X className="w-6 h-6" />
           </button>
         </div>
 
-        <nav className="mt-8 px-6">
-          <ul className="space-y-2">
+        <nav className="mt-6 px-4">
+          <ul className="space-y-1">
             {navigation.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
               const Icon = item.icon;
               
               return (
                 <li key={item.name}>
                   <Link
                     href={item.href}
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    className={`flex min-h-10 items-center rounded-[10px] px-3 py-2 text-sm font-semibold transition-colors ${
                       isActive
-                        ? 'bg-blue-50 text-blue-900 border-r-2 border-blue-900'
-                        : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                        ? 'bg-[#f0efff] text-[#4137c7]'
+                        : 'text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38]'
                     }`}
                   >
                     <Icon className="mr-3 h-5 w-5" />
@@ -96,24 +98,25 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </nav>
 
         {/* User info */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200">
+        <div className="absolute bottom-0 left-0 right-0 border-t border-[#e3e5ed] bg-white p-5">
           <div className="flex items-center">
             <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-blue-900 rounded-full flex items-center justify-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#101a38]">
                 <span className="text-sm font-medium text-white">
                   {user?.name?.charAt(0).toUpperCase() || 'T'}
                 </span>
               </div>
             </div>
             <div className="ml-3 flex-1">
-              <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-              <p className="text-xs text-gray-500">{user?.email}</p>
+              <p className="text-sm font-semibold text-[#101a38]">{user?.name}</p>
+              <p className="max-w-[120px] truncate text-xs text-[#697087]">{user?.email}</p>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={handleSignOut}
-              className="ml-2 p-1"
+              className="ml-2 p-2"
+              aria-label="Sign out"
             >
               <LogOut className="w-4 h-4" />
             </Button>
@@ -124,16 +127,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Main content */}
       <div className="flex-1 lg:pl-0">
         {/* Mobile header */}
-        <div className="lg:hidden bg-white shadow-sm border-b border-gray-200">
+        <div className="border-b border-[#e3e5ed] bg-white lg:hidden">
           <div className="flex items-center justify-between h-16 px-6">
             <button
               type="button"
-              className="text-gray-500 hover:text-gray-700"
+              className="seminar-focus rounded-lg p-1 text-[#697087] hover:text-[#101a38]"
               onClick={() => setSidebarOpen(true)}
             >
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="text-lg font-semibold text-gray-900">Case Studies</h1>
+            <span className="classfully-lockup text-lg">
+              <ClassfullyMark className="classfully-mark" />
+              <span className="classfully-wordmark">Classfully</span>
+            </span>
             <div className="w-6" /> {/* Spacer */}
           </div>
         </div>

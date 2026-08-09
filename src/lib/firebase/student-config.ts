@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously, type User } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
 
 // Same Firebase config but using a different app name for students
@@ -26,5 +26,17 @@ const studentApp = initializeApp(firebaseConfig, 'student-app');
 export const studentDb = getFirestore(studentApp);
 export const studentAuth = getAuth(studentApp);
 export const studentRealtimeDb = getDatabase(studentApp);
+
+let anonymousAuthPromise: Promise<User> | null = null;
+
+export async function ensureStudentAnonymousAuth(): Promise<User> {
+  if (studentAuth.currentUser) return studentAuth.currentUser;
+  if (!anonymousAuthPromise) {
+    anonymousAuthPromise = signInAnonymously(studentAuth)
+      .then((credential) => credential.user)
+      .finally(() => { anonymousAuthPromise = null; });
+  }
+  return anonymousAuthPromise;
+}
 
 export default studentApp;

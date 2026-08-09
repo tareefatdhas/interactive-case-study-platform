@@ -1,0 +1,39 @@
+interface ClassfullyMarkProps {
+  className?: string;
+  title?: string;
+}
+
+export default function ClassfullyMark({ className = '', title }: ClassfullyMarkProps) {
+  const titleId = title ? 'classfully-mark-title' : undefined;
+
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      preserveAspectRatio="xMidYMid meet"
+      role={title ? 'img' : undefined}
+      aria-hidden={title ? undefined : true}
+      aria-labelledby={titleId}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {title ? <title id={titleId}>{title}</title> : null}
+      <defs>
+        <mask id="classfully-path-cut">
+          <rect width="64" height="64" fill="white" />
+          <path d="M17 36.5 28.5 48 51 20.5" fill="none" stroke="black" strokeWidth="7.5" strokeLinecap="round" strokeLinejoin="round" transform="translate(-2.56 0) scale(1.08 1)" />
+        </mask>
+      </defs>
+      <g mask="url(#classfully-path-cut)" transform="translate(-2.56 0) scale(1.08 1)">
+        <path
+          fill="#101A38"
+          d="M8 13.5A9.5 9.5 0 0 1 17.5 4h27A9.5 9.5 0 0 1 54 13.5v14A9.5 9.5 0 0 1 44.5 37H25L13.5 47v-10.7A9.5 9.5 0 0 1 8 27.5v-14Z"
+        />
+        <path
+          fill="#5146E5"
+          d="M25 23.5h22.5A8.5 8.5 0 0 1 56 32v17.5a9.5 9.5 0 0 1-9.5 9.5H30a9 9 0 0 1-9-9V27.5a4 4 0 0 1 4-4Z"
+        />
+      </g>
+      <circle cx="53" cy="15" r="5.5" fill="#DF664E" />
+    </svg>
+  );
+}

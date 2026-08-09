@@ -29,10 +29,16 @@ import {
   Clock,
   CheckCircle,
   ArrowRight,
+  AlertCircle,
+  HeartPulse,
+  ListChecks,
   Lock,
-  Unlock
+  Unlock,
+  MonitorUp
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
+import { Timestamp } from 'firebase/firestore';
+import { endInstructorClassroom } from '@/lib/firebase/live-classroom';
 
 interface SessionPageProps {
   params: Promise<{
@@ -52,8 +58,15 @@ export default function SessionPage({ params }: SessionPageProps) {
   const [updating, setUpdating] = useState(false);
   const [releasingSection, setReleasingSection] = useState(false);
   const [error, setError] = useState('');
+  const [appUrl, setAppUrl] = useState(process.env.NEXT_PUBLIC_APP_URL || '');
 
-  const joinUrl = `${process.env.NEXT_PUBLIC_APP_URL}/session/${session?.sessionCode}`;
+  const joinUrl = session?.sessionType === 'standalone'
+    ? `${appUrl}/join?code=${encodeURIComponent(session.sessionCode)}`
+    : `${appUrl}/session/${session?.sessionCode}`;
+
+  useEffect(() => {
+    setAppUrl(window.location.origin);
+  }, []);
 
   useEffect(() => {
     const loadSessionData = async () => {
@@ -95,7 +108,7 @@ export default function SessionPage({ params }: SessionPageProps) {
   }, [resolvedParams.id, user]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || session.sessionType === 'standalone') return;
 
     // Ensure session exists in Realtime Database and subscribe to live data
     const { subscribeToLiveSession, subscribeToLiveResponses, ensureLiveSessionExists } = require('@/lib/firebase/realtime');
@@ -207,25 +220,37 @@ export default function SessionPage({ params }: SessionPageProps) {
   const handleToggleSession = async () => {
     if (!session) return;
 
+    if (session.sessionType === 'standalone' && !session.active) {
+      router.push(`/live?sessionId=${session.id}`);
+      return;
+    }
+
     setUpdating(true);
     try {
       const newActiveState = !session.active;
+
+      if (session.sessionType === 'standalone' && !newActiveState) {
+        await endInstructorClassroom(session.teacherId, session.id);
+      }
       
       // Update Firestore (persistence)
       await updateSession(session.id, {
         active: newActiveState,
-        ...(session.active ? 
-          { endedAt: new Date() as any } : 
-          { startedAt: new Date() as any, lastActivityAt: new Date() as any }
+        ...(session.active ?
+          { endedAt: Timestamp.now() } :
+          { startedAt: Timestamp.now(), lastActivityAt: Timestamp.now() }
         )
       });
 
       // Update Realtime Database (live status)
-      const { updateSessionStatus } = require('@/lib/firebase/realtime');
-      await updateSessionStatus(session.id, {
-        active: newActiveState,
-        ...(newActiveState ? {} : { endedAt: Date.now() })
-      });
+      if (session.sessionType !== 'standalone') {
+        const { updateSessionStatus } = await import('@/lib/firebase/realtime');
+        await updateSessionStatus(session.id, {
+          active: newActiveState,
+          ...(newActiveState ? {} : { endedAt: Date.now() })
+        });
+      }
+      setSession({ ...session, active: newActiveState });
       
     } catch (error: any) {
       setError(error.message || 'Failed to update session');
@@ -397,11 +422,11 @@ export default function SessionPage({ params }: SessionPageProps) {
           <div className="p-6">
             <Card>
               <CardContent className="p-12 text-center">
-                <div className="text-red-500 text-6xl mb-4">⚠️</div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">Session Error</h2>
+                <AlertCircle className="mx-auto mb-4 h-10 w-10 text-red-500" />
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Session could not be opened</h2>
                 <p className="text-gray-600 mb-6">{error}</p>
                 <Button onClick={() => router.push('/dashboard')}>
-                  Back to Dashboard
+                  Back to overview
                 </Button>
               </CardContent>
             </Card>
@@ -419,21 +444,22 @@ export default function SessionPage({ params }: SessionPageProps) {
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{caseStudy?.title}</h1>
+                <p className="seminar-eyebrow mb-2">{session?.courseCode || 'Class session'}</p>
+                <h1 className="seminar-display text-4xl text-[#101a38]">{session?.title || caseStudy?.title || 'Class session'}</h1>
                 <p className="text-gray-600 mt-1">
-                  Session: {session?.sessionCode} • {session?.active ? 'Active' : 'Inactive'}
+                  {session?.courseName ? `${session.courseName} · ` : ''}{session?.sessionCode} · {session?.active ? 'Live' : 'Prepared'}
                 </p>
               </div>
               <div className="flex gap-3">
-                <Link href={`/dashboard/sessions/${session?.id}/presentation`}>
+                {(session?.sessionType !== 'standalone' || session?.active) && <Link href={session?.sessionType === 'standalone' ? `/live?sessionId=${session?.id}` : `/dashboard/sessions/${session?.id}/presentation`}>
                   <Button
                     variant="outline"
                     className="flex items-center"
                   >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Presentation Mode
+                    {session?.sessionType === 'standalone' ? <MonitorUp className="w-4 h-4 mr-2" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                    {session?.sessionType === 'standalone' ? 'Open instructor console' : 'Presentation mode'}
                   </Button>
-                </Link>
+                </Link>}
                 <Button
                   onClick={handleToggleSession}
                   loading={updating}
@@ -443,12 +469,12 @@ export default function SessionPage({ params }: SessionPageProps) {
                   {session?.active ? (
                     <>
                       <Square className="w-4 h-4 mr-2" />
-                      End Session
+                      End session
                     </>
                   ) : (
                     <>
                       <Play className="w-4 h-4 mr-2" />
-                      Resume Session
+                      {session?.sessionType === 'standalone' ? 'Start class' : 'Start session'}
                     </>
                   )}
                 </Button>
@@ -504,12 +530,12 @@ export default function SessionPage({ params }: SessionPageProps) {
                 </Card>
               </div>
 
-              {/* Section Release Controls */}
+              {/* Prepared content and interactions */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Section Management</CardTitle>
+                  <CardTitle>{session?.sessionType === 'standalone' ? 'Prepared interactions' : 'Section management'}</CardTitle>
                   <CardDescription>
-                    Control which sections students can access
+                    {session?.sessionType === 'standalone' ? 'Private until you choose to show one on the classroom display' : 'Control which sections students can access'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -600,10 +626,32 @@ export default function SessionPage({ params }: SessionPageProps) {
                         })()}
                       </div>
                     </div>
-                  ) : (
-                    <div className="text-center py-4 text-gray-500">
-                      Loading case study information...
+                  ) : session?.sessionType === 'standalone' ? (
+                    <div className="space-y-3">
+                      {(session.interactions || []).length > 0 ? (session.interactions || []).map((interaction, index) => (
+                        <div key={interaction.id} className="flex items-start gap-4 rounded-xl border border-[#e3e5ed] p-4">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f0efff] text-[#5146e5]">
+                            {interaction.type === 'pulse' ? <HeartPulse className="h-5 w-5" /> : <ListChecks className="h-5 w-5" />}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span className="text-xs font-bold uppercase tracking-[0.08em] text-[#697087]">{index + 1} · {interaction.plannedTime || 'During class'}</span>
+                              {interaction.durationMinutes && <span className="text-xs text-[#9298a5]">About {interaction.durationMinutes} min</span>}
+                            </div>
+                            <h3 className="mt-1 font-semibold text-[#101a38]">{interaction.title}</h3>
+                            <p className="mt-1 text-sm leading-6 text-[#697087]">{interaction.prompt}</p>
+                          </div>
+                        </div>
+                      )) : (
+                        <div className="py-6 text-center text-sm text-[#697087]">No prepared interactions. You can still ask the class an unplanned question during the session.</div>
+                      )}
+                      <div className="flex items-center justify-between border-t border-[#e3e5ed] pt-4">
+                        <p className="text-sm text-[#697087]">Your slides remain in their original presentation app.</p>
+                        <Link href={`/live?sessionId=${session.id}`}><Button size="sm">Open console</Button></Link>
+                      </div>
                     </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">Case study information is unavailable.</div>
                   )}
                 </CardContent>
               </Card>
@@ -611,9 +659,9 @@ export default function SessionPage({ params }: SessionPageProps) {
               {/* Student Progress */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Student Progress</CardTitle>
+                  <CardTitle>{session?.sessionType === 'standalone' ? 'Live participation' : 'Student progress'}</CardTitle>
                   <CardDescription>
-                    Real-time view of student participation
+                    {session?.sessionType === 'standalone' ? 'Students and responses will appear here when the session begins' : 'Real-time view of student participation'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -657,7 +705,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                     </div>
                   ) : (
                     <div className="text-center py-8 text-gray-500">
-                      No students have joined yet. Share the session code or QR code with your class.
+                      No students have joined yet. Share the class code when you are ready to begin.
                     </div>
                   )}
                 </CardContent>
@@ -737,14 +785,17 @@ export default function SessionPage({ params }: SessionPageProps) {
                         {session?.active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Sections:</span>
-                      <span className="font-medium">{caseStudy?.sections.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Total Points:</span>
-                      <span className="font-medium">{caseStudy?.totalPoints}</span>
-                    </div>
+                    {session?.sessionType === 'standalone' ? (
+                      <>
+                        <div className="flex justify-between"><span className="text-gray-600">Interactions:</span><span className="font-medium">{session.interactions?.length || 0}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Presentation:</span><span className="font-medium">Separate</span></div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-between"><span className="text-gray-600">Sections:</span><span className="font-medium">{caseStudy?.sections.length}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Total points:</span><span className="font-medium">{caseStudy?.totalPoints}</span></div>
+                      </>
+                    )}
                     {session?.createdAt && (
                       <div className="flex justify-between">
                         <span className="text-gray-600">Created:</span>

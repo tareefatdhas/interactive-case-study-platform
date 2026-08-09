@@ -142,22 +142,23 @@ export default function CaseStudiesPage() {
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Case Studies</h1>
+              <p className="seminar-eyebrow mb-2">Lesson library</p>
+              <h1 className="seminar-display text-4xl text-[#101a38]">Case studies</h1>
               <p className="text-gray-600 mt-1">
-                Manage your interactive case studies and create new ones.
+                Prepare cases to use alongside polls, discussion, and reflection.
               </p>
             </div>
             <div className="flex gap-3">
               <Link href="/dashboard/case-studies/generate">
-                <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
+                <Button>
                   <Sparkles className="w-4 h-4 mr-2" />
-                  Generate with AI
+                  Draft from a brief
                 </Button>
               </Link>
               <Link href="/dashboard/case-studies/new">
                 <Button variant="outline">
                   <Plus className="w-4 h-4 mr-2" />
-                  Create Manually
+                  Create manually
                 </Button>
               </Link>
             </div>
@@ -184,19 +185,19 @@ export default function CaseStudiesPage() {
                 <BookOpen className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No case studies yet</h3>
                 <p className="text-gray-600 mb-6">
-                  Get started by creating your first interactive case study.
+                  Add a case when it supports the lesson you want to teach.
                 </p>
                 <div className="flex gap-3 justify-center">
                   <Link href="/dashboard/case-studies/generate">
-                    <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
+                    <Button>
                       <Sparkles className="w-4 h-4 mr-2" />
-                      Generate with AI
+                      Draft from a brief
                     </Button>
                   </Link>
                   <Link href="/dashboard/case-studies/new">
                     <Button variant="outline">
                       <Plus className="w-4 h-4 mr-2" />
-                      Create Manually
+                      Create manually
                     </Button>
                   </Link>
                 </div>

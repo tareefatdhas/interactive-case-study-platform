@@ -1,17 +1,19 @@
-# Interactive Case Study Platform
+# Classfully
 
-The most beautiful and intuitive platform for delivering interactive case studies with student grade tracking.
+> Product design, voice, typography, color, motion, and classroom UX conventions are documented in [DESIGN_GUIDELINES.md](./DESIGN_GUIDELINES.md).
 
-## 🌟 Features
+Classfully helps instructors run classroom polls, questions, check-ins, and case studies from one live teaching console.
 
-- **QR Code Access** - Students join instantly by scanning a QR code, no passwords required
-- **Progressive Reading** - Content delivered section by section with embedded questions
-- **Student ID Tracking** - Participation and grades tracked over time with detailed analytics
-- **Beautiful Design** - Minimal, elegant, mobile-first interface optimized for reading
-- **Real-time Updates** - Live progress monitoring and instant session management
-- **Teacher Analytics** - Comprehensive insights and grading dashboard with CSV export
+## Features
 
-## 🚀 Tech Stack
+- **Live classroom prompts**: Run polls, quizzes, check-ins, and open responses.
+- **Separate teaching surfaces**: Keep controls on the instructor device and class totals on the projector.
+- **Phone-first student view**: Students join and respond from a small screen.
+- **Case study module**: Deliver reading in sections with questions between them.
+- **Student records**: Keep responses and grades across sessions.
+- **Class insights**: Review response, attendance, and score patterns with CSV export.
+
+## Tech stack
 
 - **Frontend:** Next.js 15 + TypeScript + Tailwind CSS
 - **Backend:** Firebase Firestore + Authentication
@@ -19,13 +21,13 @@ The most beautiful and intuitive platform for delivering interactive case studie
 - **QR Codes:** react-qr-code for generation
 - **Hosting:** Vercel (recommended)
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Node.js 18+ and npm
 - Firebase project with Firestore and Authentication enabled
 - Git
 
-## 🛠️ Installation & Setup
+## Installation and setup
 
 ### 1. Clone the Repository
 
@@ -92,7 +94,7 @@ npm run dev
 
 Visit [http://localhost:3000](http://localhost:3000) to see the application.
 
-## 📖 Usage Guide
+## Usage guide
 
 ### For Teachers
 
@@ -127,7 +129,7 @@ Visit [http://localhost:3000](http://localhost:3000) to see the application.
    - Answer all questions before proceeding
    - Submit responses for grading
 
-## 🏗️ Project Structure
+## Project structure
 
 ```
 case-study-platform/
@@ -151,7 +153,7 @@ case-study-platform/
 └── README.md
 ```
 
-## 🎨 Design System
+## Design system
 
 ### Colors
 - **Primary:** Deep Blue (#1a365d) - Trust, academic
@@ -171,7 +173,7 @@ case-study-platform/
 - Clear hierarchy with consistent spacing
 - Content-first approach
 
-## 🔒 Security
+## Security
 
 - Firebase security rules restrict access appropriately
 - Teachers can only access their own content
@@ -179,7 +181,7 @@ case-study-platform/
 - No sensitive data exposed to unauthorized users
 - Input validation on all forms
 
-## 🚢 Deployment
+## Deployment
 
 ### Deploy to Vercel (Recommended)
 
@@ -198,7 +200,7 @@ npm run build
 npm start
 ```
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
@@ -206,11 +208,11 @@ npm start
 4. Push to branch: `git push origin feature/amazing-feature`
 5. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { createCaseStudy } from '@/lib/firebase/firestore';
+import { auth } from '@/lib/firebase/config';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -58,10 +59,13 @@ export default function GenerateCaseStudyPage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
 
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Sign in again before generating a case study.');
       const response = await fetch('/api/generate-case-study', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           prompt: formData.prompt,
@@ -166,7 +170,8 @@ export default function GenerateCaseStudyPage() {
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">AI Case Study Generator</h1>
+                <p className="seminar-eyebrow mb-2">Case study draft</p>
+                <h1 className="seminar-display text-4xl text-[#101a38]">Draft from a brief</h1>
                 <p className="text-gray-600 mt-1">
                   Create engaging, HBS-style case studies with AI assistance.
                 </p>
@@ -396,13 +401,12 @@ export default function GenerateCaseStudyPage() {
                     <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Sparkles className="w-8 h-8 text-purple-600" />
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to Generate</h3>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Ready for your brief</h3>
                     <p className="text-gray-600 mb-6">
-                      Fill out the form on the left to generate your AI-powered case study. 
-                      The preview will appear here once generation is complete.
+                      Add the teaching context and source material on the left. A draft will appear here for you to review.
                     </p>
                     <div className="text-sm text-gray-500">
-                      Generation typically takes 30-60 seconds
+                      Drafting may take a moment.
                     </div>
                   </CardContent>
                 </Card>

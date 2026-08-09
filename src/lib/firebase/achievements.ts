@@ -14,7 +14,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { db } from './config';
-import { studentDb } from './student-config';
+import { ensureStudentAnonymousAuth, studentDb } from './student-config';
 import type {
   Achievement,
   StudentAchievement,
@@ -105,9 +105,11 @@ export const toggleAchievementEnabled = async (achievementId: string, enabled: b
 
 // Student-side functions (using student db)
 export const getStudentAchievements = async (studentId: string): Promise<StudentAchievement[]> => {
+  const user = await ensureStudentAnonymousAuth();
   const q = query(
     collection(studentDb, COLLECTIONS.STUDENT_ACHIEVEMENTS),
     where('studentId', '==', studentId),
+    where('authorUid', '==', user.uid),
     orderBy('unlockedAt', 'desc')
   );
   const querySnapshot = await getDocs(q);
@@ -147,10 +149,12 @@ export const getAvailableAchievementsForStudent = async (teacherId: string, cour
     return teacherAchievements;
   } catch (error) {
     console.error('Error fetching achievements for student:', error);
+    const details = error instanceof Error
+      ? { message: error.message, stack: error.stack }
+      : { message: String(error) };
     console.error('Error details:', {
-      code: error.code,
-      message: error.message,
-      stack: error.stack
+      ...details,
+      code: typeof error === 'object' && error && 'code' in error ? String(error.code) : undefined,
     });
     throw error;
   }
@@ -161,9 +165,11 @@ export const unlockAchievement = async (
   achievement: Achievement,
   sessionId?: string
 ): Promise<void> => {
+  const user = await ensureStudentAnonymousAuth();
   const now = Timestamp.now();
   
   const studentAchievement: Omit<StudentAchievement, 'id'> = {
+    authorUid: user.uid,
     studentId,
     achievementId: achievement.id,
     achievementName: achievement.name,
@@ -181,6 +187,7 @@ export const unlockAchievement = async (
     collection(studentDb, COLLECTIONS.STUDENT_ACHIEVEMENTS),
     where('studentId', '==', studentId),
     where('achievementId', '==', achievement.id),
+    where('authorUid', '==', user.uid),
     limit(1)
   );
   const existing = await getDocs(q);
@@ -395,7 +402,7 @@ export const getDefaultAchievements = (teacherId: string): Omit<Achievement, 'id
   // === ONBOARDING & EARLY ENGAGEMENT (reduce initial friction) ===
   {
     name: 'First Steps',
-    description: 'Complete your first section - every journey begins with a single step!',
+    description: 'Complete your first section.',
     category: 'reading',
     icon: 'BookOpen',
     requirements: { type: 'sections_completed', value: 1, scope: 'session' },

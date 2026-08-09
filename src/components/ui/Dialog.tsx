@@ -158,7 +158,7 @@ export default function Dialog({
           </Button>
           <Button
             ref={confirmButtonRef}
-            variant={variant === 'destructive' ? 'destructive' : 'default'}
+            variant={variant === 'destructive' ? 'destructive' : 'primary'}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

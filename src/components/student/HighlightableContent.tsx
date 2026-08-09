@@ -256,7 +256,7 @@ export default function HighlightableContent({
     }
     
     // Then apply personal highlights (more prominent)
-    const allPersonalHighlights = [...highlights];
+    const allPersonalHighlights: Array<Highlight | LocalHighlight> = [...highlights];
     if (tempHighlight) {
       allPersonalHighlights.push(tempHighlight);
     }

@@ -823,7 +823,8 @@ export default function EditCaseStudyPage() {
                   <ArrowLeft className="w-4 h-4" />
                 </Button>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Edit Case Study</h1>
+                  <p className="seminar-eyebrow mb-2">Lesson library</p>
+                  <h1 className="seminar-display text-4xl text-[#101a38]">Edit case study</h1>
                   <p className="text-gray-600 mt-1">
                     Update your interactive case study with sections and questions.
                   </p>

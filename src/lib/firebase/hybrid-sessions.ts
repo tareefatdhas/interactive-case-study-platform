@@ -17,6 +17,7 @@ import {
   getSession as getFirestoreSession
 } from './firestore';
 import type { Session } from '@/types';
+import { Timestamp } from 'firebase/firestore';
 
 // Create a session in both databases
 export const createHybridSession = async (sessionData: Omit<Session, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -40,7 +41,7 @@ export const startHybridSession = async (sessionId: string) => {
   // 1. Update Firestore
   await updateFirestoreSession(sessionId, {
     active: true,
-    startedAt: new Date()
+    startedAt: Timestamp.now()
   });
   
   // 2. Update Realtime Database
@@ -55,7 +56,7 @@ export const endHybridSession = async (sessionId: string) => {
   // 1. Update Firestore
   await updateFirestoreSession(sessionId, {
     active: false,
-    endedAt: new Date()
+    endedAt: Timestamp.now()
   });
   
   // 2. End live session and archive

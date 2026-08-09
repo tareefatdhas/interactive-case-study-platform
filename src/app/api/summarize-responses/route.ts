@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { summarizeResponses } from "@/lib/ai/gemini";
+import { firebaseRequestError, requireFirebaseUser } from "@/lib/firebase/server-auth";
 
 export async function POST(request: Request) {
   try {
+    await requireFirebaseUser(request, { requestsPerMinute: 8 });
     const body = await request.json();
     const { questionText, responses, context } = body;
 
@@ -45,6 +47,8 @@ export async function POST(request: Request) {
     
     return NextResponse.json(result);
   } catch (error: any) {
+    const authError = firebaseRequestError(error);
+    if (authError) return NextResponse.json({ error: authError.error }, { status: authError.status });
     console.error("API Error:", error);
     
     // Provide more detailed error information

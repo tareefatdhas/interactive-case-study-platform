@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   typescript: {
     // Temporarily ignore type errors during build
     ignoreBuildErrors: process.env.NODE_ENV === 'production',

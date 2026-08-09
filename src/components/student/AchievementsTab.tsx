@@ -133,7 +133,7 @@ function AchievementCard({ achievement, studentAchievement, progress, isUnlocked
             {/* Completion badge */}
             <div className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
               <Trophy className="h-3 w-3" />
-              <span>Unlocked!</span>
+              <span>Reached</span>
             </div>
             {/* Rarity indicator */}
             <div className={cn(
@@ -153,7 +153,7 @@ function AchievementCard({ achievement, studentAchievement, progress, isUnlocked
               "bg-yellow-100 text-yellow-700 animate-pulse" : 
               "bg-blue-100 text-blue-700"
           )}>
-            {progress.percentage >= 100 ? "Ready to unlock!" : `${Math.round(progress.percentage)}% complete`}
+            {progress.percentage >= 100 ? "Ready to mark complete" : `${Math.round(progress.percentage)}% complete`}
           </div>
         )}
       </div>
@@ -241,7 +241,7 @@ function AchievementCard({ achievement, studentAchievement, progress, isUnlocked
               progress.percentage >= 100 ? "text-yellow-600" : "text-blue-600"
             )}>
               {progress.percentage >= 100 ? 
-                "🎉 Achievement complete! Check back soon for unlock." : 
+                "Milestone complete. Check back soon." :
                 `${Math.round(progress.percentage)}% complete - Keep going! 🎯`
               }
             </div>
@@ -265,12 +265,12 @@ function AchievementCard({ achievement, studentAchievement, progress, isUnlocked
             {isUnlocking ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                Unlocking...
+                Saving...
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />
-                Unlock Achievement!
+                Mark milestone complete
               </>
             )}
           </button>
@@ -566,7 +566,7 @@ export default function AchievementsTab({
                   <p className="text-lg font-bold text-yellow-700">
                     {stats.readyToUnlockCount}
                   </p>
-                  <p className="text-sm text-yellow-600">Ready to Unlock!</p>
+                  <p className="text-sm text-yellow-600">Ready to complete</p>
                 </div>
                 <Sparkles className="h-6 w-6 text-yellow-600" />
               </div>
@@ -629,7 +629,7 @@ export default function AchievementsTab({
             <Award className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p className="text-sm">No achievements available</p>
             <p className="text-xs mt-1">
-              Complete activities to unlock achievements
+              Complete course activities to reach milestones
             </p>
           </div>
         ) : (
@@ -649,7 +649,7 @@ export default function AchievementsTab({
                       <div className="flex items-center gap-2 mb-4">
                         <Trophy className="h-5 w-5 text-green-600" />
                         <h4 className="text-lg font-semibold text-green-700">
-                          Unlocked ({unlockedAchievements.length})
+                          Reached ({unlockedAchievements.length})
                         </h4>
                         <div className="flex-1 h-px bg-green-200" />
                       </div>
@@ -675,7 +675,7 @@ export default function AchievementsTab({
                       <div className="flex items-center gap-2 mb-4">
                         <Sparkles className="h-5 w-5 text-yellow-600" />
                         <h4 className="text-lg font-semibold text-yellow-700">
-                          Ready to Unlock ({readyToUnlockAchievements.length})
+                          Ready to complete ({readyToUnlockAchievements.length})
                         </h4>
                         <div className="flex-1 h-px bg-yellow-200" />
                       </div>

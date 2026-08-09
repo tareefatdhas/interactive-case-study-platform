@@ -187,9 +187,10 @@ export default function StudentsPage() {
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Students</h1>
+              <p className="seminar-eyebrow mb-2">Class records</p>
+              <h1 className="seminar-display text-4xl text-[#101a38]">Students</h1>
               <p className="text-gray-600 mt-1">
-                Track student performance and engagement across all sessions.
+                Review responses, scores, and participation across class sessions.
               </p>
             </div>
             {students.length > 0 && (

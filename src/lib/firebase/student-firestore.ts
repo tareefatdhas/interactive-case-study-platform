@@ -12,7 +12,7 @@ import {
   onSnapshot,
   Timestamp,
 } from 'firebase/firestore';
-import { studentDb, studentAuth } from './student-config';
+import { ensureStudentAnonymousAuth, studentDb, studentAuth } from './student-config';
 import type {
   CaseStudy,
   Session,
@@ -82,12 +82,14 @@ export const getSessionStudent = async (id: string): Promise<Session | null> => 
 };
 
 export const getStudentByStudentIdStudent = async (studentId: string): Promise<Student | null> => {
+  const user = await ensureStudentAnonymousAuth();
   // Always search by normalized ID to prevent duplicates
   const normalizedId = normalizeStudentId(studentId);
   
   const q = query(
     collection(studentDb, COLLECTIONS.STUDENTS),
-    where('studentIdNormalized', '==', normalizedId)
+    where('studentIdNormalized', '==', normalizedId),
+    where('authorUid', '==', user.uid)
   );
   const querySnapshot = await getDocs(q);
   
@@ -100,11 +102,13 @@ export const getStudentByStudentIdStudent = async (studentId: string): Promise<S
 };
 
 export const createStudentStudent = async (student: Omit<Student, 'id' | 'createdAt'>) => {
+  const user = await ensureStudentAnonymousAuth();
   const now = Timestamp.now();
   const normalizedId = normalizeStudentId(student.studentId);
   
   const docRef = await addDoc(collection(studentDb, COLLECTIONS.STUDENTS), {
     ...student,
+    authorUid: user.uid,
     studentIdNormalized: normalizedId, // Add normalized ID for searching
     createdAt: now
   });
@@ -137,10 +141,12 @@ export const joinSessionStudent = async (sessionId: string, studentId: string) =
 };
 
 export const getResponsesByStudentStudent = async (studentId: string, sessionId: string): Promise<Response[]> => {
+  const user = await ensureStudentAnonymousAuth();
   const q = query(
     collection(studentDb, COLLECTIONS.RESPONSES),
     where('studentId', '==', studentId),
-    where('sessionId', '==', sessionId)
+    where('sessionId', '==', sessionId),
+    where('authorUid', '==', user.uid)
   );
   const querySnapshot = await getDocs(q);
   const responses = querySnapshot.docs.map(doc => ({
@@ -157,9 +163,11 @@ export const getResponsesByStudentStudent = async (studentId: string, sessionId:
 };
 
 export const createResponseStudent = async (response: Omit<Response, 'id' | 'submittedAt'>) => {
+  const user = await ensureStudentAnonymousAuth();
   const now = Timestamp.now();
   const docRef = await addDoc(collection(studentDb, COLLECTIONS.RESPONSES), {
     ...response,
+    authorUid: user.uid,
     submittedAt: now
   });
   return docRef.id;
@@ -209,7 +217,9 @@ export const createHighlightStudent = async (highlight: Omit<Highlight, 'id' | '
     }
   } catch (error) {
     // Handle Firebase permission errors gracefully
-    if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+    const message = error instanceof Error ? error.message : String(error);
+    if (code === 'permission-denied' || message.includes('Missing or insufficient permissions')) {
       console.debug('Achievement checking skipped due to permissions (expected for anonymous users)');
     } else {
       console.error('Error checking achievements after highlight creation:', error);
@@ -616,6 +626,7 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
   // Check which sessions are still active using student Firebase context
   // If we can't check session status due to permissions, we'll use all progress data
   let filteredProgress = uniqueProgress;
+  let activeSessionIds = new Set(sessionIds);
   
   try {
     const sessionStatuses = await Promise.all(
@@ -637,7 +648,7 @@ export const calculateAndUpdateOverallProgress = async (studentId: string) => {
       })
     );
     
-    const activeSessionIds = new Set(
+    activeSessionIds = new Set(
       sessionStatuses.filter(s => s.active).map(s => s.sessionId)
     );
     

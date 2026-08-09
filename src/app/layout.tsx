@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
 
@@ -8,14 +8,36 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-fraunces",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Interactive Case Study Platform",
-  description: "The most beautiful and intuitive platform for delivering interactive case studies with student grade tracking.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://classfully.com'),
+  title: {
+    default: "Classfully | Classroom participation that builds over time",
+    template: "%s",
+  },
+  description: "The participation layer for university courses. Run live classroom interactions and build a useful record of attendance, understanding, questions, and progress.",
+  applicationName: "Classfully",
+  openGraph: {
+    title: "Classfully",
+    description: "Make every class count toward the next.",
+    siteName: "Classfully",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Classfully",
+    description: "Make every class count toward the next.",
+  },
 };
 
 export const viewport = {
   width: 'device-width',
-  initialScale: 0.9,
+  initialScale: 1,
   maximumScale: 3,
   userScalable: true,
   viewportFit: 'cover',
@@ -28,7 +50,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} font-sans antialiased bg-gray-50`}>
+      <body className={`${inter.variable} ${fraunces.variable} antialiased`}>
         <AuthProvider>
           {children}
         </AuthProvider>

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent } from '@/lib/ai/gemini';
+import { firebaseRequestError, requireFirebaseUser } from '@/lib/firebase/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
+    const verifiedUser = await requireFirebaseUser(request, { requestsPerMinute: 4 });
     const { prompt, learningObjectives, teacherId } = await request.json();
 
     if (!prompt || !learningObjectives || !teacherId) {
@@ -10,6 +12,10 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: prompt, learningObjectives, teacherId' },
         { status: 400 }
       );
+    }
+
+    if (verifiedUser.uid !== teacherId) {
+      return NextResponse.json({ error: 'You can only generate material for your own instructor account.' }, { status: 403 });
     }
 
     const generationPrompt = `
@@ -211,6 +217,8 @@ Generate a complete, ready-to-use case study that teachers can immediately deplo
     });
 
   } catch (error: any) {
+    const authError = firebaseRequestError(error);
+    if (authError) return NextResponse.json({ error: authError.error }, { status: authError.status });
     console.error('❌ Error generating case study:', error);
     return NextResponse.json(
       { 

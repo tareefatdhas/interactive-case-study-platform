@@ -139,7 +139,7 @@ const CaseStudyPDFExport: React.FC<CaseStudyPDFExportProps> = ({ caseStudy, clas
         // Section type badge
         const sectionType = section.type === 'reading' ? 'READING' : 
                            section.type === 'discussion' ? 'DISCUSSION' : 
-                           section.type === 'activity' ? 'ACTIVITY' : section.type?.toUpperCase() || '';
+                           'ACTIVITY';
         
         pdf.setFontSize(8);
         pdf.setFont('helvetica', 'normal');
