@@ -198,7 +198,7 @@ test('the class lobby carries students from joining into the first activity with
   await expect(displayPage.getByRole('heading', { name: 'How are you arriving today?' })).toBeVisible();
 
   await studentPage.getByRole('radio', { name: /Energized/ }).click();
-  await studentPage.getByRole('button', { name: 'Send response' }).click();
+  await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
   const waitingGuide = studentPage.locator('.student-quiet-guide');
   await expect(waitingGuide.getByText('Help choose what gets discussed.')).toBeVisible();
   await waitingGuide.getByRole('button', { name: 'See questions' }).click();
@@ -425,7 +425,7 @@ test('pulse, poll, quiz, and short response complete across every classroom surf
 
   const submitSelection = async (optionName: RegExp) => {
     await studentPage.getByRole('radio', { name: optionName }).click();
-    await studentPage.getByRole('button', { name: 'Send response' }).click();
+    await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
     await expect(studentPage.getByText('Response sent')).toBeVisible();
     await expect(studentPage.getByText('The room is responding')).toBeVisible();
     await expect(studentPage.getByText('You’re the first response. Stay here for what comes next.')).toBeVisible();
@@ -457,7 +457,7 @@ test('pulse, poll, quiz, and short response complete across every classroom surf
   await launchInteraction(/Muddiest point/);
   await expect(studentPage.getByRole('heading', { name: 'What is still unclear before we move on?' })).toBeVisible();
   await studentPage.getByRole('textbox', { name: 'Your response' }).fill('I need another example of indirect effects.');
-  await studentPage.getByRole('button', { name: 'Send response' }).click();
+  await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
   await expect(studentPage.getByText('Response sent')).toBeVisible();
   await expect(remotePage.locator('.remote-response-metric strong')).toHaveText('1');
   await expect(consolePage.getByText('I need another example of indirect effects.')).toBeVisible();
@@ -478,7 +478,7 @@ test('earned participation appears on the student Home tab', async ({ browser })
 
   await remotePage.getByRole('button', { name: /Arrival pulse/ }).click();
   await studentPage.getByRole('radio', { name: /Steady/ }).click();
-  await studentPage.getByRole('button', { name: 'Send response' }).click();
+  await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
   await expect(studentPage.getByText('Response sent')).toBeVisible();
   await studentPage.waitForTimeout(900);
   await remotePage.getByRole('button', { name: 'Return to slides' }).click();
@@ -593,7 +593,7 @@ test('a poll comparison appears only after the student makes a private predictio
   await expect(studentPage.getByRole('heading', { name: 'Where do network effects become most fragile?' })).toBeVisible();
 
   await studentPage.getByRole('radio', { name: /Low switching costs/ }).click();
-  await studentPage.getByRole('button', { name: 'Send response' }).click();
+  await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
   await expect(studentPage.getByText('Response sent')).toBeVisible();
   await expect(remotePage.locator('.remote-response-metric strong')).toHaveText('1');
   await studentPage.locator('.student-reflection-options').getByRole('button', { name: /Single-provider dependency/ }).click();
@@ -621,7 +621,7 @@ test('peer learning moves from first answer through discussion to a second answe
 
   await remotePage.getByRole('button', { name: /Think, pair, answer again/ }).click();
   await studentPage.getByRole('radio', { name: /One critical provider/ }).click();
-  await studentPage.getByRole('button', { name: 'Send response' }).click();
+  await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
   await expect(remotePage.getByRole('button', { name: 'Start partner discussion' })).toBeEnabled();
 
   await remotePage.getByRole('button', { name: 'Start partner discussion' }).click();
@@ -631,7 +631,7 @@ test('peer learning moves from first answer through discussion to a second answe
   await remotePage.getByRole('button', { name: 'Ask again' }).click();
   await expect(studentPage.getByText('Choose again. It is fine to keep your answer or change it.')).toBeVisible();
   await studentPage.getByRole('radio', { name: /One critical provider/ }).click();
-  await studentPage.getByRole('button', { name: 'Send response' }).click();
+  await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
   await expect(remotePage.getByRole('button', { name: 'Show the shift' })).toBeEnabled();
   await remotePage.getByRole('button', { name: 'Show the shift' }).click();
   await expect(displayPage.getByText(/Before 100% · After 100%/)).toBeVisible();

@@ -107,13 +107,32 @@ test('the always-available question sheet fits a narrow phone', async ({ page })
 
 test('tapping an answer uses selection styling without a second focus ring', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Touch interaction is covered by the student mobile project.');
+  await page.setViewportSize({ width: 320, height: 568 });
   await page.goto('/live/remote');
   await page.getByRole('button', { name: /Concept check/ }).click();
   await page.goto('/live/student');
 
+  const activityIcon = page.locator('.student-interaction-type-icon');
+  await expect(activityIcon).toBeVisible();
+  const activityIconBox = await activityIcon.boundingBox();
+  expect(activityIconBox?.height).toBeLessThanOrEqual(30);
+
   const answer = page.getByRole('radio').nth(1);
   await answer.tap();
   await expect(answer).toHaveAttribute('aria-checked', 'true');
+  const submitResponse = page.getByRole('button', { name: 'Send answer B: Single-provider dependency' });
+  await expect(submitResponse).toBeVisible();
+  await expect(submitResponse).toContainText('Send answer B');
+  const askQuestion = page.getByRole('button', { name: /^Questions/ });
+  await expect(askQuestion).toBeVisible();
+  const submitBox = await submitResponse.boundingBox();
+  const askQuestionBox = await askQuestion.boundingBox();
+  const viewport = page.viewportSize();
+  expect(submitBox).not.toBeNull();
+  expect(askQuestionBox).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect((submitBox?.y || 0) + (submitBox?.height || 0)).toBeLessThanOrEqual((viewport?.height || 0) - 48);
+  expect((askQuestionBox?.x || 0) + (askQuestionBox?.width || 0)).toBeLessThanOrEqual((submitBox?.x || 0) - 8);
   const selectedStyle = await answer.evaluate((element) => {
     const styles = window.getComputedStyle(element);
     return {

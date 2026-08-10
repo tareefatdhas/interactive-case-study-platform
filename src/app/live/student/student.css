@@ -198,7 +198,7 @@ body:has(.student-welcome-shell) {
 .student-welcome-content > div {
   max-width: 430px;
   margin: 0 auto;
-  animation: student-step-in 260ms ease both;
+  animation: student-step-in 260ms ease;
 }
 
 .student-recovery-banner {
@@ -1001,6 +1001,34 @@ body:has(.student-welcome-shell) {
   font-size: clamp(35px, 10vw, 44px);
 }
 
+.student-interaction-question.is-long {
+  font-size: clamp(29px, 8.5vw, 38px);
+  line-height: 1.04;
+}
+
+.student-interaction-question.is-very-long {
+  font-size: clamp(25px, 7.4vw, 33px);
+  line-height: 1.06;
+}
+
+.student-interaction-meta {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.student-interaction-type-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--student-violet);
+  background: var(--student-violet-soft);
+}
+
 .student-interaction-options {
   margin-top: 23px;
   display: flex;
@@ -1162,10 +1190,51 @@ body:has(.student-welcome-shell) {
   to { opacity: 0; transform: translate(-50%, -50%) scale(7); }
 }
 
+.student-response-action {
+  margin-top: 15px;
+}
+
+.student-response-action.is-ready {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 48px;
+  left: 0;
+  padding: 14px 20px 15px 82px;
+  background: linear-gradient(180deg, rgba(255, 254, 250, 0), rgba(255, 254, 250, 0.96) 22%, var(--student-paper) 52%);
+  animation: student-action-dock-in 180ms ease-out both;
+}
+
+.student-welcome-content:has(.student-response-action.is-ready) {
+  padding-bottom: 166px;
+}
+
+.student-welcome-shell:has(.student-response-action.is-ready) .student-question-launch {
+  right: auto;
+  bottom: 63px;
+  left: 20px;
+  width: 50px;
+  min-height: 50px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 11px;
+}
+
+.student-welcome-shell:has(.student-response-action.is-ready) .student-question-launch > span {
+  display: none;
+}
+
+.student-welcome-shell:has(.student-response-action.is-ready) .student-question-launch > strong {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+}
+
 .student-send-response {
   width: 100%;
   min-height: 50px;
-  margin-top: 15px;
+  margin-top: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2073,6 +2142,7 @@ body:has(.student-welcome-shell) {
 @keyframes student-settle-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes student-send-trace { from { transform: translateX(-105%); } to { transform: translateX(105%); } }
 @keyframes student-send-icon { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+@keyframes student-action-dock-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes student-upvote-arrival { 0% { transform: scale(0.8); } 65% { transform: scale(1.1); } 100% { transform: scale(1); } }
 @keyframes student-signal-arrival { from { opacity: 0; transform: translate(10px, -7px) scale(0.4); } to { opacity: 1; transform: translate(0, 0) scale(1); } }
 @keyframes student-count-tick { from { opacity: 0.4; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
@@ -2088,6 +2158,13 @@ body:has(.student-welcome-shell) {
 
 @media (min-width: 520px) {
   .student-welcome-shell { width: 430px; height: min(820px, calc(100dvh - 40px)); min-height: min(820px, calc(100dvh - 40px)); margin: 20px auto; border: 1px solid var(--student-line); border-radius: 24px; overflow: hidden; box-shadow: 0 24px 70px rgba(16, 26, 56, 0.12); }
+  .student-response-action.is-ready {
+    right: auto;
+    bottom: max(68px, calc((100dvh - 820px) / 2 + 48px));
+    left: 50%;
+    width: 430px;
+    transform: translateX(-50%);
+  }
 }
 
 /* Keep the physical travel authoritative when older component rules also

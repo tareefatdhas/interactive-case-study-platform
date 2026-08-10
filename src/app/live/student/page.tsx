@@ -1556,6 +1556,20 @@ export default function StudentWelcomePage() {
     view: courseView,
     onViewChange: setCourseView,
   };
+  const activePromptLength = markdownToPlainText(lessonState.activeInteraction?.prompt || '').length;
+  const promptDensityClass = activePromptLength > 110 ? 'is-very-long' : activePromptLength > 70 ? 'is-long' : '';
+  const responseReady = Boolean(lessonState.activeInteraction?.options?.length ? selectedOption !== null : writtenResponse.trim());
+  const selectedAnswerLetter = selectedOption !== null ? String.fromCharCode(65 + selectedOption) : '';
+  const selectedAnswerText = selectedOption !== null ? lessonState.activeInteraction?.options?.[selectedOption] : '';
+  const responseActionLabel = isSubmitting
+    ? 'Sending response'
+    : lessonState.activeInteraction?.options?.length && selectedAnswerLetter
+      ? `Send answer ${selectedAnswerLetter}`
+      : lessonState.activeInteraction?.type === 'group-work'
+        ? 'Send group response'
+        : lessonState.activeInteraction?.type === 'word-cloud'
+          ? 'Add to word cloud'
+          : 'Send response';
 
   if (!classroomStateReady || (!remoteUnavailable && !rewardStateReady) || (remoteEnded && !rewardStateReady)) {
     return <ClassroomStateGate message="Loading the current activity and your private class record." />;
@@ -1679,9 +1693,11 @@ export default function StudentWelcomePage() {
               </div>
             ) : (
               <>
-                <span className="student-round-icon"><ListChecks size={27} /></span>
-                <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
-                <MarkdownContent heading className="student-interaction-question" markdown={lessonState.activeInteraction.prompt} />
+                <div className="student-interaction-meta">
+                  <span className="student-interaction-type-icon"><ListChecks size={16} /></span>
+                  <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
+                </div>
+                <MarkdownContent heading className={`student-interaction-question ${promptDensityClass}`} markdown={lessonState.activeInteraction.prompt} />
                 <p>{lessonState.activeInteraction.type === 'group-work' ? `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
 
                 {lessonState.activeInteraction.options?.length ? (
@@ -1725,15 +1741,18 @@ export default function StudentWelcomePage() {
                 {!lessonState.interactionResults.open ? (
                   <div className="student-submitted is-locked" role="status"><Lock size={18} /><span><strong>Responses are locked.</strong> Look up for the class discussion.</span></div>
                 ) : (
-                  <HapticButton
-                    type="button"
-                    className={`student-send-response ${isSubmitting ? 'is-sending' : ''}`}
-                    hapticTone="action"
-                    disabled={isSubmitting || (lessonState.activeInteraction.options?.length ? selectedOption === null : !writtenResponse.trim())}
-                    onClick={(event) => submitInteraction(event.currentTarget)}
-                  >
-                    <span>{isSubmitting ? 'Sending response' : lessonState.activeInteraction.type === 'group-work' ? 'Send group response' : lessonState.activeInteraction.type === 'word-cloud' ? 'Add to word cloud' : 'Send response'}</span><Send size={17} />
-                  </HapticButton>
+                  <div className={`student-response-action ${responseReady ? 'is-ready' : ''}`}>
+                    <HapticButton
+                      type="button"
+                      className={`student-send-response ${isSubmitting ? 'is-sending' : ''}`}
+                      hapticTone="action"
+                      aria-label={selectedAnswerText ? `${responseActionLabel}: ${selectedAnswerText}` : responseActionLabel}
+                      disabled={isSubmitting || (lessonState.activeInteraction.options?.length ? selectedOption === null : !writtenResponse.trim())}
+                      onClick={(event) => submitInteraction(event.currentTarget)}
+                    >
+                      <span>{responseActionLabel}</span><Send size={17} />
+                    </HapticButton>
+                  </div>
                 )}
                 <div className="student-private-line"><ShieldCheck size={16} /> The projector shows the class result, not your name.</div>
               </>
@@ -1822,6 +1841,7 @@ export default function StudentWelcomePage() {
           type="button"
           depth="compact"
           className="student-question-launch"
+          aria-label="Questions"
           aria-expanded={questionSheetOpen}
           aria-haspopup="dialog"
           onClick={() => {
