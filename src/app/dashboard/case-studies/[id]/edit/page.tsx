@@ -15,6 +15,7 @@ import RichTextEditor from '@/components/ui/RichTextEditor';
 import type { Section, Question, CaseStudy, SectionType } from '@/types';
 import { Plus, Trash2, Save, ArrowLeft, BookOpen, MessageSquare, Activity, GripVertical } from 'lucide-react';
 import CaseStudyPDFExport from '@/components/teacher/CaseStudyPDFExport';
+import InlineMessage from '@/components/ui/InlineMessage';
 import {
   DndContext,
   closestCenter,
@@ -35,6 +36,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 interface SortableSectionProps {
   section: Section;
@@ -543,7 +545,7 @@ export default function EditCaseStudyPage() {
         setSections(migratedSections);
       } catch (error: any) {
         console.error('Error loading case study:', error);
-        setError('Failed to load case study');
+        setError(getUserFacingError(error, 'This case study could not be opened. Return to the library and try again.'));
       } finally {
         setInitialLoading(false);
       }
@@ -758,7 +760,7 @@ export default function EditCaseStudyPage() {
       await updateCaseStudy(caseStudyId, updateData);
       router.push('/dashboard/case-studies');
     } catch (error: any) {
-      setError(error.message || 'Failed to update case study');
+      setError(getUserFacingError(error, 'The case study could not be saved. Your changes are still here, so you can try again.'));
     } finally {
       setLoading(false);
     }
@@ -928,11 +930,7 @@ export default function EditCaseStudyPage() {
             </div>
 
             {/* Error Message */}
-            {error && (
-              <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                {error}
-              </div>
-            )}
+            {error && <InlineMessage title="The case study is not saved yet." message={error} />}
 
             {/* Submit */}
             <div className="flex gap-4">

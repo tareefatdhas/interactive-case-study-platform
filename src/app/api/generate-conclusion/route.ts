@@ -71,7 +71,6 @@ export async function POST(request: NextRequest) {
         success: true,
         result: fallbackResult,
         fallback: true,
-        originalError: aiError.message
       });
     }
 
@@ -81,7 +80,7 @@ export async function POST(request: NextRequest) {
     console.error('💥 Conclusion API Error:', error);
     return NextResponse.json({
       success: false,
-      error: error.message
+      error: 'The reflection summary is not ready yet. Your responses are safe, so try again in a moment.'
     }, { status: 500 });
   }
 }

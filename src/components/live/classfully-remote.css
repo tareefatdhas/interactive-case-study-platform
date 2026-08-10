@@ -103,6 +103,12 @@
 .remote-question-list article span { color: var(--remote-muted); font-size: 10px; font-weight: 700; }
 .remote-question-list article button { min-height: 32px; padding: 0 10px; border: 1px solid #d9d5fb; border-radius: 9px; color: var(--remote-violet-deep); background: #f6f4ff; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
 .remote-question-list article button.is-featured { color: #fff; border-color: var(--remote-violet); background: var(--remote-violet); }
+.remote-question-actions { display: flex; align-items: center; gap: 5px; }
+.remote-question-list article button.is-dismiss { display: inline-flex; align-items: center; gap: 4px; color: #73798a; border-color: transparent; background: transparent; }
+.remote-question-list article button.is-dismiss:hover { color: #9b4b3d; background: #fff4f1; }
+.remote-question-list article button:disabled { cursor: wait; opacity: .55; }
+.remote-question-undo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 9px 11px; border-radius: 11px; color: #fff; background: var(--remote-ink); font-size: 10px; font-weight: 700; }
+.remote-question-undo button { min-height: 28px; padding: 0 9px; border: 1px solid rgba(255,255,255,.3); border-radius: 8px; color: #fff; background: rgba(255,255,255,.12); font: inherit; font-weight: 800; cursor: pointer; }
 .remote-no-questions { padding: 8px 0; color: var(--remote-muted); }
 
 .remote-active-card,
@@ -137,6 +143,7 @@
   letter-spacing: -0.025em;
   line-height: 1.15;
 }
+.remote-clock-instructions { margin: -10px 0 20px; color: var(--remote-muted); font-size: 13px; line-height: 1.5; }
 
 .remote-response-metric { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .remote-response-metric > div { display: flex; align-items: baseline; gap: 7px; }
@@ -166,6 +173,25 @@
 .remote-primary-actions button:disabled { cursor: not-allowed; opacity: 0.42; }
 .remote-primary-actions .remote-reveal { border-color: transparent; color: #fff; background: linear-gradient(135deg, var(--remote-violet), var(--remote-violet-deep)); box-shadow: 0 8px 20px rgba(87, 67, 215, 0.2); }
 .remote-primary-actions .remote-finish { grid-column: 1 / -1; }
+
+.remote-up-next {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 11px 11px 13px;
+  border: 1px solid rgba(102, 84, 233, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(110deg, #f6f3ff, #fff);
+}
+.remote-up-next > div { min-width: 0; display: grid; gap: 3px; }
+.remote-up-next small { color: var(--remote-violet-deep); font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.remote-up-next strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.remote-up-next > button { display: flex; min-height: 38px; align-items: center; gap: 6px; padding: 0 11px; border: 0; border-radius: 11px; color: #fff; background: var(--remote-violet-deep); font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; box-shadow: 0 7px 16px rgba(75, 59, 208, .18); }
+.remote-up-next.is-complete { border-color: rgba(20,34,63,.1); background: rgba(255,255,255,.62); }
+.remote-up-next.is-complete small { color: var(--remote-muted); }
+.remote-up-next.is-complete strong { color: var(--remote-muted); font-weight: 650; }
 
 .remote-ready-card { display: flex; gap: 14px; padding: 18px; }
 .remote-ready-icon { display: grid; flex: 0 0 42px; height: 42px; place-items: center; border-radius: 14px; color: var(--remote-violet); background: var(--remote-lilac); }
@@ -199,7 +225,7 @@
 .remote-timer-card.is-complete { border-color: #f1c6b9; background: #fff7f3; }
 .remote-timer-card.is-complete > span { background: #cf6248; }
 
-.remote-plan { margin-top: 20px; }
+.remote-plan { margin-top: 12px; animation: remote-plan-open 240ms cubic-bezier(.2,.8,.2,1) both; }
 .remote-section-title { display: flex; align-items: center; min-height: 30px; gap: 8px; color: var(--remote-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
 .remote-section-title button { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 9px; background: var(--remote-lilac); color: var(--remote-violet); cursor: pointer; }
 .remote-section-title small { margin-left: auto; display: grid; min-width: 22px; height: 22px; padding: 0 6px; place-items: center; border-radius: 99px; background: #eceaf0; color: var(--remote-muted); }
@@ -229,6 +255,11 @@
 @keyframes remote-number-arrive {
   0% { opacity: .3; transform: translateY(4px) scale(.92); }
   100% { opacity: 1; transform: none; }
+}
+
+@keyframes remote-plan-open {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
 }
 
 @media (max-width: 350px) {

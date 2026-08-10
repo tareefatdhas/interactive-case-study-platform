@@ -4,12 +4,14 @@ import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { createCourse, getCourse, getCoursesByTeacher, getSessionsByTeacher, updateCourse } from '@/lib/firebase/firestore';
+import { createCourse, deleteSession, getCourse, getCoursesByTeacher, getSessionsByTeacher, updateCourse } from '@/lib/firebase/firestore';
+import { deleteInstructorClassroomData } from '@/lib/firebase/live-classroom';
 import { Timestamp } from 'firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
+import InlineMessage from '@/components/ui/InlineMessage';
 import type { Course, Session, SessionInteraction, SessionInteractionType } from '@/types';
 import {
   ArrowLeft,
@@ -29,6 +31,8 @@ import {
   Library,
   LoaderCircle,
   MessageCircle,
+  MoreHorizontal,
+  Pencil,
   Plus,
   Play,
   Radio,
@@ -115,11 +119,33 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [rolloverOpen, setRolloverOpen] = useState(false);
+  const [classMenuOpen, setClassMenuOpen] = useState(false);
+  const [sessionMenuOpen, setSessionMenuOpen] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
   const [rollingOver, setRollingOver] = useState(false);
   const [nextTerm, setNextTerm] = useState('');
   const [nextCode, setNextCode] = useState('');
   const [archiveAfterRollover, setArchiveAfterRollover] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const closeMenus = (event: PointerEvent) => {
+      if ((event.target as Element).closest('[data-overflow-menu]')) return;
+      setClassMenuOpen(false);
+      setSessionMenuOpen(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setClassMenuOpen(false);
+      setSessionMenuOpen(null);
+    };
+    document.addEventListener('pointerdown', closeMenus);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeMenus);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
 
   useEffect(() => {
     const loadWorkspace = async () => {
@@ -265,6 +291,24 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
     }
   };
 
+  const confirmDeleteSession = async () => {
+    if (!sessionToDelete || sessionToDelete.active) return;
+    const deletedSession = sessionToDelete;
+    setError('');
+    try {
+      if (deletedSession.sessionType === 'standalone') {
+        await deleteInstructorClassroomData(deletedSession.teacherId, deletedSession.id);
+      }
+      await deleteSession(deletedSession.id);
+      setSessions((current) => current.filter((session) => session.id !== deletedSession.id));
+      setSessionToDelete(null);
+    } catch (deleteError) {
+      console.error('Could not delete session:', deleteError);
+      setError('The session could not be deleted. Check your connection and try again.');
+      throw deleteError;
+    }
+  };
+
   if (loading) {
     return <ProtectedRoute><DashboardLayout><div className="flex min-h-96 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /></div></DashboardLayout></ProtectedRoute>;
   }
@@ -276,7 +320,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
           <Link href="/dashboard/classes" className="seminar-focus mb-6 inline-flex items-center gap-2 rounded-lg text-sm font-semibold text-[#697087] hover:text-[#101a38]"><ArrowLeft className="h-4 w-4" /> All classes</Link>
 
           {error && !course ? (
-            <section className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">{error}</section>
+            <InlineMessage title="This class is not available here." message={error} />
           ) : course && (
             <>
               <header className="mb-8 flex flex-col gap-5 border-b border-[#e3e5ed] pb-8 lg:flex-row lg:items-end lg:justify-between">
@@ -285,10 +329,22 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                   <h1 className="seminar-display mt-4 text-4xl text-[#101a38] sm:text-5xl">{course.name}</h1>
                   <div className="mt-4 flex flex-wrap gap-5 text-sm text-[#697087]"><span className="flex items-center gap-2"><CalendarPlus className="h-4 w-4" /> {sessions.length} sessions</span><span className="flex items-center gap-2"><Users className="h-4 w-4" /> {studentCount} students seen</span><span className="flex items-center gap-2"><Library className="h-4 w-4" /> {templates.length} reusable interactions</span></div>
                 </div>
-                <div className="flex flex-wrap gap-3">{course.archived ? <Button variant="outline" onClick={restoreClass} loading={saving} className="gap-2"><ArchiveRestore className="h-4 w-4" /> Restore class</Button> : <><Button variant="outline" onClick={openRollover} className="gap-2"><CalendarSync className="h-4 w-4" /> Start next term</Button><Link href={`/dashboard/progress?courseId=${course.id}`}><Button variant="outline">View progress</Button></Link><Link href={`/dashboard/sessions/new?courseId=${course.id}`}><Button className="gap-2"><CalendarPlus className="h-4 w-4" /> Plan next session</Button></Link></>}</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {course.archived ? <Button variant="outline" onClick={restoreClass} loading={saving} className="gap-2"><ArchiveRestore className="h-4 w-4" /> Restore class</Button> : <>
+                    <Link href={`/dashboard/progress?courseId=${course.id}`}><Button variant="outline">View progress</Button></Link>
+                    <Link href={`/dashboard/sessions/new?courseId=${course.id}`}><Button className="gap-2"><CalendarPlus className="h-4 w-4" /> Plan next session</Button></Link>
+                    <div className="relative" data-overflow-menu>
+                      <Button variant="outline" aria-label="More class actions" aria-haspopup="menu" aria-expanded={classMenuOpen} onClick={() => setClassMenuOpen((open) => !open)} className="px-3"><MoreHorizontal className="h-5 w-5" /></Button>
+                      {classMenuOpen && <div role="menu" className="absolute right-0 z-30 mt-2 w-56 origin-top-right rounded-2xl border border-[#e3e5ed] bg-white p-1.5 shadow-[0_18px_48px_rgba(16,26,56,0.16)] animate-[fadeIn_180ms_ease-out]">
+                        <button type="button" role="menuitem" onClick={() => { setClassMenuOpen(false); openRollover(); }} className="seminar-focus flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-[#313950] hover:bg-[#f8f7fb]"><CalendarSync className="h-4 w-4 text-[#697087]" /> Start next term</button>
+                        <button type="button" role="menuitem" onClick={() => { setClassMenuOpen(false); setArchiveOpen(true); }} className="seminar-focus flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-[#8a4b3d] hover:bg-[#fff1ee]"><Archive className="h-4 w-4" /> Archive class</button>
+                      </div>}
+                    </div>
+                  </>}
+                </div>
               </header>
 
-              {error && <p className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
+              {error && <InlineMessage className="mb-6" title="That change did not stick yet." message={error} />}
 
               {course.archived && <div className="mb-6 flex items-start gap-3 rounded-2xl border border-[#dedbd2] bg-[#f8f7f3] p-4 text-sm leading-6 text-[#5f6472]"><Archive className="mt-0.5 h-4 w-4 shrink-0" /><span><strong className="block text-[#101a38]">This class is archived.</strong>Its teaching kit and history are read-only until you restore it.</span></div>}
 
@@ -300,7 +356,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
 
               {workspaceView === 'sessions' ? (
                 <div className="grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
-                  <section className="overflow-hidden rounded-3xl border border-[#e3e5ed] bg-white" aria-labelledby="class-sessions-title">
+                  <section className="overflow-visible rounded-3xl border border-[#e3e5ed] bg-white" aria-labelledby="class-sessions-title">
                     <div className="flex flex-col gap-4 border-b border-[#e3e5ed] bg-[linear-gradient(110deg,#fff_0%,#faf9ff_70%,#fff5f0_100%)] p-6 sm:flex-row sm:items-end sm:justify-between sm:p-7">
                       <div><p className="seminar-eyebrow mb-2">Teaching sequence</p><h2 id="class-sessions-title" className="seminar-display text-3xl text-[#101a38]">Sessions</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#697087]">Each session has its own ordered flow of activities, ready to launch beside your slides.</p></div>
                       {!course.archived && <Link href={`/dashboard/sessions/new?courseId=${course.id}`}><Button className="gap-2"><Plus className="h-4 w-4" /> New session</Button></Link>}
@@ -325,7 +381,16 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                 <h3 className="mt-1 truncate text-lg font-bold text-[#101a38]">{session.title || 'Untitled session'}</h3>
                                 <p className="mt-1 flex items-center gap-2 text-xs text-[#697087]"><Library className="h-3.5 w-3.5" /> {session.interactions?.length || 0} activities in this flow</p>
                               </div>
-                              <Link href={session.active ? `/live?sessionId=${session.id}` : `/dashboard/sessions/${session.id}`}><Button variant={session.active ? 'primary' : 'outline'} className="w-full gap-2 sm:w-auto">{session.active ? <Play className="h-4 w-4" /> : null}{session.active ? 'Open live controls' : 'Open session'} <ArrowRight className="h-4 w-4" /></Button></Link>
+                              <div className="flex items-center gap-2">
+                                <Link className="flex-1" href={session.active ? `/live?sessionId=${session.id}` : `/dashboard/sessions/${session.id}`}><Button variant={session.active ? 'primary' : 'outline'} className="w-full gap-2 sm:w-auto">{session.active ? <Play className="h-4 w-4" /> : null}{session.active ? 'Open live controls' : 'Open session'} <ArrowRight className="h-4 w-4" /></Button></Link>
+                                <div className="relative" data-overflow-menu>
+                                  <Button variant="ghost" aria-label={`More actions for ${session.title || 'untitled session'}`} aria-haspopup="menu" aria-expanded={sessionMenuOpen === session.id} onClick={() => setSessionMenuOpen((open) => open === session.id ? null : session.id)} className="px-2.5"><MoreHorizontal className="h-5 w-5" /></Button>
+                                  {sessionMenuOpen === session.id && <div role="menu" className="absolute right-0 z-30 mt-2 w-52 origin-top-right rounded-2xl border border-[#e3e5ed] bg-white p-1.5 shadow-[0_18px_48px_rgba(16,26,56,0.16)] animate-[fadeIn_180ms_ease-out]">
+                                    {!session.active && <Link role="menuitem" href={`/dashboard/sessions/new?sessionId=${session.id}`} onClick={() => setSessionMenuOpen(null)} className="seminar-focus flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-[#313950] hover:bg-[#f8f7fb]"><Pencil className="h-4 w-4 text-[#697087]" /> Edit session flow</Link>}
+                                    <button type="button" role="menuitem" disabled={session.active} onClick={() => { setSessionMenuOpen(null); setSessionToDelete(session); }} className="seminar-focus flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-[#b64936] hover:bg-[#fff1ee] disabled:cursor-not-allowed disabled:text-[#9aa0b1] disabled:hover:bg-transparent"><Trash2 className="h-4 w-4" /> {session.active ? 'End before deleting' : 'Delete session'}</button>
+                                  </div>}
+                                </div>
+                              </div>
                             </li>
                           );
                         })}
@@ -375,7 +440,15 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                 {(template.type === 'quiz' || template.type === 'peer-learning') && <textarea aria-label={`${template.title} answer explanation`} value={template.explanation || ''} onChange={(event) => updateTemplate(template.id, { explanation: event.target.value })} rows={2} placeholder="Explain why the correct answer is right" className="mt-4 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />}
                                 {template.type === 'peer-learning' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#555d73]"><Repeat2 className="h-4 w-4 text-[#5146e5]" /> Partner discussion <input type="number" aria-label={`${template.title} discussion minutes`} min={1} max={10} value={template.discussionMinutes || 2} onChange={(event) => updateTemplate(template.id, { discussionMinutes: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> min</label>}
                                 {template.type === 'group-work' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#fff5f0] p-3 text-xs font-bold text-[#654f48]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested size <input type="number" aria-label={`${template.title} group size`} min={2} max={10} value={template.groupSize || 4} onChange={(event) => updateTemplate(template.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5" /> students</label>}
-                                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-[#697087]"><label className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /><input type="number" aria-label={`${template.title} duration minutes`} min={1} max={60} value={template.durationMinutes || 3} onChange={(event) => updateTemplate(template.id, { durationMinutes: Number(event.target.value) })} className="w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> min</label><div className="flex gap-1"><button type="button" onClick={() => { setTemplates((current) => [...current, { ...template, id: `${template.id}-copy-${Date.now()}`, title: `${template.title} copy` }]); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-white" aria-label={`Duplicate ${template.title}`}><Copy className="h-4 w-4" /></button><button type="button" onClick={() => { setTemplates((current) => current.filter((item) => item.id !== template.id)); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Delete ${template.title}`}><Trash2 className="h-4 w-4" /></button></div></div>
+                                <div className="mt-4 flex flex-wrap items-end justify-between gap-3 text-xs text-[#697087]">
+                                  {(template.type === 'timer' || template.type === 'group-work') && (
+                                    <label className="grid gap-1.5 font-semibold">
+                                      <span>{template.type === 'group-work' ? 'Work time' : 'Duration'}</span>
+                                      <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /><input type="number" aria-label={`${template.title} ${template.type === 'group-work' ? 'work time' : 'duration'} minutes`} min={1} max={60} value={template.durationMinutes || 3} onChange={(event) => updateTemplate(template.id, { durationMinutes: Number(event.target.value) })} className="w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> min</span>
+                                    </label>
+                                  )}
+                                  <div className="ml-auto flex gap-1"><button type="button" onClick={() => { setTemplates((current) => [...current, { ...template, id: `${template.id}-copy-${Date.now()}`, title: `${template.title} copy` }]); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-white" aria-label={`Duplicate ${template.title}`}><Copy className="h-4 w-4" /></button><button type="button" onClick={() => { setTemplates((current) => current.filter((item) => item.id !== template.id)); setSaved(false); }} className="seminar-focus rounded-lg p-2 hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Delete ${template.title}`}><Trash2 className="h-4 w-4" /></button></div>
+                                </div>
                               </div>
                             </div>
                           </article>
@@ -393,7 +466,6 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                     <label className="mt-5 grid gap-1.5 text-xs font-bold text-[#697087]">Class name<input value={className} onChange={(event) => { setClassName(event.target.value); setSaved(false); }} className="min-h-11 rounded-xl border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
                     <label className="mt-4 grid gap-1.5 text-xs font-bold text-[#697087]">Term<input value={classTerm} onChange={(event) => { setClassTerm(event.target.value); setSaved(false); }} placeholder="Fall 2026" className="min-h-11 rounded-xl border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
                     <p className="mt-3 text-xs leading-5 text-[#697087]">The class code stays fixed so older attendance and session records remain connected.</p>
-                    {!course.archived && <button type="button" onClick={() => setArchiveOpen(true)} className="seminar-focus mt-5 inline-flex items-center gap-2 rounded-lg text-sm font-bold text-[#8a4b3d] hover:text-[#b64936]"><Archive className="h-4 w-4" /> Archive this class</button>}
                   </section>
                   {!course.archived && <section className="rounded-3xl border border-[#dcd8ff] bg-[#f7f6ff] p-6">
                     <p className="seminar-eyebrow mb-2">Next step</p><h2 className="seminar-display text-3xl text-[#101a38]">Plan a session</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Choose from this library, add lesson-specific questions, and put everything in teaching order.</p><Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="mt-5 block"><Button className="w-full gap-2">Plan next session <ArrowRight className="h-4 w-4" /></Button></Link>
@@ -408,6 +480,8 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
               )}
 
               <Dialog isOpen={archiveOpen} onClose={() => setArchiveOpen(false)} onConfirm={archiveClass} title="Archive this class?" message="It will move out of your current classes. Sessions, attendance, student progress, and reusable interactions will be kept." confirmText="Archive class" variant="destructive" />
+
+              <Dialog isOpen={Boolean(sessionToDelete)} onClose={() => setSessionToDelete(null)} onConfirm={confirmDeleteSession} title="Delete this session?" message={`“${sessionToDelete?.title || 'Untitled session'}” and its live classroom data will be permanently deleted. This cannot be undone.`} confirmText="Delete session" variant="destructive" />
 
               {rolloverOpen && (
                 <div className="fixed inset-0 z-[80] grid place-items-center bg-[#101a38]/55 p-4" role="presentation">

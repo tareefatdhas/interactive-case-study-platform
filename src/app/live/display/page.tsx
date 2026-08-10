@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import QRCode from 'react-qr-code';
 import { Activity, CheckCircle2, Cloud, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
 import LivingMoodField from '@/components/live/LivingMoodField';
+import ClassroomStateGate from '@/components/live/ClassroomStateGate';
+import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import { joinDisplayPresence, subscribeToStudentPublicState } from '@/lib/firebase/live-classroom';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import {
@@ -26,6 +28,8 @@ import './display.css';
 
 const DEFAULT_STATE: LessonDisplayState = {
   session: DEMO_SESSION,
+  lobbyOpen: false,
+  connectedStudents: 0,
   counts: HISTORY[0].counts,
   comparisonCounts: HISTORY[1].counts,
   incomingMood: null,
@@ -44,6 +48,26 @@ const DEFAULT_STATE: LessonDisplayState = {
 };
 
 const RESULT_COLORS = ['#5146e5', '#2f73df', '#d99f18', '#df664e', '#2f8b63'];
+const WORD_CLOUD_COLORS = ['#5146e5', '#405bc9', '#6656c7', '#526282'];
+
+function wordCloudDensityClass(uniqueWords: number) {
+  if (uniqueWords <= 1) return 'is-solo';
+  if (uniqueWords <= 5) return 'is-sparse';
+  if (uniqueWords <= 12) return 'is-growing';
+  return 'is-full';
+}
+
+function projectorWordSize(label: string, strength: number, uniqueWords: number) {
+  const lengthFactor = Math.max(0.76, Math.min(1, 1.08 - Math.max(0, label.length - 9) * 0.012));
+  const size = uniqueWords <= 1
+    ? 118
+    : uniqueWords <= 5
+      ? 48 + strength * 58
+      : uniqueWords <= 12
+        ? 30 + strength * 54
+        : 28 + strength * 58;
+  return Math.round(size * lengthFactor);
+}
 
 function ProjectorTimer({ timer }: { timer: NonNullable<LessonDisplayState['timer']> }) {
   const [now, setNow] = useState(Date.now());
@@ -61,6 +85,25 @@ function ProjectorTimer({ timer }: { timer: NonNullable<LessonDisplayState['time
       <div><small>{remaining === 0 ? 'Time is up' : timer.label}</small><strong>{time}</strong></div>
       <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="20" /><circle className="is-progress" cx="24" cy="24" r="20" pathLength="1" strokeDasharray="1" strokeDashoffset={1 - progress} /></svg>
     </aside>
+  );
+}
+
+function FullScreenProjectorTimer({ timer }: { timer: NonNullable<LessonDisplayState['timer']> }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [timer.id]);
+  const remaining = Math.max(0, Math.ceil((timer.endsAt - now) / 1000));
+  const progress = timer.durationSeconds ? Math.max(0, Math.min(1, remaining / timer.durationSeconds)) : 0;
+  const time = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
+
+  return (
+    <div className={`full-screen-projector-timer ${remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-live="polite" aria-label={`${timer.label}: ${time} remaining`}>
+      <svg viewBox="0 0 220 220" aria-hidden="true"><circle cx="110" cy="110" r="96" /><circle className="is-progress" cx="110" cy="110" r="96" pathLength="1" strokeDasharray="1" strokeDashoffset={1 - progress} /></svg>
+      <div><small>{remaining === 0 ? 'Time is up' : 'Time remaining'}</small><strong>{time}</strong></div>
+    </div>
   );
 }
 
@@ -153,6 +196,8 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   const isClock = interaction.type === 'timer';
   const isWordCloud = interaction.type === 'word-cloud';
   const wordCloudItems = buildWordCloudItems(results.writtenResponses);
+  const repeatedWordCloudItems = wordCloudItems.filter((item) => item.count > 1).slice(0, 3);
+  const wordCloudDensity = wordCloudDensityClass(wordCloudItems.length);
   const wordArrivals = [
     [-34, -24], [38, 18], [-42, 26], [30, -30], [4, 34], [-12, -36], [44, -8], [-38, 4],
   ];
@@ -162,8 +207,8 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
       <div className="interaction-display-heading">
         <div>
           <span className="display-eyebrow"><ListChecks size={20} /> {interaction.label}</span>
-          <h1>{interaction.prompt}</h1>
-          <p>{isClock ? 'The same clock is visible on every student phone.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? interaction.type === 'group-work' ? `Work in groups of about ${interaction.groupSize || 4}. One note-taker submits for each group.` : 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>
+          {isClock ? <h1>{interaction.title}</h1> : <MarkdownContent heading className="interaction-display-question" markdown={interaction.prompt} />}
+          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : <p>{isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? interaction.type === 'group-work' ? `Work in groups of about ${interaction.groupSize || 4}. One note-taker submits for each group.` : 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
         </div>
         {!isClock && <div className="interaction-display-count">
           <Users size={21} />
@@ -181,16 +226,19 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
         </div>}
       </div>
       {isClock ? (
-        <div className="display-clock-module" aria-hidden="true"><span><Timer size={46} /></span><div><i /><i /><i /></div><strong>Make this time count.</strong></div>
+        lessonState.timer ? <FullScreenProjectorTimer timer={lessonState.timer} /> : <div className="display-clock-module" aria-hidden="true"><span><Timer size={46} /></span><div><i /><i /><i /></div><strong>Timer ready.</strong></div>
       ) : isWordCloud ? (
-        <div className="display-word-cloud" aria-label={`Word cloud with ${wordCloudItems.length} unique answers`}>
+        <div className={`display-word-cloud ${wordCloudDensity}`} aria-label={`Word cloud for ${markdownToPlainText(interaction.prompt)} with ${wordCloudItems.length} unique answers`}>
+          {results.responseCount > 0 && <i className="display-word-cloud-ripple" key={`cloud-ripple-${results.responseCount}`} aria-hidden="true" />}
           {wordCloudItems.length ? wordCloudItems.map((item, index) => {
             const [arrivalX, arrivalY] = wordArrivals[index % wordArrivals.length];
             return (
               <span
+                className={item.count > 1 ? 'is-repeated' : ''}
                 key={`${results.runId}-${item.key}-${item.count}`}
                 style={{
-                  '--word-size': `${30 + item.strength * 70}px`,
+                  '--word-size': `${projectorWordSize(item.label, item.strength, wordCloudItems.length)}px`,
+                  '--word-color': WORD_CLOUD_COLORS[Math.min(index, WORD_CLOUD_COLORS.length - 1)],
                   '--arrival-x': `${arrivalX}vw`,
                   '--arrival-y': `${arrivalY}vh`,
                   '--word-delay': `${Math.min(index * 22, 220)}ms`,
@@ -198,17 +246,21 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
                 title={`${item.count} ${item.count === 1 ? 'response' : 'responses'}`}
               >
                 {item.label}
-                {item.count > 1 && <small>{item.count}</small>}
+                {item.count > 1 && index < 3 && <small aria-label={`${item.count} responses`}>×{item.count}</small>}
               </span>
             );
           }) : <div className="display-word-cloud-empty"><Cloud size={44} /><strong>Waiting for the first word</strong><span>Answer on your phone.</span></div>}
+          {wordCloudItems.length > 1 && <div className="display-word-cloud-summary" aria-label={`${wordCloudItems.length} distinct ideas${repeatedWordCloudItems.length ? `; most repeated: ${repeatedWordCloudItems.map((item) => `${item.label}, ${item.count}`).join('; ')}` : ''}`}>
+            <span><strong>{wordCloudItems.length}</strong> distinct ideas</span>
+            {repeatedWordCloudItems.length > 0 && <div><small>Most repeated</small>{repeatedWordCloudItems.map((item) => <b key={item.key}>{item.label} <i>{item.count}</i></b>)}</div>}
+          </div>}
         </div>
       ) : isPeerDiscussion ? (
         <div className="display-peer-discussion"><div className="peer-orbit"><span>Think</span><i /><span>Listen</span><i /><span>Explain</span></div><strong>What led you to your answer?</strong><p>Find one point you agree on and one point worth reconsidering.</p></div>
       ) : !showDistribution && interaction.options?.length && (
         <ResponseCurrent count={results.responseCount} runId={results.runId} open={results.open} />
       )}
-      {!isClock && !isPeerDiscussion && (showDistribution ? (
+      {!isClock && !isPeerDiscussion && !isWordCloud && (showDistribution ? (
         <div className="interaction-result-options">
           {interaction.options?.map((option, index) => {
             const count = results.optionCounts[index] ?? 0;
@@ -364,6 +416,39 @@ function ClassroomWelcome({ lessonState, joinUrl }: { lessonState: LessonDisplay
   );
 }
 
+function ClassroomLobby({ lessonState, joinUrl }: { lessonState: LessonDisplayState; joinUrl: string }) {
+  const joinLink = new URL(joinUrl);
+  joinLink.searchParams.set('code', lessonState.session.sessionCode.replace(/\s/g, ''));
+  const connected = lessonState.connectedStudents || 0;
+
+  return (
+    <section className="classroom-lobby-stage">
+      <div className="classroom-lobby-copy">
+        <span className="welcome-display-kicker"><Smartphone size={21} /> Class lobby</span>
+        <p className="classroom-lobby-course">{lessonState.session.courseCode}{lessonState.session.courseName ? ` · ${lessonState.session.courseName}` : ''}</p>
+        <h1>Join the room.</h1>
+        <p>Scan the code or open the link on your phone. No app download needed.</p>
+        <div className="classroom-lobby-link">
+          <span>Go to</span>
+          <strong>{joinUrl.replace(/^https?:\/\//, '')}</strong>
+        </div>
+        <div className="classroom-lobby-arrivals" aria-live="polite">
+          <div className="classroom-lobby-arrival-count"><Users size={24} /><strong key={connected}>{connected}</strong><span>{connected === 1 ? 'student is here' : 'students are here'}</span></div>
+          <div className="classroom-lobby-arrival-field" aria-hidden="true">
+            {Array.from({ length: Math.min(72, connected) }).map((_, index) => <i key={index} style={{ '--arrival-index': index } as CSSProperties} />)}
+          </div>
+        </div>
+      </div>
+      <div className="classroom-lobby-qr" aria-label="Scan to join this class">
+        <QRCode value={joinLink.toString()} title="Scan to join this class" level="M" size={420} bgColor="#ffffff" fgColor="#101a38" />
+        <span>Class code</span>
+        <strong>{formatSessionCode(lessonState.session.sessionCode)}</strong>
+        <small>Keep this screen open while everyone joins</small>
+      </div>
+    </section>
+  );
+}
+
 function QuestionSpotlight({ question }: { question: LessonDisplayState['questions'][number] }) {
   return (
     <section className="question-spotlight-stage" key={question.id}>
@@ -385,6 +470,7 @@ function QuestionSpotlight({ question }: { question: LessonDisplayState['questio
 
 export default function ClassroomDisplayPage() {
   const [lessonState, setLessonState] = useState<LessonDisplayState>(DEFAULT_STATE);
+  const [classroomStateReady, setClassroomStateReady] = useState(false);
   const [connected, setConnected] = useState(false);
   const [remoteUnavailable, setRemoteUnavailable] = useState(false);
   const [joinUrl, setJoinUrl] = useState('https://classfully.com/join');
@@ -506,6 +592,7 @@ export default function ClassroomDisplayPage() {
           if (!state) {
             setConnected(false);
             setRemoteUnavailable(true);
+            setClassroomStateReady(true);
             return;
           }
           setRemoteUnavailable(false);
@@ -516,6 +603,7 @@ export default function ClassroomDisplayPage() {
             session: state.session || DEFAULT_STATE.session,
           });
           setConnected(true);
+          setClassroomStateReady(true);
         });
         stopPresence = await joinDisplayPresence(ownerUid, sessionId);
       };
@@ -524,6 +612,7 @@ export default function ClassroomDisplayPage() {
         if (!cancelled) {
           setConnected(false);
           setRemoteUnavailable(true);
+          setClassroomStateReady(true);
         }
       });
 
@@ -557,6 +646,7 @@ export default function ClassroomDisplayPage() {
     };
 
     announceReady();
+    setClassroomStateReady(true);
     const heartbeat = window.setInterval(() => {
       channel.postMessage({ type: 'display-heartbeat' });
     }, 1800);
@@ -586,6 +676,7 @@ export default function ClassroomDisplayPage() {
   }, []);
 
   const responseTotal = total(lessonState.counts);
+  const joinDisplayUrl = joinUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
   const featuredQuestion = lessonState.questions.find((question) => question.id === lessonState.featuredQuestionId) || null;
   const selectedDate = HISTORY[lessonState.selectedWeek]?.date ?? 'Today';
   const roomSignal = useMemo(() => {
@@ -597,6 +688,10 @@ export default function ClassroomDisplayPage() {
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
     else await document.exitFullscreen();
   };
+
+  if (!classroomStateReady) {
+    return <ClassroomStateGate title="Preparing the classroom screen" message="Waiting for the latest activity from the instructor." />;
+  }
 
   return (
     <main className={`classroom-display ${lessonState.playingHistory ? 'is-flowing' : ''}`}>
@@ -614,7 +709,7 @@ export default function ClassroomDisplayPage() {
       </header>
 
       {projectorFlights.map((flight) => <ProjectorTransportFlight key={flight.id} flight={flight} />)}
-      {lessonState.timer && <ProjectorTimer timer={lessonState.timer} />}
+      {lessonState.timer && lessonState.activeInteraction?.type !== 'timer' && <ProjectorTimer timer={lessonState.timer} />}
 
       {remoteUnavailable ? (
         <>
@@ -629,6 +724,15 @@ export default function ClassroomDisplayPage() {
             <div className="room-rhythm"><i /><span><strong>Responses are closed</strong><small>It is safe to close this display</small></span></div>
           </footer>
         </>
+      ) : lessonState.lobbyOpen ? (
+        <>
+          <ClassroomLobby lessonState={lessonState} joinUrl={joinUrl} />
+          <footer className="display-footer classroom-lobby-footer">
+            <div className="room-rhythm"><i /><span><strong>Waiting for the instructor</strong><small>The first activity will begin when the room is ready</small></span></div>
+            <div className="display-footer-insight"><Users size={16} /><span>{lessonState.connectedStudents || 0} connected</span></div>
+            <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
+          </footer>
+        </>
       ) : lessonState.onboardingStep > 0 ? (
         <>
           <ClassroomWelcome lessonState={lessonState} joinUrl={joinUrl} />
@@ -638,7 +742,7 @@ export default function ClassroomDisplayPage() {
               {[1, 2, 3].map((step) => <i className={step <= lessonState.onboardingStep ? 'is-filled' : ''} key={step} />)}
               <span>{lessonState.onboardingStep === 4 ? 'Ready to begin' : `Step ${lessonState.onboardingStep} of 3`}</span>
             </div>
-            <div className="join-code"><span>Class code</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
+            <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
           </footer>
         </>
       ) : featuredQuestion ? (
@@ -647,7 +751,7 @@ export default function ClassroomDisplayPage() {
           <footer className="display-footer question-spotlight-footer">
             <div className="room-rhythm"><i /><span><strong>Question selected for discussion</strong><small>The instructor can return to the activity when ready</small></span></div>
             <div className="display-footer-insight"><MessageCircle size={16} /><span>{featuredQuestion.votes} class upvotes</span></div>
-            <div className="join-code"><span>Class code</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
+            <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
           </footer>
         </>
       ) : lessonState.activeInteraction ? (
@@ -656,7 +760,7 @@ export default function ClassroomDisplayPage() {
           <footer className="display-footer">
             <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
             <div className="display-footer-insight"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
-            <div className="join-code"><span>Class code</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
+            <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
           </footer>
         </>
       ) : (
@@ -710,7 +814,7 @@ export default function ClassroomDisplayPage() {
           <footer className="display-footer">
             <div className="room-rhythm"><i /><span><strong>{roomSignal}</strong><small>{lessonState.paused ? 'Responses are paused' : 'New responses appear as they arrive'}</small></span></div>
             <div className="display-history"><MonitorUp size={18} /><span>{lessonState.playingHistory ? `Replaying ${selectedDate}` : 'Live class pulse'}</span></div>
-            <div className="join-code"><span>Join the class</span><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></div>
+            <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
           </footer>
         </>
       )}

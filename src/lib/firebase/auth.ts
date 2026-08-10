@@ -13,6 +13,7 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './config';
 import type { AuthUser, Teacher } from '@/types';
 import { COLLECTIONS } from './firestore';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -22,6 +23,7 @@ const toTeacherAuthUser = (user: User, teacher: Teacher): AuthUser => ({
   email: user.email!,
   role: 'teacher',
   name: teacher.name,
+  photoURL: teacher.photoURL || user.photoURL || undefined,
 });
 
 export const signInTeacher = async (email: string, password: string): Promise<AuthUser> => {
@@ -63,6 +65,7 @@ export const signInTeacherWithGoogle = async (): Promise<AuthUser> => {
     name,
     courseIds: [],
     createdAt: new Date(),
+    ...(user.photoURL ? { photoURL: user.photoURL } : {}),
   };
 
   try {
@@ -88,6 +91,7 @@ export const signInTeacherWithGoogle = async (): Promise<AuthUser> => {
     email: user.email,
     role: 'teacher',
     name,
+    photoURL: user.photoURL || undefined,
   };
 };
 
@@ -119,7 +123,7 @@ export const getGoogleSignInErrorMessage = (
     return 'Google sign-in is temporarily unavailable. Continue with email instead.';
   }
 
-  return error instanceof Error && error.message ? error.message : fallback;
+  return getUserFacingError(error, fallback);
 };
 
 export const signUpTeacher = async (
@@ -188,7 +192,8 @@ export const onAuthChange = (callback: (user: AuthUser | null) => void): () => v
           uid: user.uid,
           email: user.email!,
           role: 'teacher',
-          name: teacherData.name
+          name: teacherData.name,
+          photoURL: teacherData.photoURL || user.photoURL || undefined,
         });
       } else {
         // If not a teacher, sign them out
@@ -203,4 +208,14 @@ export const onAuthChange = (callback: (user: AuthUser | null) => void): () => v
 
 export const getCurrentUser = (): User | null => {
   return auth.currentUser;
+};
+
+export const getCurrentTeacherAuthUser = async (): Promise<AuthUser | null> => {
+  const user = auth.currentUser;
+  if (!user?.email) return null;
+
+  const teacherDoc = await getDoc(doc(db, COLLECTIONS.TEACHERS, user.uid));
+  if (!teacherDoc.exists()) return null;
+
+  return toTeacherAuthUser(user, teacherDoc.data() as Teacher);
 };

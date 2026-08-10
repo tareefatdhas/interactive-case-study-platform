@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
     if (validResponses.length === 0) {
       return NextResponse.json(
-        { error: "No valid responses to summarize" },
+        { error: 'There are no written responses to summarize yet.' },
         { status: 400 }
       );
     }
@@ -51,14 +51,8 @@ export async function POST(request: Request) {
     if (authError) return NextResponse.json({ error: authError.error }, { status: authError.status });
     console.error("API Error:", error);
     
-    // Provide more detailed error information
-    let errorMessage = "Failed to summarize responses";
-    if (error.message) {
-      errorMessage += `: ${error.message}`;
-    }
-    
     return NextResponse.json(
-      { error: errorMessage },
+      { error: 'The response summary is not ready yet. Student responses are safe, so try again in a moment.' },
       { status: 500 }
     );
   }

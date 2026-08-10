@@ -17,6 +17,7 @@ import {
   WandSparkles,
   X,
 } from 'lucide-react';
+import MarkdownContent from '@/components/live/MarkdownContent';
 import type { InteractionResults, LiveInteraction, LiveQuestion, LiveSessionContext, LiveTimer } from '@/app/live/live-data';
 import ProjectorPreflight from './ProjectorPreflight';
 import './classfully-remote.css';
@@ -48,6 +49,7 @@ type ClassfullyRemoteProps = {
   onOpenDisplay: () => void;
   onOpenConsole: () => void;
   onFeatureQuestion: (questionId: number) => void;
+  onDismissQuestion: (question: LiveQuestion, dismissed: boolean) => void | Promise<void>;
   onLaunchUnplanned: (prompt: string) => void;
   onStartTimer: (durationSeconds: number) => void;
   onClearTimer: () => void;
@@ -73,6 +75,7 @@ export default function ClassfullyRemote({
   onOpenDisplay,
   onOpenConsole,
   onFeatureQuestion,
+  onDismissQuestion,
   onLaunchUnplanned,
   onStartTimer,
   onClearTimer,
@@ -85,6 +88,8 @@ export default function ClassfullyRemote({
   const [quickAsk, setQuickAsk] = useState('');
   const [projectorCheckOpen, setProjectorCheckOpen] = useState(false);
   const [clockNow, setClockNow] = useState(Date.now());
+  const [dismissedQuestionUndo, setDismissedQuestionUndo] = useState<LiveQuestion | null>(null);
+  const [moderatingQuestionId, setModeratingQuestionId] = useState<number | null>(null);
   const hasActiveInteraction = Boolean(activeInteraction);
 
   useEffect(() => {
@@ -105,6 +110,12 @@ export default function ClassfullyRemote({
     };
   }, [activeInteraction?.id, hasActiveInteraction, results?.revealed]);
 
+  useEffect(() => {
+    if (!dismissedQuestionUndo) return;
+    const timer = window.setTimeout(() => setDismissedQuestionUndo(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [dismissedQuestionUndo]);
+
   const responseTarget = Math.max(connectedStudents, results?.responseCount || 0);
   const responseProgress = responseTarget
     ? Math.min(100, Math.round(((results?.responseCount || 0) / responseTarget) * 100))
@@ -113,6 +124,8 @@ export default function ClassfullyRemote({
     () => plan.filter((interaction) => interaction.id !== activeInteraction?.id),
     [activeInteraction?.id, plan],
   );
+  const activePlanIndex = activeInteraction ? plan.findIndex((interaction) => interaction.id === activeInteraction.id) : -1;
+  const nextInteraction = activePlanIndex >= 0 ? plan[activePlanIndex + 1] || null : plan[0] || null;
   const topQuestions = useMemo(() => [...questions].sort((a, b) => b.votes - a.votes).slice(0, 4), [questions]);
   const timerSeconds = timer ? Math.max(0, Math.ceil((timer.endsAt - clockNow) / 1000)) : 0;
   const timerText = `${Math.floor(timerSeconds / 60)}:${String(timerSeconds % 60).padStart(2, '0')}`;
@@ -133,6 +146,17 @@ export default function ClassfullyRemote({
   const startProjectorCheck = () => {
     setProjectorCheckOpen(true);
     if (!displayConnected) onOpenDisplay();
+  };
+
+  const changeQuestionDismissal = async (question: LiveQuestion, dismissed: boolean) => {
+    if (moderatingQuestionId === question.id) return;
+    setModeratingQuestionId(question.id);
+    try {
+      await onDismissQuestion(question, dismissed);
+      setDismissedQuestionUndo(dismissed ? question : null);
+    } finally {
+      setModeratingQuestionId(null);
+    }
   };
 
   return (
@@ -159,8 +183,9 @@ export default function ClassfullyRemote({
           <section className="remote-question-panel" aria-label="Top student questions">
             <div className="remote-question-heading"><div><small>Student questions</small><strong>What the room wants discussed</strong></div><button type="button" onClick={() => setShowQuestions(false)} aria-label="Close student questions"><X size={17} /></button></div>
             <div className="remote-question-list">
-              {topQuestions.length ? topQuestions.map((question) => <article key={question.id}><p>{question.question}</p><div><span>{question.votes} upvotes</span><button type="button" className={featuredQuestionId === question.id ? 'is-featured' : ''} onClick={() => onFeatureQuestion(question.id)}>{featuredQuestionId === question.id ? 'Remove' : 'Show on display'}</button></div></article>) : <p className="remote-no-questions">No student questions yet.</p>}
+              {topQuestions.length ? topQuestions.map((question) => <article key={question.id}><p>{question.question}</p><div><span>{question.votes} upvotes</span><div className="remote-question-actions"><button type="button" className="is-dismiss" disabled={moderatingQuestionId === question.id} onClick={() => changeQuestionDismissal(question, true)} aria-label={`Dismiss question: ${question.question}`}><X size={13} /> Dismiss</button><button type="button" className={featuredQuestionId === question.id ? 'is-featured' : ''} onClick={() => onFeatureQuestion(question.id)}>{featuredQuestionId === question.id ? 'Remove' : 'Show on display'}</button></div></div></article>) : <p className="remote-no-questions">No student questions yet.</p>}
             </div>
+            {dismissedQuestionUndo && <div className="remote-question-undo" role="status"><span>Question dismissed</span><button type="button" onClick={() => changeQuestionDismissal(dismissedQuestionUndo, false)}>Undo</button></div>}
           </section>
         )}
 
@@ -169,10 +194,11 @@ export default function ClassfullyRemote({
             <div className="remote-active-kicker">
               <span><Sparkles size={14} /> {activeInteraction.label} is live</span>
               <button type="button" onClick={() => setShowPlan((current) => !current)}>
-                {showPlan ? 'Hide plan' : 'Next'}
+                {showPlan ? 'Back to live' : 'Choose interaction'}
               </button>
             </div>
-            <h2>{activeInteraction.prompt}</h2>
+            <h2>{activeInteraction.type === 'timer' ? activeInteraction.title : activeInteraction.prompt}</h2>
+            {activeInteraction.type === 'timer' && <MarkdownContent className="remote-clock-instructions" markdown={activeInteraction.prompt} />}
 
             {!isClock && <div className="remote-response-metric">
               <div>
@@ -203,9 +229,21 @@ export default function ClassfullyRemote({
               )}
               <button type="button" className="remote-finish" onClick={onFinish}>
                 <Check size={18} />
-                <span>Finish</span>
+                <span>Return to slides</span>
               </button>
             </div>
+
+            {nextInteraction ? (
+              <div className="remote-up-next">
+                <div><small>Up next · {activePlanIndex + 2} of {plan.length}</small><strong>{nextInteraction.title}</strong></div>
+                <button type="button" onClick={() => onLaunch(nextInteraction)}><span>Start next</span><ArrowRight size={17} /></button>
+              </div>
+            ) : (
+              <div className="remote-up-next is-complete">
+                <div><small>Prepared plan complete</small><strong>Choose another interaction or return to your slides.</strong></div>
+                <button type="button" onClick={() => setShowPlan(true)}><span>Choose</span><ArrowRight size={17} /></button>
+              </div>
+            )}
           </section>
         ) : (
           <section className="remote-ready-card">
@@ -214,6 +252,33 @@ export default function ClassfullyRemote({
               <small>Ready when you are</small>
               <h2>Your slides stay in front.</h2>
               <p>Start an interaction here when you want to bring the class in.</p>
+            </div>
+          </section>
+        )}
+
+        {showPlan && (
+          <section className="remote-plan" aria-label="Prepared interactions">
+            <div className="remote-section-title">
+              {activeInteraction && <button type="button" aria-label="Return to active interaction" onClick={() => setShowPlan(false)}><ChevronLeft size={17} /></button>}
+              <span>{activeInteraction ? 'Switch interaction' : 'Prepared interactions'}</span>
+              <small>{nextInteractions.length}</small>
+            </div>
+            <div className="remote-plan-list">
+              {nextInteractions.length ? nextInteractions.map((interaction) => {
+                const planIndex = plan.findIndex((item) => item.id === interaction.id);
+                return (
+                  <button type="button" key={interaction.id} onClick={() => onLaunch(interaction)}>
+                    <span className="remote-plan-index">{String(planIndex + 1).padStart(2, '0')}</span>
+                    <span className="remote-plan-copy">
+                      <small>{planIndex === activePlanIndex + 1 ? 'Up next' : interaction.plannedTime || interaction.label}</small>
+                      <strong>{interaction.title}</strong>
+                    </span>
+                    <ArrowRight size={17} />
+                  </button>
+                );
+              }) : (
+                <div className="remote-plan-empty"><Check size={17} /> All prepared interactions have been shown.</div>
+              )}
             </div>
           </section>
         )}
@@ -240,29 +305,6 @@ export default function ClassfullyRemote({
           <button type="button" className="remote-quick-ask-trigger" onClick={() => setQuickToolsOpen(true)}><WandSparkles size={16} /> Quick tools <span>Timer · Unplanned question</span></button>
         )}
 
-        {showPlan && (
-          <section className="remote-plan" aria-label="Prepared interactions">
-            <div className="remote-section-title">
-              {activeInteraction && <button type="button" aria-label="Return to active interaction" onClick={() => setShowPlan(false)}><ChevronLeft size={17} /></button>}
-              <span>{activeInteraction ? 'Choose what comes next' : 'Prepared interactions'}</span>
-              <small>{nextInteractions.length}</small>
-            </div>
-            <div className="remote-plan-list">
-              {nextInteractions.length ? nextInteractions.map((interaction, index) => (
-                <button type="button" key={interaction.id} onClick={() => onLaunch(interaction)}>
-                  <span className="remote-plan-index">{String(index + 1).padStart(2, '0')}</span>
-                  <span className="remote-plan-copy">
-                    <small>{interaction.plannedTime || interaction.label}</small>
-                    <strong>{interaction.title}</strong>
-                  </span>
-                  <ArrowRight size={17} />
-                </button>
-              )) : (
-                <div className="remote-plan-empty"><Check size={17} /> All prepared interactions have been shown.</div>
-              )}
-            </div>
-          </section>
-        )}
       </main>
 
       <footer className="remote-footer">

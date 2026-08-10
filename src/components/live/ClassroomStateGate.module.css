@@ -1,0 +1,55 @@
+.gate {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(81, 70, 229, 0.08), transparent 30%),
+    #fbfaf7;
+  color: #101a38;
+}
+
+.content {
+  display: grid;
+  justify-items: center;
+  max-width: 380px;
+  text-align: center;
+}
+
+.brand {
+  margin-bottom: 34px;
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+
+.brand span { color: #df664e; }
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 18px;
+  color: #5146e5;
+  animation: spin 900ms linear infinite;
+}
+
+.content strong {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: clamp(25px, 4vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.content p {
+  margin: 9px 0 0;
+  color: #697087;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 1.8s; }
+}

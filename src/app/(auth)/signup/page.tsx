@@ -12,6 +12,8 @@ import Button from '@/components/ui/Button';
 import GoogleSignInButton from '@/components/ui/GoogleSignInButton';
 import Input from '@/components/ui/Input';
 import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
+import InlineMessage from '@/components/ui/InlineMessage';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -60,8 +62,7 @@ export default function SignUpPage() {
       await signUpTeacher(formData.email, formData.password, formData.name);
       router.push('/dashboard');
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : '';
-      setError(message || 'We could not create your account. Check the details and try again.');
+      setError(getUserFacingError(error, 'We could not create your account. Check the details and try again.'));
     } finally {
       setLoading(false);
     }
@@ -133,11 +134,7 @@ export default function SignUpPage() {
                 placeholder="Type it again"
               />
 
-              {error && (
-                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                  {error}
-                </div>
-              )}
+              {error && <InlineMessage title="Your account is not ready yet." message={error} />}
 
               <Button
                 type="submit"

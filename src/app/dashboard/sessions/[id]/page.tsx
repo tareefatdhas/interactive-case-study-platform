@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { 
   getSession, 
+  getSessionsByTeacher,
   getCaseStudy, 
   updateSession,
   updateSessionActivity,
@@ -35,11 +36,15 @@ import {
   ListChecks,
   Lock,
   Unlock,
-  MonitorUp
+  MonitorUp,
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { Timestamp } from 'firebase/firestore';
 import { endInstructorClassroom } from '@/lib/firebase/live-classroom';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 interface SessionPageProps {
   params: Promise<{
@@ -52,6 +57,7 @@ export default function SessionPage({ params }: SessionPageProps) {
   const { user } = useAuth();
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
+  const [courseSessions, setCourseSessions] = useState<Session[]>([]);
   const [caseStudy, setCaseStudy] = useState<CaseStudy | null>(null);
   const [responses, setResponses] = useState<Response[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -73,20 +79,42 @@ export default function SessionPage({ params }: SessionPageProps) {
 
   useEffect(() => {
     const loadSessionData = async () => {
+      setLoading(true);
+      setError('');
+      setCaseStudy(null);
+      setResponses([]);
+      setStudents([]);
       try {
         const sessionData = await getSession(resolvedParams.id);
         
         if (!sessionData) {
-          setError('Session not found');
+          setError('We could not find this class session. Return to your class and choose another session.');
           return;
         }
 
         if (sessionData.teacherId !== user?.uid) {
-          setError('Access denied');
+          setError('This session belongs to another instructor account. Sign in with the account that created it.');
           return;
         }
 
         setSession(sessionData);
+
+        const teacherSessions = await getSessionsByTeacher(sessionData.teacherId);
+        const relatedSessions = teacherSessions
+          .filter((candidate) => sessionData.courseId
+            ? candidate.courseId === sessionData.courseId || (!candidate.courseId && candidate.courseCode === sessionData.courseCode)
+            : candidate.courseCode === sessionData.courseCode)
+          .sort((a, b) => {
+            const timeFor = (candidate: Session) => {
+              if (candidate.scheduledFor) {
+                const scheduled = new Date(candidate.scheduledFor).getTime();
+                if (!Number.isNaN(scheduled)) return scheduled;
+              }
+              return candidate.createdAt?.toMillis?.() || 0;
+            };
+            return timeFor(a) - timeFor(b);
+          });
+        setCourseSessions(relatedSessions);
         
         const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
         if (caseStudyData) {
@@ -98,8 +126,8 @@ export default function SessionPage({ params }: SessionPageProps) {
           await updateSessionActivity(sessionData.id);
         }
 
-      } catch (error: any) {
-        setError(error.message || 'Failed to load session');
+      } catch (error: unknown) {
+        setError(getUserFacingError(error, 'This session could not be opened. Return to the class and try again.'));
       } finally {
         setLoading(false);
       }
@@ -255,8 +283,8 @@ export default function SessionPage({ params }: SessionPageProps) {
       }
       setSession({ ...session, active: newActiveState });
       
-    } catch (error: any) {
-      setError(error.message || 'Failed to update session');
+    } catch (error: unknown) {
+      setError(getUserFacingError(error, 'The session could not be updated. Check your connection and try again.'));
     } finally {
       setUpdating(false);
     }
@@ -310,8 +338,8 @@ export default function SessionPage({ params }: SessionPageProps) {
       await releaseNextSectionRealtime(session.id, nextSectionIndex);
       setReleaseConfirmOpen(false);
       setToast(`Section ${nextSectionIndex + 1} is now available`);
-    } catch (error: any) {
-      setError(error.message || 'Failed to release section');
+    } catch (error: unknown) {
+      setError(getUserFacingError(error, 'The next section could not be shared. Check your connection and try again.'));
       setReleaseConfirmOpen(false);
     } finally {
       setReleasingSection(false);
@@ -408,6 +436,10 @@ export default function SessionPage({ params }: SessionPageProps) {
       : 0;
   }, [studentProgress]);
 
+  const currentSessionIndex = session ? courseSessions.findIndex((candidate) => candidate.id === session.id) : -1;
+  const previousSession = currentSessionIndex > 0 ? courseSessions[currentSessionIndex - 1] : null;
+  const nextSession = currentSessionIndex >= 0 && currentSessionIndex < courseSessions.length - 1 ? courseSessions[currentSessionIndex + 1] : null;
+
   if (loading) {
     return (
       <ProtectedRoute>
@@ -447,7 +479,8 @@ export default function SessionPage({ params }: SessionPageProps) {
         <div className="p-6 lg:p-8">
           {/* Header */}
           <div className="mb-8">
-            <div className="flex items-center justify-between">
+            <Link href={session?.courseId ? `/dashboard/classes/${session.courseId}` : '/dashboard/sessions'} className="seminar-focus mb-5 inline-flex items-center gap-2 rounded-lg text-sm font-semibold text-[#697087] hover:text-[#101a38]"><ArrowLeft className="h-4 w-4" /> {session?.courseName || 'All sessions'}</Link>
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <p className="seminar-eyebrow mb-2">{session?.courseCode || 'Class session'}</p>
                 <h1 className="seminar-display text-4xl text-[#101a38]">{session?.title || caseStudy?.title || 'Class session'}</h1>
@@ -455,7 +488,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                   {session?.courseName ? `${session.courseName} · ` : ''}{session?.sessionCode} · {session?.active ? 'Live' : 'Prepared'}
                 </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 {session?.sessionType === 'standalone' && !session?.active && <Link href={`/dashboard/sessions/new?sessionId=${session?.id}`}>
                   <Button variant="outline" className="flex items-center">
                     <ListChecks className="mr-2 h-4 w-4" /> Edit flow
@@ -490,6 +523,11 @@ export default function SessionPage({ params }: SessionPageProps) {
                 </Button>
               </div>
             </div>
+            {courseSessions.length > 1 && <nav aria-label="Move between class sessions" className="mt-6 grid gap-3 rounded-2xl border border-[#e3e5ed] bg-[#faf9ff] p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+              {previousSession ? <Link href={`/dashboard/sessions/${previousSession.id}`} className="seminar-focus group flex min-h-14 items-center gap-3 rounded-xl bg-white px-3.5 py-2.5 text-left shadow-[0_2px_8px_rgba(16,26,56,0.05)] hover:text-[#5146e5]"><ChevronLeft className="h-5 w-5 shrink-0 text-[#8b91a3] group-hover:text-[#5146e5]" /><span className="min-w-0"><span className="block text-[10px] font-bold uppercase tracking-[0.08em] text-[#8b91a3]">Previous</span><strong className="block truncate text-sm text-[#101a38]">{previousSession.title || 'Untitled session'}</strong></span></Link> : <span className="hidden sm:block" />}
+              <span className="px-2 text-center text-xs font-bold text-[#697087]">Session {currentSessionIndex + 1} of {courseSessions.length}</span>
+              {nextSession ? <Link href={`/dashboard/sessions/${nextSession.id}`} className="seminar-focus group flex min-h-14 items-center justify-end gap-3 rounded-xl bg-white px-3.5 py-2.5 text-right shadow-[0_2px_8px_rgba(16,26,56,0.05)] hover:text-[#5146e5]"><span className="min-w-0"><span className="block text-[10px] font-bold uppercase tracking-[0.08em] text-[#8b91a3]">Next</span><strong className="block truncate text-sm text-[#101a38]">{nextSession.title || 'Untitled session'}</strong></span><ChevronRight className="h-5 w-5 shrink-0 text-[#8b91a3] group-hover:text-[#5146e5]" /></Link> : <span className="hidden sm:block" />}
+            </nav>}
           </div>
 
           <div className="grid lg:grid-cols-3 gap-8">

@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, Radio } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import ClassfullyRemote from '@/components/live/ClassfullyRemote';
+import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { getSession } from '@/lib/firebase/firestore';
 import {
@@ -10,6 +11,8 @@ import {
   subscribeToInstructorDisplayPresence,
   subscribeToInstructorPresence,
   subscribeToInstructorPublicState,
+  setInstructorQuestionDismissed,
+  setInstructorQuestionRecognized,
 } from '@/lib/firebase/live-classroom';
 import {
   DEMO_LIVE_INTERACTIONS,
@@ -22,6 +25,7 @@ import {
   prepareLiveInteractions,
   type LessonDisplayState,
   type LiveInteraction,
+  type LiveQuestion,
   type LiveSessionContext,
 } from '../live-data';
 import './remote.css';
@@ -39,6 +43,8 @@ function protectStudentView(state: LessonDisplayState): LessonDisplayState {
 function createDemoState(): LessonDisplayState {
   return {
     session: DEMO_SESSION,
+    lobbyOpen: false,
+    connectedStudents: 0,
     counts: HISTORY[0].counts,
     comparisonCounts: HISTORY[1].counts,
     incomingMood: null,
@@ -63,6 +69,7 @@ export default function InstructorRemotePage() {
   const [sessionContext, setSessionContext] = useState<LiveSessionContext>(DEMO_SESSION);
   const [plan, setPlan] = useState<LiveInteraction[]>(DEMO_LIVE_INTERACTIONS);
   const [state, setState] = useState<LessonDisplayState>(() => createDemoState());
+  const [classroomStateReady, setClassroomStateReady] = useState(false);
   const [connectedStudents, setConnectedStudents] = useState(148);
   const [displayConnected, setDisplayConnected] = useState(false);
   const [syncConnected, setSyncConnected] = useState(true);
@@ -94,16 +101,19 @@ export default function InstructorRemotePage() {
         }
       };
       channel.postMessage({ type: 'instructor-ready' });
+      setClassroomStateReady(true);
       return () => channel.close();
     }
 
     if (authLoading) return;
     if (!user) {
       setError('Sign in as the instructor, then open the remote from your live class.');
+      setClassroomStateReady(true);
       return;
     }
     if (user.uid !== ownerUid) {
       setError('This remote belongs to another instructor.');
+      setClassroomStateReady(true);
       return;
     }
 
@@ -111,7 +121,10 @@ export default function InstructorRemotePage() {
     const cleanups: Array<() => void> = [];
     getSession(sessionId).then((session) => {
       if (stopped || !session || session.teacherId !== user.uid) {
-        if (!stopped) setError('This live session could not be opened.');
+        if (!stopped) {
+          setError('This live session could not be opened.');
+          setClassroomStateReady(true);
+        }
         return;
       }
       const prepared = prepareLiveInteractions(session.interactions);
@@ -136,10 +149,14 @@ export default function InstructorRemotePage() {
             || remoteState.activeInteraction
           : null;
         setState({ ...remoteState, activeInteraction: privateInteraction });
+        setClassroomStateReady(true);
       }));
       cleanups.push(subscribeToInstructorPresence(ownerUid, sessionId, setConnectedStudents));
       cleanups.push(subscribeToInstructorDisplayPresence(ownerUid, sessionId, setDisplayConnected));
-    }).catch(() => setError('The remote could not connect to this live session.'));
+    }).catch(() => {
+      setError('The remote could not connect to this live session.');
+      setClassroomStateReady(true);
+    });
 
     return () => {
       stopped = true;
@@ -176,7 +193,7 @@ export default function InstructorRemotePage() {
         label: interaction.type === 'group-work' ? 'Group work' : interaction.title,
         durationSeconds: (interaction.durationMinutes || 5) * 60,
         endsAt: Date.now() + (interaction.durationMinutes || 5) * 60 * 1000,
-      } : current.timer,
+      } : null,
     }));
     if (!classroomIds) sendDemoCommand('launch', interaction.id);
   };
@@ -231,10 +248,48 @@ export default function InstructorRemotePage() {
   };
 
   const featureQuestion = (questionId: number) => {
+    const isBeingFeatured = state.featuredQuestionId !== questionId;
+    const updateQuestionDisplay = () => updateRemoteState((current) => ({
+        ...current,
+        featuredQuestionId: current.featuredQuestionId === questionId ? null : questionId,
+      }));
+    if (!isBeingFeatured || !classroomIds) {
+      updateQuestionDisplay();
+      return;
+    }
+    void setInstructorQuestionRecognized(classroomIds.ownerUid, classroomIds.sessionId, questionId)
+      .then(updateQuestionDisplay)
+      .catch(updateQuestionDisplay);
+  };
+
+  const moderateQuestion = async (question: LiveQuestion, dismissed: boolean) => {
+    if (classroomIds) {
+      await setInstructorQuestionDismissed(
+        classroomIds.ownerUid,
+        classroomIds.sessionId,
+        question.id,
+        dismissed,
+      );
+    }
     updateRemoteState((current) => ({
       ...current,
-      featuredQuestionId: current.featuredQuestionId === questionId ? null : questionId,
+      questions: dismissed
+        ? current.questions.filter((item) => item.id !== question.id)
+        : current.questions.some((item) => item.id === question.id)
+          ? current.questions
+          : [question, ...current.questions],
+      featuredQuestionId: dismissed && current.featuredQuestionId === question.id
+        ? null
+        : current.featuredQuestionId,
     }));
+    if (!classroomIds) {
+      channelRef.current?.postMessage({
+        type: 'instructor-question-dismiss',
+        questionId: question.id,
+        question,
+        dismissed,
+      });
+    }
   };
 
   const launchUnplanned = (prompt: string) => {
@@ -281,8 +336,8 @@ export default function InstructorRemotePage() {
     window.location.assign(url);
   };
 
-  if (authLoading && new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).has('sessionId')) {
-    return <div className="remote-route-message"><Radio size={22} /><strong>Connecting to your class</strong><span>Preparing the teaching controls.</span></div>;
+  if (authLoading || !classroomStateReady) {
+    return <ClassroomStateGate title="Preparing your teaching controls" message="Loading the current activity and classroom status." />;
   }
 
   if (error) {
@@ -317,6 +372,7 @@ export default function InstructorRemotePage() {
       onOpenDisplay={openDisplay}
       onOpenConsole={openConsole}
       onFeatureQuestion={featureQuestion}
+      onDismissQuestion={moderateQuestion}
       onLaunchUnplanned={launchUnplanned}
       onStartTimer={startTimer}
       onClearTimer={clearTimer}

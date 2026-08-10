@@ -17,6 +17,7 @@ import {
 } from '@/lib/firebase/student-firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import InlineMessage from '@/components/ui/InlineMessage';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import type { Session, CaseStudy, Student, Response, Highlight } from '@/types';
@@ -36,6 +37,7 @@ import {
   calculateAndUpdateOverallProgress
 } from '@/lib/firebase/student-firestore';
 import { normalizeStudentId } from '@/lib/utils';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 interface StudentSessionPageProps {
   params: Promise<{
@@ -227,9 +229,9 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         } catch (authError: any) {
           console.error('LOAD: Anonymous sign-in failed:', authError.code, '-', authError.message);
           if (authError.code === 'auth/operation-not-allowed') {
-            setError('Anonymous authentication is not enabled. Please contact your administrator.');
+            setError('Student access is not available for this class yet. Ask your instructor to check the class setup.');
           } else {
-            setError('Authentication failed: ' + authError.message);
+            setError(getUserFacingError(authError, 'Classfully could not prepare your student access. Refresh the page and try again.'));
           }
           return;
         }
@@ -241,13 +243,13 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         const sessionData = await getSessionByCode(resolvedParams.code);
         if (!sessionData) {
           console.error('LOAD: Session not found');
-          setError('Session not found');
+          setError('We could not find this class session. Check the link or class code with your instructor.');
           clearStoredSession(); // Clear invalid stored session
           return;
         }
         console.log('LOAD: Session data fetched successfully');
         if (!sessionData.active) {
-          setError('This session is no longer active');
+          setError('This class session has ended. Ask your instructor for the current class code.');
           clearStoredSession(); // Clear stored session for inactive session
           return;
         }
@@ -271,7 +273,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
         if (!caseStudyData) {
           console.error('LOAD: Case study not found');
-          setError('Case study not found');
+          setError('This activity is not available yet. Ask your instructor what to open next.');
           return;
         }
         console.log('LOAD: Case study data fetched successfully');
@@ -333,7 +335,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         }
       } catch (error: any) {
         console.error('Session load error:', error.message);
-        setError(error.message || 'Failed to load session');
+        setError(getUserFacingError(error, 'This class session could not be opened. Refresh the page or ask your instructor for the current link.'));
       } finally {
         setLoading(false);
       }
@@ -477,7 +479,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       console.log('JOIN: Success!');
     } catch (error: any) {
       console.error('JOIN ERROR:', error.code || 'unknown', '-', error.message);
-      setError(error.message || 'Failed to join session');
+      setError(getUserFacingError(error, 'You could not join the class yet. Check your student number and try again.'));
     } finally {
       setSubmitLoading(false);
     }
@@ -631,7 +633,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       // Show review state first so students can see their feedback
       setStep('review');
     } catch (error: any) {
-      setError(error.message || 'Failed to submit responses');
+      setError(getUserFacingError(error, 'Your answers did not reach the class. They are still on this screen, so check your connection and try again.'));
     } finally {
       setSubmitLoading(false);
     }
@@ -1057,7 +1059,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
 
         if (!response.ok) throw new Error(`API request failed: ${response.status}`);
         const apiResult = await response.json();
-        if (!apiResult.success) throw new Error(apiResult.error || 'Failed to generate conclusion');
+        if (!apiResult.success) throw new Error(apiResult.error || 'The reflection summary is not ready yet.');
         if (!cancelled) setConclusionData(apiResult.result);
       } catch (error) {
         console.error('Error generating AI conclusion:', error);
@@ -1112,11 +1114,11 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
       <div className="min-h-screen flex items-center justify-center px-4">
         <Card className="max-w-md w-full">
           <CardContent className="p-8 text-center">
-            <div className="text-red-500 text-6xl mb-4">⚠️</div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Session Error</h2>
+            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[#fff1ec] text-2xl font-bold text-[#b64936]" aria-hidden="true">!</div>
+            <h2 className="seminar-display text-2xl text-[#101a38] mb-2">This class is not open here.</h2>
             <p className="text-gray-600 mb-6">{error}</p>
             <Button onClick={() => router.push('/join')}>
-              Try Another Code
+              Try another class code
             </Button>
           </CardContent>
         </Card>
@@ -1211,7 +1213,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
         console.log('QUICK JOIN: Success!');
       } catch (error: any) {
         console.error('QUICK JOIN ERROR:', error.code || 'unknown', '-', error.message);
-        setError(error.message || 'Failed to join session');
+        setError(getUserFacingError(error, 'You could not rejoin the class yet. Check your connection and try again.'));
       } finally {
         setSubmitLoading(false);
       }
@@ -1308,11 +1310,7 @@ export default function StudentSessionPage({ params }: StudentSessionPageProps) 
                     required
                   />
 
-                  {error && (
-                    <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                      {error}
-                    </div>
-                  )}
+                  {error && <InlineMessage title="You are not in the class yet." message={error} />}
 
                   <div className="space-y-3">
                     <Button
@@ -2582,11 +2580,7 @@ This summary was generated using AI analysis of your responses and performance.
                 </div>
               ))}
 
-              {error && (
-                <div className="p-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded">
-                  {error}
-                </div>
-              )}
+              {error && <InlineMessage title="Your answers are still here." message={error} />}
 
               {/* Action Buttons */}
               <div className="pt-8 space-y-3">

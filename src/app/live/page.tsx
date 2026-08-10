@@ -1,11 +1,28 @@
 'use client';
 
-import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import ClassfullyRemote from '@/components/live/ClassfullyRemote';
+import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import LivingMoodField from '@/components/live/LivingMoodField';
+import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import ProjectorPreflight from '@/components/live/ProjectorPreflight';
+import InstructorAvatar from '@/components/teacher/InstructorAvatar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import {
   initializeInstructorClassroom,
@@ -15,9 +32,13 @@ import {
   subscribeToInstructorPresence,
   subscribeToInstructorPublicState,
   subscribeToInstructorQuestionVotes,
+  subscribeToInstructorStudentQuestions,
   subscribeToInstructorResponses,
   subscribeToInstructorWelcomeResponses,
   endInstructorClassroom,
+  resetInstructorClassroom,
+  setInstructorQuestionDismissed,
+  setInstructorQuestionRecognized,
   type StoredLiveResponse,
   type StoredAttendanceClaim,
 } from '@/lib/firebase/live-classroom';
@@ -25,28 +46,42 @@ import { Timestamp } from 'firebase/firestore';
 import {
   Activity,
   ArrowRight,
+  BarChart3,
+  Bold,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
+  CircleHelp,
   ClipboardCheck,
   Cloud,
+  Copy,
   GraduationCap,
+  GripVertical,
   HeartPulse,
+  Italic,
   Laptop,
   ListChecks,
+  ListOrdered,
+  List as ListIcon,
   Lock,
+  LogOut,
   MessageCircle,
   MonitorUp,
+  MoreHorizontal,
   PictureInPicture2,
   Pause,
   Play,
-  Presentation,
+  Plus,
+  QrCode,
+  Repeat2,
   Send,
   Smartphone,
   Square,
+  RotateCcw,
   ThumbsUp,
   Timer,
   TimerReset,
+  Trash2,
   Users,
   X,
 } from 'lucide-react';
@@ -61,6 +96,7 @@ import {
   MOODS,
   buildWordCloudItems,
   createInteractionResults,
+  formatSessionCode,
   percent,
   prepareLiveInteractions,
   resultPercent,
@@ -69,6 +105,7 @@ import {
   type InteractionResponse,
   type InteractionResults,
   type LessonDisplayState,
+  type LiveQuestion,
   type LiveSessionContext,
   type LiveInteraction,
   type LiveTimer,
@@ -86,15 +123,252 @@ const NAV_ITEMS = [
 
 const SESSION_PLAN = DEMO_LIVE_INTERACTIONS;
 
+const ACTIVITY_TYPES: Array<{
+  type: LiveInteraction['type'];
+  label: string;
+  description: string;
+  icon: typeof Activity;
+}> = [
+  { type: 'timer', label: 'Timer', description: 'Full-screen working time', icon: Timer },
+  { type: 'pulse', label: 'Class pulse', description: 'Check pace, confidence, or mood', icon: HeartPulse },
+  { type: 'poll', label: 'Poll', description: 'See where the room stands', icon: BarChart3 },
+  { type: 'quiz', label: 'Quiz', description: 'Check understanding', icon: CircleHelp },
+  { type: 'open-response', label: 'Short response', description: 'Gather written thinking', icon: MessageCircle },
+  { type: 'word-cloud', label: 'Word cloud', description: 'Surface shared themes', icon: Cloud },
+  { type: 'peer-learning', label: 'Peer learning', description: 'Answer, discuss, answer again', icon: Repeat2 },
+  { type: 'group-work', label: 'Group work', description: 'Give teams a shared task', icon: Users },
+];
+
+const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInteraction): LiveInteraction => {
+  if (initial) return initial;
+  const choiceOptions = type === 'pulse'
+    ? ['Very low', 'Low', 'Steady', 'High', 'Very high']
+    : ['Option 1', 'Option 2', 'Option 3', 'Option 4'];
+  const choiceType = type === 'pulse' || type === 'poll' || type === 'quiz' || type === 'peer-learning';
+  const choice = ACTIVITY_TYPES.find((item) => item.type === type);
+  return {
+    id: `${type}-${Date.now()}`,
+    type,
+    label: choice?.label || 'Interaction',
+    title: type === 'timer' ? 'Group work' : choice?.label || 'Class interaction',
+    prompt: type === 'timer'
+      ? 'Use this time to complete the task on screen.'
+      : type === 'word-cloud'
+        ? 'What one word best captures this idea?'
+        : type === 'open-response'
+          ? 'What is still unclear?'
+          : type === 'group-work'
+            ? 'Work together on the task on screen.'
+            : 'What do you think?',
+    options: choiceType ? choiceOptions : undefined,
+    correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
+    explanation: type === 'quiz' || type === 'peer-learning' ? 'Explain why this answer is correct.' : undefined,
+    durationMinutes: type === 'timer' ? 5 : type === 'group-work' ? 8 : undefined,
+    discussionMinutes: type === 'peer-learning' ? 2 : undefined,
+    groupSize: type === 'group-work' ? 4 : undefined,
+    resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live',
+    plannedTime: 'Added during class',
+  };
+};
+
+function ActivityTypePicker({ onSelect }: { onSelect: (type: LiveInteraction['type']) => void }) {
+  return (
+    <div className="activity-type-picker" role="group" aria-label="Interaction types">
+      {ACTIVITY_TYPES.map(({ type, label, description, icon: Icon }) => (
+        <button type="button" key={type} onClick={() => onSelect(type)}>
+          <Icon size={18} />
+          <span><strong>{label}</strong><small>{description}</small></span>
+          <ArrowRight size={14} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function InteractionComposer({
+  type,
+  initial,
+  submitLabel,
+  busy = false,
+  onCancel,
+  onSubmit,
+}: {
+  type: LiveInteraction['type'];
+  initial?: LiveInteraction;
+  submitLabel: string;
+  busy?: boolean;
+  onCancel: () => void;
+  onSubmit: (interaction: LiveInteraction) => void;
+}) {
+  const [initialDraft] = useState(() => createInteractionDraft(type, initial));
+  const [title, setTitle] = useState(initialDraft.title);
+  const [prompt, setPrompt] = useState(initialDraft.prompt);
+  const [options, setOptions] = useState(initialDraft.options || []);
+  const [correctOptionIndex, setCorrectOptionIndex] = useState(initialDraft.correctOptionIndex || 0);
+  const [explanation, setExplanation] = useState(initialDraft.explanation || '');
+  const [discussionMinutes, setDiscussionMinutes] = useState(String(initialDraft.discussionMinutes || 2));
+  const [groupSize, setGroupSize] = useState(String(initialDraft.groupSize || 4));
+  const [resultVisibility, setResultVisibility] = useState(initialDraft.resultVisibility || 'live');
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const initialDurationSeconds = Math.max(1, Math.round((initialDraft.durationMinutes || 5) * 60));
+  const [minutes, setMinutes] = useState(String(Math.floor(initialDurationSeconds / 60)));
+  const [seconds, setSeconds] = useState(String(initialDurationSeconds % 60));
+  const usesChoices = type === 'pulse' || type === 'poll' || type === 'quiz' || type === 'peer-learning';
+  const usesTimer = type === 'timer' || type === 'group-work';
+
+  const applyMarkdown = (prefix: string, suffix = prefix, linePrefix = false) => {
+    const field = promptRef.current;
+    if (!field) return;
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    const selection = prompt.slice(start, end);
+    let replacement: string;
+    if (linePrefix) {
+      const selected = selection || 'List item';
+      replacement = selected.split('\n').map((line, index) => `${prefix.replace('{n}', String(index + 1))}${line}`).join('\n');
+    } else {
+      replacement = `${prefix}${selection || 'text'}${suffix}`;
+    }
+    setPrompt(`${prompt.slice(0, start)}${replacement}${prompt.slice(end)}`);
+    window.requestAnimationFrame(() => {
+      field.focus();
+      field.setSelectionRange(start, start + replacement.length);
+    });
+  };
+
+  const submit = () => {
+    const durationSeconds = Math.max(1, (Number.parseInt(minutes || '0', 10) || 0) * 60 + (Number.parseInt(seconds || '0', 10) || 0));
+    onSubmit({
+      ...initialDraft,
+      title: title.trim() || initialDraft.label,
+      prompt: prompt.trim() || title.trim(),
+      options: usesChoices ? options.map((option) => option.trim()).filter(Boolean) : undefined,
+      correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? correctOptionIndex : undefined,
+      explanation: type === 'quiz' || type === 'peer-learning' ? explanation.trim() || undefined : undefined,
+      durationMinutes: usesTimer ? durationSeconds / 60 : initialDraft.durationMinutes,
+      discussionMinutes: type === 'peer-learning' ? Math.max(1, Number.parseInt(discussionMinutes || '2', 10) || 2) : undefined,
+      groupSize: type === 'group-work' ? Math.max(2, Number.parseInt(groupSize || '4', 10) || 4) : undefined,
+      resultVisibility: type === 'timer' ? 'instructor-only' : resultVisibility,
+    });
+  };
+
+  return (
+    <div className="interaction-composer">
+      <div className="interaction-composer-heading">
+        <button type="button" onClick={onCancel}><ChevronLeft size={15} /> Types</button>
+        <strong>{initial ? `Edit ${initialDraft.label.toLowerCase()}` : `New ${initialDraft.label.toLowerCase()}`}</strong>
+      </div>
+      <label><span>Title</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={80} placeholder="Give this moment a clear name" /></label>
+      <label className="interaction-composer-markdown">
+        <span>{type === 'timer' || type === 'group-work' ? 'Instructions' : 'Question or instruction'}</span>
+        <div className="interaction-format-toolbar" role="toolbar" aria-label="Text formatting">
+          <button type="button" aria-label="Bold" title="Bold" onClick={() => applyMarkdown('**')}><Bold size={14} /></button>
+          <button type="button" aria-label="Italic" title="Italic" onClick={() => applyMarkdown('*')}><Italic size={14} /></button>
+          <button type="button" aria-label="Bulleted list" title="Bulleted list" onClick={() => applyMarkdown('- ', '', true)}><ListIcon size={15} /></button>
+          <button type="button" aria-label="Numbered list" title="Numbered list" onClick={() => applyMarkdown('{n}. ', '', true)}><ListOrdered size={15} /></button>
+          <span>Markdown</span>
+        </div>
+        <textarea aria-label={type === 'timer' || type === 'group-work' ? 'Instructions' : 'Question or instruction'} ref={promptRef} value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={1200} rows={type === 'timer' || type === 'group-work' ? 7 : 4} />
+      </label>
+      {prompt.trim() && <div className="interaction-markdown-preview"><span>Preview</span><MarkdownContent markdown={prompt} /></div>}
+      {usesChoices && (
+        <div className="interaction-composer-options">
+          <span>Answer choices</span>
+          {options.map((option, index) => (
+            <label key={`${initialDraft.id}-option-${index}`}>
+              {(type === 'quiz' || type === 'peer-learning') && <input type="radio" name={`correct-${initialDraft.id}`} checked={correctOptionIndex === index} onChange={() => setCorrectOptionIndex(index)} aria-label={`Mark choice ${index + 1} correct`} />}
+              <input value={option} onChange={(event) => setOptions((current) => current.map((item, optionIndex) => optionIndex === index ? event.target.value : item))} aria-label={`Choice ${index + 1}`} />
+              {options.length > 2 && <button type="button" aria-label={`Remove choice ${index + 1}`} onClick={() => {
+                setOptions((current) => current.filter((_, optionIndex) => optionIndex !== index));
+                setCorrectOptionIndex((current) => current === index ? 0 : current > index ? current - 1 : current);
+              }}><X size={13} /></button>}
+            </label>
+          ))}
+          <button className="interaction-option-add" type="button" onClick={() => setOptions((current) => [...current, `Option ${current.length + 1}`])}><Plus size={13} /> Add choice</button>
+        </div>
+      )}
+      {(type === 'quiz' || type === 'peer-learning') && <label><span>Answer explanation</span><textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} maxLength={500} rows={3} placeholder="Explain why the marked answer is correct" /></label>}
+      {usesTimer && (
+        <div className="interaction-composer-duration">
+          <span>Duration</span>
+          <label><input inputMode="numeric" value={minutes} onChange={(event) => setMinutes(event.target.value.replace(/\D/g, '').slice(0, 3))} aria-label="Minutes" /> min</label>
+          <label><input inputMode="numeric" value={seconds} onChange={(event) => setSeconds(String(Math.min(59, Number.parseInt(event.target.value.replace(/\D/g, '') || '0', 10))))} aria-label="Seconds" /> sec</label>
+        </div>
+      )}
+      {type === 'peer-learning' && <label><span>Discussion time in minutes</span><input inputMode="numeric" value={discussionMinutes} onChange={(event) => setDiscussionMinutes(event.target.value.replace(/\D/g, '').slice(0, 2))} /></label>}
+      {type === 'group-work' && <label><span>Students per group</span><input inputMode="numeric" value={groupSize} onChange={(event) => setGroupSize(event.target.value.replace(/\D/g, '').slice(0, 2))} /></label>}
+      {type !== 'timer' && <label><span>When students see results</span><select value={resultVisibility} onChange={(event) => setResultVisibility(event.target.value as NonNullable<LiveInteraction['resultVisibility']>)}><option value="live">As responses arrive</option><option value="after-reveal">When I reveal them</option><option value="instructor-only">Instructor only</option></select></label>}
+      <button className="interaction-composer-submit" type="button" onClick={submit} disabled={busy || !title.trim() || (type !== 'timer' && !prompt.trim())}>{busy ? 'Saving…' : submitLabel} <ArrowRight size={15} /></button>
+    </div>
+  );
+}
+
+function SortableSessionPlanItem({
+  interaction,
+  index,
+  isActive,
+  disabled,
+  onEdit,
+  onMove,
+  onRemove,
+  onShow,
+}: {
+  interaction: LiveInteraction;
+  index: number;
+  isActive: boolean;
+  disabled: boolean;
+  onEdit: () => void;
+  onMove: (direction: -1 | 1) => void;
+  onRemove: () => void;
+  onShow: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: interaction.id, disabled });
+  const style: CSSProperties = { transform: CSS.Transform.toString(transform), transition };
+
+  return (
+    <article ref={setNodeRef} style={style} className={`${isActive ? 'is-live' : ''} ${isDragging ? 'is-dragging' : ''}`}>
+      <button
+        className="session-plan-drag-handle"
+        type="button"
+        aria-label={`Reorder ${interaction.title}`}
+        title="Drag to reorder. Arrow keys also work."
+        disabled={disabled}
+        {...attributes}
+        {...listeners}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+          event.preventDefault();
+          onMove(event.key === 'ArrowUp' ? -1 : 1);
+        }}
+      ><GripVertical size={17} /></button>
+      <div className="session-plan-index">{String(index + 1).padStart(2, '0')}</div>
+      <div className="session-plan-copy">
+        <span><CalendarDays size={13} /> {interaction.plannedTime} · {interaction.label}</span>
+        <strong>{interaction.title}</strong>
+        <MarkdownContent markdown={interaction.prompt} compact />
+      </div>
+      <div className="session-plan-item-actions">
+        <button className="session-plan-show" type="button" onClick={onShow}>{isActive ? 'Showing' : 'Show'} <ArrowRight size={14} /></button>
+        <div>
+          <button type="button" aria-label={`Edit ${interaction.title}`} onClick={onEdit} disabled={disabled}>Edit</button>
+          <button type="button" aria-label={`Remove ${interaction.title}`} onClick={onRemove} disabled={disabled || isActive}><Trash2 size={13} /></button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function InstructorInteractionStage({
   interaction,
   results,
+  timer,
   onReveal,
   onAdvanceModule,
   onShareResponse,
 }: {
   interaction: LiveInteraction;
   results: InteractionResults;
+  timer: LiveTimer | null;
   onReveal: () => void;
   onAdvanceModule: () => void;
   onShareResponse: (responseId: string) => void;
@@ -104,14 +378,29 @@ function InstructorInteractionStage({
   const isClock = interaction.type === 'timer';
   const isWordCloud = interaction.type === 'word-cloud';
   const wordCloudItems = buildWordCloudItems(results.writtenResponses);
+  const wordCloudDensity = wordCloudItems.length <= 1 ? 'is-solo' : wordCloudItems.length <= 5 ? 'is-sparse' : 'is-growing';
+  const [timerNow, setTimerNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!isClock || !timer) return;
+    setTimerNow(Date.now());
+    const tick = window.setInterval(() => setTimerNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [isClock, timer]);
+
+  const timerRemaining = timer ? Math.max(0, Math.ceil((timer.endsAt - timerNow) / 1000)) : 0;
+  const timerText = `${Math.floor(timerRemaining / 60)}:${String(timerRemaining % 60).padStart(2, '0')}`;
 
   return (
     <section className="live-interaction-stage" aria-live="polite">
       <header className="live-interaction-heading">
         <div>
           <span className="eyebrow"><ListChecks size={18} /> {interaction.label} is live</span>
-          <h1>{interaction.prompt}</h1>
-          <p>{interaction.resultVisibility === 'after-reveal' && !results.revealed
+          <h1>{isClock ? interaction.title : markdownToPlainText(interaction.prompt)}</h1>
+          {isClock && <MarkdownContent className="live-clock-instructions" markdown={interaction.prompt} />}
+          <p>{isClock
+            ? 'The full-screen countdown is running on the projector and student phones.'
+            : interaction.resultVisibility === 'after-reveal' && !results.revealed
             ? `Students answer privately. Reveal the ${interaction.type === 'quiz' ? 'answer' : 'class result'} when you are ready to discuss it.`
             : interaction.type === 'open-response'
               ? 'Written responses stay on your screen until you choose one to share.'
@@ -123,16 +412,23 @@ function InstructorInteractionStage({
       </header>
 
       {isClock ? (
-        <div className="written-response-review"><div className="written-response-summary"><Timer size={21} /><span><strong>The shared clock is running</strong><small>Students see this prompt and the same time remaining on their phones.</small></span></div></div>
+        <div className={`instructor-timer-stage ${timerRemaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label={`${timer?.label || interaction.title}: ${timerText} remaining`}>
+          <Timer size={24} />
+          <div><small>{timerRemaining === 0 ? 'Time is up' : 'Time remaining'}</small><strong>{timerText}</strong></div>
+        </div>
       ) : isWordCloud ? (
-        <div className="live-word-cloud" aria-label={`${results.responseCount} word cloud responses`}>
+        <div className={`live-word-cloud ${wordCloudDensity}`} aria-label={`${results.responseCount} word cloud responses`}>
           {wordCloudItems.length ? wordCloudItems.map((item, index) => (
             <span
+              className={item.count > 1 ? 'is-repeated' : ''}
               key={`${item.key}-${item.count}`}
-              style={{ '--word-size': `${18 + item.strength * 32}px`, '--word-index': index } as CSSProperties}
+              style={{
+                '--word-size': `${wordCloudItems.length <= 1 ? 48 : wordCloudItems.length <= 5 ? 24 + item.strength * 34 : 18 + item.strength * 32}px`,
+                '--word-index': index,
+              } as CSSProperties}
               title={`${item.count} ${item.count === 1 ? 'response' : 'responses'}`}
             >
-              {item.label}<small>{item.count > 1 ? item.count : ''}</small>
+              {item.label}{item.count > 1 && index < 3 && <small aria-label={`${item.count} responses`}>×{item.count}</small>}
             </span>
           )) : <div className="live-word-cloud-empty"><Cloud size={26} /><strong>Waiting for the first word</strong><small>The cloud will build here as students answer.</small></div>}
         </div>
@@ -183,6 +479,8 @@ function InstructorInteractionStage({
 
 export default function LiveLessonPrototype() {
   const { user, loading: authLoading } = useAuth();
+  const [classroomStateReady, setClassroomStateReady] = useState(false);
+  const [classroomStateError, setClassroomStateError] = useState('');
   const [sessionContext, setSessionContext] = useState<LiveSessionContext>(DEMO_SESSION);
   const [sessionPlan, setSessionPlan] = useState(SESSION_PLAN);
   const [liveCounts, setLiveCounts] = useState<Counts>(HISTORY[0].counts);
@@ -197,13 +495,25 @@ export default function LiveLessonPrototype() {
   const [questionVoteCounts, setQuestionVoteCounts] = useState<Record<number, number>>({});
   const [questionFilter, setQuestionFilter] = useState<'All' | 'Top' | 'Unanswered'>('All');
   const [questionDraft, setQuestionDraft] = useState('');
+  const [dismissingQuestionIds, setDismissingQuestionIds] = useState<number[]>([]);
+  const [dismissedQuestionUndo, setDismissedQuestionUndo] = useState<LiveQuestion | null>(null);
   const [nextMenuOpen, setNextMenuOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddType, setQuickAddType] = useState<LiveInteraction['type'] | null>(null);
+  const [topbarMenuOpen, setTopbarMenuOpen] = useState(false);
   const [sessionPlanOpen, setSessionPlanOpen] = useState(false);
+  const [planTypePickerOpen, setPlanTypePickerOpen] = useState(false);
+  const [planComposerType, setPlanComposerType] = useState<LiveInteraction['type'] | null>(null);
+  const [planEditingInteraction, setPlanEditingInteraction] = useState<LiveInteraction | null>(null);
+  const [planSaving, setPlanSaving] = useState(false);
+  const [planSaveIssue, setPlanSaveIssue] = useState(false);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
-  const [unplannedQuestionOpen, setUnplannedQuestionOpen] = useState(false);
-  const [unplannedQuestion, setUnplannedQuestion] = useState('');
+  const [leaveConsoleOpen, setLeaveConsoleOpen] = useState(false);
   const [endClassOpen, setEndClassOpen] = useState(false);
   const [endingClass, setEndingClass] = useState(false);
+  const [resetSessionOpen, setResetSessionOpen] = useState(false);
+  const [resettingSession, setResettingSession] = useState(false);
+  const [lobbyOpen, setLobbyOpen] = useState(false);
   const [activeInteraction, setActiveInteraction] = useState<LiveInteraction | null>(null);
   const [interactionResults, setInteractionResults] = useState<InteractionResults | null>(null);
   const [liveTimer, setLiveTimer] = useState<LiveTimer | null>(null);
@@ -228,21 +538,47 @@ export default function LiveLessonPrototype() {
   const interactionResultsRef = useRef<InteractionResults | null>(null);
   const sessionPlanRef = useRef(sessionPlan);
   const localPublishedTimestampsRef = useRef(new Set<number>());
+  const planDragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
 
   useEffect(() => {
-    if (!welcomeOpen && !sessionPlanOpen && !attendanceOpen) return;
+    if (!welcomeOpen && !sessionPlanOpen && !attendanceOpen && !topbarMenuOpen && !quickAddOpen && !resetSessionOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (welcomeOpen) setWelcomeOpen(false);
       else if (attendanceOpen) setAttendanceOpen(false);
       else if (sessionPlanOpen) setSessionPlanOpen(false);
+      else if (topbarMenuOpen) setTopbarMenuOpen(false);
+      else if (quickAddOpen) setQuickAddOpen(false);
+      else if (resetSessionOpen && !resettingSession) setResetSessionOpen(false);
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [attendanceOpen, sessionPlanOpen, welcomeOpen]);
+  }, [attendanceOpen, quickAddOpen, resetSessionOpen, resettingSession, sessionPlanOpen, topbarMenuOpen, welcomeOpen]);
+
+  useEffect(() => {
+    if (!topbarMenuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Element && !event.target.closest('.topbar-more-wrap')) setTopbarMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [topbarMenuOpen]);
+
+  useEffect(() => {
+    if (!quickAddOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Element && !event.target.closest('.quick-add-wrap')) setQuickAddOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [quickAddOpen]);
 
   const selectedCounts = selectedWeek === 0 ? liveCounts : HISTORY[selectedWeek].counts;
   const comparisonCounts = HISTORY[Math.min(selectedWeek + 1, HISTORY.length - 1)].counts;
+  const activePlanIndex = activeInteraction ? sessionPlan.findIndex((interaction) => interaction.id === activeInteraction.id) : -1;
+  const nextPreparedInteraction = activePlanIndex >= 0 ? sessionPlan[activePlanIndex + 1] || null : sessionPlan[0] || null;
   const classQuestions = useMemo(() => liveQuestions.map((question) => ({
     ...question,
     votes: question.votes
@@ -301,6 +637,8 @@ export default function LiveLessonPrototype() {
 
     return {
       session: sessionContext,
+      lobbyOpen,
+      connectedStudents,
       counts: selectedCounts,
       comparisonCounts,
       incomingMood,
@@ -318,7 +656,7 @@ export default function LiveLessonPrototype() {
       timer: liveTimer,
       updatedAt: Date.now(),
     };
-  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, incomingMood, interactionResults, liveTimer, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
+  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, connectedStudents, incomingMood, interactionResults, liveTimer, lobbyOpen, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
   const displayStateRef = useRef(displayState);
 
   useEffect(() => {
@@ -327,10 +665,14 @@ export default function LiveLessonPrototype() {
 
   useEffect(() => {
     const sessionId = new URLSearchParams(window.location.search).get('sessionId');
-    if (!sessionId) return;
+    if (!sessionId) {
+      setClassroomStateReady(true);
+      return;
+    }
     if (authLoading) return;
     if (!user) {
-      setToast('Sign in as the instructor to open this saved session.');
+      setClassroomStateError('Sign in as the instructor to open this saved session.');
+      setClassroomStateReady(true);
       return;
     }
 
@@ -338,10 +680,16 @@ export default function LiveLessonPrototype() {
     const loadPreparedSession = async () => {
       const { getSession, updateSession } = await import('@/lib/firebase/firestore');
       const session = await getSession(sessionId);
-      if (!session || cancelled) return;
+      if (cancelled) return;
+      if (!session) {
+        setClassroomStateError('This saved session could not be found.');
+        setClassroomStateReady(true);
+        return;
+      }
 
       if (session.teacherId !== user.uid) {
-        setToast('This session belongs to another instructor.');
+        setClassroomStateError('This session belongs to another instructor.');
+        setClassroomStateReady(true);
         return;
       }
 
@@ -363,6 +711,8 @@ export default function LiveLessonPrototype() {
       setQuestionVoteCounts({});
       setDiscussedQuestions([]);
       setActiveQuestion(null);
+      setDismissingQuestionIds([]);
+      setDismissedQuestionUndo(null);
 
       const prepared = prepareLiveInteractions(session.interactions);
       if (prepared.length) setSessionPlan(prepared);
@@ -370,6 +720,8 @@ export default function LiveLessonPrototype() {
       const remoteState = await initializeInstructorClassroom(sessionId, context, {
         ...displayStateRef.current,
         session: context,
+        lobbyOpen: true,
+        connectedStudents: 0,
         counts: { ...EMPTY_ONBOARDING_COUNTS },
         selectedWeek: 0,
         showComparison: false,
@@ -392,6 +744,7 @@ export default function LiveLessonPrototype() {
       setShowComparison(Boolean(remoteState.showComparison));
       setPlayingHistory(Boolean(remoteState.playingHistory));
       setPaused(Boolean(remoteState.paused));
+      setLobbyOpen(remoteState.lobbyOpen ?? false);
       setOnboardingStep(remoteState.onboardingStep || 0);
       setOnboardingRunId(remoteState.onboardingRunId || 0);
       setOnboardingMoodCounts(remoteState.onboardingMoodCounts || { ...EMPTY_ONBOARDING_COUNTS });
@@ -406,11 +759,16 @@ export default function LiveLessonPrototype() {
       if (!cancelled) {
         setConnectedStudents(0);
         setRemoteClassroomReady(true);
+        setClassroomStateReady(true);
         setToast('This session is ready for student devices.');
       }
     };
 
-    loadPreparedSession().catch(() => setToast('The saved session plan could not be loaded. The demo plan is still available.'));
+    loadPreparedSession().catch(() => {
+      if (cancelled) return;
+      setClassroomStateError('The saved session plan could not be loaded. Try opening it again from your class.');
+      setClassroomStateReady(true);
+    });
     return () => { cancelled = true; };
   }, [authLoading, user]);
 
@@ -423,8 +781,10 @@ export default function LiveLessonPrototype() {
       mood?: MoodKey;
       response?: InteractionResponse;
       questionId?: number;
+      question?: LiveQuestion;
       voterId?: string;
       voted?: boolean;
+      dismissed?: boolean;
       command?: 'launch' | 'toggle-responses' | 'reveal' | 'advance-module' | 'finish';
       interactionId?: string;
     }>) => {
@@ -471,6 +831,14 @@ export default function LiveLessonPrototype() {
         });
       }
       if (
+        event.data?.type === 'student-question-submit'
+        && event.data.question
+        && typeof event.data.question.id === 'number'
+      ) {
+        const question = { ...event.data.question, source: 'student' as const };
+        setLiveQuestions((current) => [question, ...current.filter((item) => item.id !== question.id)]);
+      }
+      if (
         event.data?.type === 'student-question-vote'
         && typeof event.data.questionId === 'number'
         && event.data.voterId
@@ -483,10 +851,27 @@ export default function LiveLessonPrototype() {
           Array.from(demoQuestionVotersRef.current.entries()).map(([questionId, students]) => [questionId, students.size]),
         ));
       }
+      if (
+        event.data?.type === 'instructor-question-dismiss'
+        && typeof event.data.questionId === 'number'
+        && event.data.question
+        && typeof event.data.dismissed === 'boolean'
+      ) {
+        const question = event.data.question;
+        setLiveQuestions((current) => event.data.dismissed
+          ? current.filter((item) => item.id !== event.data.questionId)
+          : current.some((item) => item.id === question.id)
+            ? current
+            : [question, ...current]);
+        if (event.data.dismissed) {
+          setActiveQuestion((current) => current === event.data.questionId ? null : current);
+        }
+      }
       if (event.data?.type === 'instructor-remote-command' && event.data.command) {
         if (event.data.command === 'launch' && event.data.interactionId) {
           const interaction = sessionPlanRef.current.find((item) => item.id === event.data.interactionId);
           if (interaction) {
+            setLobbyOpen(false);
             setActiveInteraction(interaction);
             receivedResponseIdsRef.current.clear();
             setInteractionResults(createInteractionResults(interaction));
@@ -572,6 +957,7 @@ export default function LiveLessonPrototype() {
           : null;
         setActiveInteraction(privateInteraction);
         setInteractionResults(remoteState.interactionResults);
+        setLobbyOpen(Boolean(remoteState.lobbyOpen));
         setPaused(Boolean(remoteState.paused));
         setActiveQuestion(remoteState.featuredQuestionId || null);
         setLiveTimer(remoteState.timer || null);
@@ -635,6 +1021,18 @@ export default function LiveLessonPrototype() {
       });
       setAttendanceClaims([...uniqueClaims.values()]);
     });
+  }, [remoteClassroomReady, sessionContext.ownerUid, sessionContext.sessionId]);
+
+  useEffect(() => {
+    if (!remoteClassroomReady || !sessionContext.sessionId || !sessionContext.ownerUid) return;
+    return subscribeToInstructorStudentQuestions(
+      sessionContext.ownerUid,
+      sessionContext.sessionId,
+      (studentQuestions) => setLiveQuestions((current) => [
+        ...studentQuestions,
+        ...current.filter((question) => question.source !== 'student'),
+      ]),
+    );
   }, [remoteClassroomReady, sessionContext.ownerUid, sessionContext.sessionId]);
 
   useEffect(() => {
@@ -714,6 +1112,12 @@ export default function LiveLessonPrototype() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (!dismissedQuestionUndo) return;
+    const timer = window.setTimeout(() => setDismissedQuestionUndo(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [dismissedQuestionUndo]);
+
   const insight = useMemo(() => {
     if (!total(selectedCounts)) return 'Waiting for the first class response.';
     const currentOverwhelmed = percent(selectedCounts.overwhelmed, selectedCounts);
@@ -733,6 +1137,7 @@ export default function LiveLessonPrototype() {
       ago: 'Just now',
       question,
       votes: 0,
+      source: 'instructor',
     }, ...current]);
     setQuestionDraft('');
     setQuestionFilter('All');
@@ -740,13 +1145,66 @@ export default function LiveLessonPrototype() {
   };
 
   const discussQuestion = (id: number) => {
-    setActiveQuestion((current) => current === id ? null : id);
-    setDiscussedQuestions((current) => current.includes(id) ? current : [...current, id]);
+    const isBeingDiscussed = activeQuestion !== id;
+    const updateQuestionDisplay = () => {
+      setActiveQuestion((current) => current === id ? null : id);
+      setDiscussedQuestions((current) => current.includes(id) ? current : [...current, id]);
+    };
+    if (!isBeingDiscussed || !sessionContext.sessionId || !sessionContext.ownerUid) {
+      updateQuestionDisplay();
+      return;
+    }
+    void setInstructorQuestionRecognized(sessionContext.ownerUid, sessionContext.sessionId, id)
+      .then(updateQuestionDisplay)
+      .catch(() => {
+        updateQuestionDisplay();
+        setToast('The question is on display. Its contribution point will be settled later.');
+      });
+  };
+
+  const moderateQuestion = async (question: LiveQuestion, dismissed: boolean) => {
+    if (dismissingQuestionIds.includes(question.id)) return;
+    setDismissingQuestionIds((current) => [...current, question.id]);
+    setToast('');
+
+    if (dismissed) {
+      setLiveQuestions((current) => current.filter((item) => item.id !== question.id));
+      setActiveQuestion((current) => current === question.id ? null : current);
+    } else {
+      setLiveQuestions((current) => current.some((item) => item.id === question.id) ? current : [question, ...current]);
+    }
+
+    try {
+      if (sessionContext.sessionId && sessionContext.ownerUid) {
+        await setInstructorQuestionDismissed(
+          sessionContext.ownerUid,
+          sessionContext.sessionId,
+          question.id,
+          dismissed,
+        );
+      }
+      if (dismissed) setDismissedQuestionUndo(question);
+      else {
+        setDismissedQuestionUndo(null);
+        setToast('Question returned to the live queue.');
+      }
+    } catch (moderationError) {
+      console.error('Could not update question moderation:', moderationError);
+      if (dismissed) {
+        setLiveQuestions((current) => current.some((item) => item.id === question.id) ? current : [question, ...current]);
+      } else {
+        setLiveQuestions((current) => current.filter((item) => item.id !== question.id));
+      }
+      setToast('The question could not be updated. Check the connection and try again.');
+    } finally {
+      setDismissingQuestionIds((current) => current.filter((id) => id !== question.id));
+    }
   };
 
   const launchInteraction = (interaction: LiveInteraction) => {
     setNextMenuOpen(false);
     setSessionPlanOpen(false);
+    setLobbyOpen(false);
     setActiveInteraction(interaction);
     receivedResponseIdsRef.current.clear();
     setInteractionResults(createInteractionResults(interaction));
@@ -758,17 +1216,108 @@ export default function LiveLessonPrototype() {
         durationSeconds,
         endsAt: Date.now() + durationSeconds * 1000,
       });
-    }
+    } else setLiveTimer(null);
     setActiveNav(interaction.label);
     if (!displayConnected) openClassroomDisplay();
     setToast(`${interaction.title} is ready on the classroom display`);
     window.setTimeout(() => document.querySelector('.live-interaction-stage')?.scrollTo({ top: 0 }), 0);
   };
 
+  const showClassLobby = () => {
+    setTopbarMenuOpen(false);
+    setOnboardingStep(0);
+    setLobbyOpen(true);
+    if (!displayConnected) openClassroomDisplay();
+    setToast(activeInteraction ? 'Join screen shown on the projector. The current student activity is still open.' : 'Class lobby shown on the projector.');
+  };
+
+  const copyJoinDetails = async () => {
+    const joinUrl = `${window.location.origin}/join`;
+    const message = `Join ${sessionContext.courseCode} at ${joinUrl}\nClass code: ${formatSessionCode(sessionContext.sessionCode)}`;
+    try {
+      await navigator.clipboard.writeText(message);
+      setToast('Join link and class code copied.');
+    } catch {
+      setToast(`Join at ${joinUrl} with code ${formatSessionCode(sessionContext.sessionCode)}.`);
+    }
+  };
+
+  const saveSessionPlan = async (nextPlan: LiveInteraction[], successMessage: string) => {
+    setSessionPlan(nextPlan);
+    sessionPlanRef.current = nextPlan;
+    setPlanSaveIssue(false);
+    if (!sessionContext.sessionId || !user) {
+      setToast(`${successMessage} This preview change will not be saved.`);
+      return;
+    }
+
+    setPlanSaving(true);
+    try {
+      const { updateSession } = await import('@/lib/firebase/firestore');
+      await updateSession(sessionContext.sessionId, { interactions: nextPlan });
+      setToast(`${successMessage} The live class and its responses are unchanged.`);
+    } catch {
+      setPlanSaveIssue(true);
+      setToast('The interaction is in this live plan, but it could not be saved for later.');
+    } finally {
+      setPlanSaving(false);
+    }
+  };
+
+  const addInteractionToPlan = (interaction: LiveInteraction) => {
+    void saveSessionPlan([...sessionPlanRef.current, interaction], `${interaction.title} was added to the plan.`);
+    setPlanComposerType(null);
+  };
+
+  const updatePlannedInteraction = (interaction: LiveInteraction) => {
+    const nextPlan = sessionPlanRef.current.map((item) => item.id === interaction.id ? interaction : item);
+    if (activeInteractionRef.current?.id === interaction.id) {
+      setActiveInteraction(interaction);
+      activeInteractionRef.current = interaction;
+      if ((interaction.type === 'timer' || interaction.type === 'group-work') && liveTimer) {
+        const now = Date.now();
+        const remainingSeconds = Math.max(0, Math.ceil((liveTimer.endsAt - now) / 1000));
+        const elapsedSeconds = Math.max(0, liveTimer.durationSeconds - remainingSeconds);
+        const nextDurationSeconds = Math.max(1, Math.round((interaction.durationMinutes || 5) * 60));
+        setLiveTimer({
+          ...liveTimer,
+          label: interaction.type === 'group-work' ? 'Group work' : interaction.title,
+          durationSeconds: nextDurationSeconds,
+          endsAt: now + Math.max(0, nextDurationSeconds - elapsedSeconds) * 1000,
+        });
+      }
+    }
+    void saveSessionPlan(nextPlan, `${interaction.title} was updated.`);
+    setPlanEditingInteraction(null);
+  };
+
+  const reorderSessionPlan = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id || planSaving) return;
+    const oldIndex = sessionPlanRef.current.findIndex((interaction) => interaction.id === active.id);
+    const newIndex = sessionPlanRef.current.findIndex((interaction) => interaction.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    void saveSessionPlan(arrayMove(sessionPlanRef.current, oldIndex, newIndex), 'The teaching order was updated.');
+  };
+
+  const movePlannedInteraction = (index: number, direction: -1 | 1) => {
+    const destination = index + direction;
+    if (destination < 0 || destination >= sessionPlanRef.current.length || planSaving) return;
+    void saveSessionPlan(arrayMove(sessionPlanRef.current, index, destination), 'The teaching order was updated.');
+  };
+
+  const removePlannedInteraction = (interaction: LiveInteraction) => {
+    if (activeInteraction?.id === interaction.id) {
+      setToast('End this interaction before removing it from the plan.');
+      return;
+    }
+    void saveSessionPlan(sessionPlanRef.current.filter((item) => item.id !== interaction.id), `${interaction.title} was removed from the plan.`);
+  };
+
   const returnToSlides = () => {
     if (activeInteraction?.type === 'timer' || activeInteraction?.type === 'group-work' || activeInteraction?.type === 'peer-learning') setLiveTimer(null);
     setActiveInteraction(null);
     setInteractionResults(null);
+    setLobbyOpen(false);
     setToast('Interaction closed. Return to your presentation when ready.');
   };
 
@@ -809,6 +1358,7 @@ export default function LiveLessonPrototype() {
       endsAt: Date.now() + durationSeconds * 1000,
     });
     if (!displayConnected) openClassroomDisplay();
+    setQuickAddOpen(false);
     setToast(`${durationSeconds / 60} minute timer is visible to the class`);
   };
 
@@ -820,21 +1370,6 @@ export default function LiveLessonPrototype() {
   const shareWrittenResponse = (responseId: string) => {
     setInteractionResults((current) => current ? { ...current, sharedResponseId: responseId } : current);
     setToast('Anonymous response shared with the class');
-  };
-
-  const launchUnplannedQuestion = () => {
-    const prompt = unplannedQuestion.trim();
-    if (!prompt) return;
-    launchInteraction({
-      id: `unplanned-${Date.now()}`,
-      type: 'open-response',
-      label: 'Short response',
-      title: 'Unplanned question',
-      prompt,
-      resultVisibility: 'instructor-only',
-    });
-    setUnplannedQuestion('');
-    setUnplannedQuestionOpen(false);
   };
 
   const openClassroomDisplay = () => {
@@ -881,6 +1416,70 @@ export default function LiveLessonPrototype() {
       setToast('The class could not be ended. Check your connection and try again.');
       setEndingClass(false);
       setEndClassOpen(false);
+    }
+  };
+
+  const leaveLiveConsole = () => {
+    if (!sessionContext.sessionId) return;
+    window.location.assign(`/dashboard/sessions/${sessionContext.sessionId}`);
+  };
+
+  const resetLiveSession = async () => {
+    setResettingSession(true);
+    const resetState: LessonDisplayState = {
+      ...displayStateRef.current,
+      session: sessionContext,
+      lobbyOpen: true,
+      connectedStudents,
+      counts: { ...EMPTY_ONBOARDING_COUNTS },
+      comparisonCounts: { ...EMPTY_ONBOARDING_COUNTS },
+      incomingMood: null,
+      paused: false,
+      playingHistory: false,
+      selectedWeek: 0,
+      showComparison: false,
+      onboardingStep: 0,
+      onboardingRunId: 0,
+      onboardingMoodCounts: { ...EMPTY_ONBOARDING_COUNTS },
+      activeInteraction: null,
+      interactionResults: null,
+      featuredQuestionId: null,
+      questions: [],
+      timer: null,
+      updatedAt: Date.now(),
+    };
+
+    try {
+      if (sessionContext.sessionId && sessionContext.ownerUid) {
+        await resetInstructorClassroom(sessionContext.ownerUid, sessionContext.sessionId, resetState);
+      }
+      displayStateRef.current = resetState;
+      receivedResponseIdsRef.current.clear();
+      demoQuestionVotersRef.current.clear();
+      setLiveCounts({ ...EMPTY_ONBOARDING_COUNTS });
+      setSelectedWeek(0);
+      setShowComparison(false);
+      setPlayingHistory(false);
+      setPaused(false);
+      setIncomingMood(null);
+      setOnboardingStep(0);
+      setOnboardingRunId(0);
+      setOnboardingMoodCounts({ ...EMPTY_ONBOARDING_COUNTS });
+      setLobbyOpen(true);
+      setActiveInteraction(null);
+      setInteractionResults(null);
+      setLiveTimer(null);
+      setLiveQuestions([]);
+      setQuestionVoteCounts({});
+      setDiscussedQuestions([]);
+      setActiveQuestion(null);
+      setResetSessionOpen(false);
+      setToast('Session reset. Attendance is still in place and the first interaction is ready to launch.');
+    } catch (resetError) {
+      console.error('Could not reset session:', resetError);
+      setToast('The session could not be reset. Your current data is unchanged.');
+    } finally {
+      setResettingSession(false);
     }
   };
 
@@ -946,6 +1545,7 @@ export default function LiveLessonPrototype() {
     setSelectedWeek(0);
     setOnboardingMoodCounts(EMPTY_ONBOARDING_COUNTS);
     setOnboardingRunId(Date.now());
+    setLobbyOpen(false);
     setOnboardingStep(1);
     setWelcomeOpen(false);
     if (!displayConnected) openClassroomDisplay();
@@ -962,6 +1562,14 @@ export default function LiveLessonPrototype() {
   };
 
   const welcomeLabels = ['Join the room', 'How participation works', 'Try the first pulse'];
+
+  if (!classroomStateReady) {
+    return <ClassroomStateGate title="Preparing your live lesson" message="Loading the current session, responses, and classroom controls." />;
+  }
+
+  if (classroomStateError) {
+    return <ClassroomStateGate loading={false} title="This class could not be opened" message={classroomStateError} />;
+  }
 
   return (
     <div className="seminar-shell">
@@ -994,16 +1602,14 @@ export default function LiveLessonPrototype() {
           </nav>
 
           <div className="professor-card">
-            <Image
-              src="/assets/living-seminar/prof-maya-chen.png"
-              alt="Prof. Maya Chen"
-              width={44}
-              height={44}
-              priority
-              unoptimized
+            <InstructorAvatar
+              name={user?.name || sessionContext.instructorName || 'Instructor'}
+              photoURL={user?.photoURL}
+              size={40}
+              className="professor-avatar"
             />
             <span>
-              <strong>{sessionContext.instructorName || 'Prof. Maya Chen'}</strong>
+              <strong>{sessionContext.instructorName || user?.name || 'Instructor'}</strong>
               <small>{sessionContext.courseCode}</small>
             </span>
           </div>
@@ -1018,23 +1624,52 @@ export default function LiveLessonPrototype() {
           </div>
           <div className="topbar-actions">
             <span className="connected-count"><Users size={17} /> {activeInteraction && interactionResults ? `${interactionResults.responseCount} responded` : `${connectedStudents} connected`}</span>
-            <button className="attendance-trigger" type="button" onClick={() => setAttendanceOpen(true)}><ClipboardCheck size={17} /> Attendance {attendanceClaims.length}</button>
-            <button type="button" onClick={() => setSessionPlanOpen(true)}><ListChecks size={17} /> Session plan</button>
-            <button
-              className={`welcome-trigger ${onboardingStep > 0 ? 'is-active' : ''}`}
-              type="button"
-              onClick={() => onboardingStep > 0 ? setToast('Use the welcome controls above the lesson dock') : setWelcomeOpen(true)}
-            ><GraduationCap size={17} /> {onboardingStep > 0 ? 'Welcome running' : 'Welcome class'}</button>
             <button className="floating-controls-trigger" type="button" onClick={openFloatingControls}><PictureInPicture2 size={17} /> Float controls</button>
-            <button type="button" onClick={startProjectorCheck}><MonitorUp size={17} /> {displayConnected ? 'Check display' : 'Set up display'}</button>
+            {sessionContext.sessionId && <button className="leave-console-trigger" type="button" onClick={() => setLeaveConsoleOpen(true)}><LogOut size={16} /> Leave console</button>}
             {sessionContext.sessionId && <button className="end-class-trigger" type="button" onClick={() => setEndClassOpen(true)}><Square size={15} /> End class</button>}
+            <div className="topbar-more-wrap">
+              <button className="topbar-more-trigger" type="button" aria-haspopup="menu" aria-expanded={topbarMenuOpen} onClick={() => setTopbarMenuOpen((open) => !open)}><MoreHorizontal size={18} /> More</button>
+              {topbarMenuOpen && (
+                <div className="topbar-more-menu" role="menu" aria-label="More class controls">
+                  <p>Class tools</p>
+                  <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); setAttendanceOpen(true); }}><ClipboardCheck size={17} /><span><strong>Attendance</strong><small>{attendanceClaims.length} checked in</small></span></button>
+                  <button role="menuitem" type="button" onClick={showClassLobby}><QrCode size={17} /><span><strong>Show join screen</strong><small>QR code, link, and class code</small></span></button>
+                  <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); if (onboardingStep > 0) setToast('Use the welcome controls above the lesson dock'); else setWelcomeOpen(true); }}><GraduationCap size={17} /><span><strong>{onboardingStep > 0 ? 'Welcome running' : 'Welcome class'}</strong><small>Introduce the class to participation</small></span></button>
+                  <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); startProjectorCheck(); }}><MonitorUp size={17} /><span><strong>{displayConnected ? 'Check display' : 'Set up display'}</strong><small>Open or reconnect the projector</small></span></button>
+                  <i /><button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); setResetSessionOpen(true); }}><RotateCcw size={16} /><span><strong>Reset session</strong><small>Clear responses and start again</small></span></button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        {activeInteraction && interactionResults ? (
+        {lobbyOpen ? (
+          <section className="instructor-lobby" aria-labelledby="class-lobby-title">
+            <div className="instructor-lobby-copy">
+              <span className="eyebrow"><QrCode size={18} /> Class lobby</span>
+              <h1 id="class-lobby-title">Let everyone get into the room.</h1>
+              <p>{activeInteraction ? 'The projector is showing the join screen. Students already in the room can keep working.' : 'The projector is showing the QR code and class code. Start when the room looks ready.'}</p>
+              <div className="instructor-lobby-join">
+                <span><small>Join at</small><strong>classfully.com/join</strong></span>
+                <span><small>Class code</small><strong>{formatSessionCode(sessionContext.sessionCode)}</strong></span>
+              </div>
+              <div className="instructor-lobby-actions">
+                <button type="button" onClick={copyJoinDetails}><Copy size={17} /> Copy join details</button>
+                <button type="button" onClick={openClassroomDisplay}><MonitorUp size={17} /> Open presentation view</button>
+              </div>
+            </div>
+            <div className="instructor-lobby-presence" aria-live="polite">
+              <span className="instructor-lobby-presence-icon"><Users size={28} /></span>
+              <strong key={connectedStudents}>{connectedStudents}</strong>
+              <span>{connectedStudents === 1 ? 'student is here' : 'students are here'}</span>
+              <small><i /> Updates as students join</small>
+            </div>
+          </section>
+        ) : activeInteraction && interactionResults ? (
           <InstructorInteractionStage
             interaction={activeInteraction}
             results={interactionResults}
+            timer={liveTimer}
             onReveal={revealInteractionResults}
             onAdvanceModule={advanceModule}
             onShareResponse={shareWrittenResponse}
@@ -1143,11 +1778,39 @@ export default function LiveLessonPrototype() {
         )}
 
         <footer className="lesson-controls">
+          {lobbyOpen ? (
+            <>
+              <button className="control-secondary lobby-copy-control" type="button" onClick={copyJoinDetails}>
+                <Copy size={18} />
+                <span><strong>Copy join details</strong><small>Share the link and class code</small></span>
+              </button>
+              <div className="next-activity-wrap lobby-start-wrap">
+                <button
+                  className="control-primary"
+                  type="button"
+                  disabled={!activeInteraction && !nextPreparedInteraction}
+                  onClick={() => activeInteraction ? setLobbyOpen(false) : nextPreparedInteraction && launchInteraction(nextPreparedInteraction)}
+                >
+                  <span><strong>{activeInteraction ? 'Return to current activity' : 'Start first activity'}</strong><small>{activeInteraction?.title || nextPreparedInteraction?.title || 'Add an interaction to begin'}</small></span>
+                  <ArrowRight size={20} />
+                </button>
+              </div>
+              <button className="control-quick-add lobby-display-control" type="button" onClick={openClassroomDisplay}>
+                <MonitorUp size={19} />
+                <span><strong>Open display</strong><small>{displayConnected ? 'Projector connected' : 'Show the lobby'}</small></span>
+              </button>
+            </>
+          ) : (
+          <>
           <button
             className="control-secondary"
             type="button"
-            aria-pressed={activeInteraction && interactionResults ? !interactionResults.open : paused}
+            aria-pressed={activeInteraction?.type === 'timer' ? false : activeInteraction && interactionResults ? !interactionResults.open : paused}
             onClick={() => {
+              if (activeInteraction?.type === 'timer') {
+                returnToSlides();
+                return;
+              }
               if (activeInteraction && interactionResults) {
                 toggleInteractionResponses();
                 return;
@@ -1156,30 +1819,74 @@ export default function LiveLessonPrototype() {
               setToast(paused ? 'Responses are live again' : 'Responses paused');
             }}
           >
-            {(activeInteraction && interactionResults ? !interactionResults.open : paused) ? <Play size={19} /> : <Pause size={19} />}
+            {activeInteraction?.type === 'timer' ? <Square size={18} /> : (activeInteraction && interactionResults ? !interactionResults.open : paused) ? <Play size={19} /> : <Pause size={19} />}
             <span>
-              <strong>{activeInteraction && interactionResults ? (interactionResults.open ? 'Lock responses' : 'Reopen responses') : (paused ? 'Resume responses' : 'Pause responses')}</strong>
-              <small>{activeInteraction && interactionResults ? (interactionResults.open ? 'Students can still answer' : 'No new answers are accepted') : (paused ? 'The chart is frozen' : 'Responses are live')}</small>
+              <strong>{activeInteraction?.type === 'timer' ? 'End timer' : activeInteraction && interactionResults ? (interactionResults.open ? 'Lock responses' : 'Reopen responses') : (paused ? 'Resume responses' : 'Pause responses')}</strong>
+              <small>{activeInteraction?.type === 'timer' ? 'Return the projector to the class view' : activeInteraction && interactionResults ? (interactionResults.open ? 'Students can still answer' : 'No new answers are accepted') : (paused ? 'The chart is frozen' : 'Responses are live')}</small>
             </span>
-          </button>
-          <button className="control-secondary" type="button" onClick={openClassroomDisplay}>
-            <Presentation size={19} />
-            <span><strong>Open classroom display</strong><small>Students see aggregate results only</small></span>
           </button>
           <div className="next-activity-wrap">
             {nextMenuOpen && (
               <div className="activity-menu">
-                <p>Prepared for this session</p>
-                {sessionPlan.map((interaction) => (
-                  <button type="button" key={interaction.id} onClick={() => launchInteraction(interaction)}><span><small>{interaction.plannedTime}</small>{interaction.title}</span><ArrowRight size={15} /></button>
+                <p>{activeInteraction ? 'Switch interaction' : 'Prepared for this session'}</p>
+                {sessionPlan.filter((interaction) => interaction.id !== activeInteraction?.id).map((interaction) => (
+                  <button type="button" key={interaction.id} onClick={() => launchInteraction(interaction)}><span><small>{interaction.id === nextPreparedInteraction?.id ? 'Up next' : interaction.plannedTime}</small>{interaction.title}</span><ArrowRight size={15} /></button>
                 ))}
               </div>
             )}
-            <button className={`control-primary ${activeInteraction ? 'is-return' : ''}`} type="button" onClick={() => activeInteraction ? returnToSlides() : setNextMenuOpen((current) => !current)}>
-              <span><strong>{activeInteraction ? 'Finish interaction' : 'Show an interaction'}</strong><small>{activeInteraction ? 'Then switch back to your slides' : `${sessionPlan.length} ${sessionPlan.length === 1 ? 'interaction' : 'interactions'} prepared for this session`}</small></span>
-              {activeInteraction ? <Laptop size={20} /> : <ArrowRight size={20} />}
+            {activeInteraction ? (
+              <div className="next-activity-actions">
+                <button className="control-primary" type="button" onClick={() => nextPreparedInteraction ? launchInteraction(nextPreparedInteraction) : setNextMenuOpen((current) => !current)}>
+                  <span><strong>{nextPreparedInteraction ? 'Start next interaction' : 'Choose an interaction'}</strong><small>{nextPreparedInteraction?.title || 'The prepared sequence is complete'}</small></span>
+                  <ArrowRight size={20} />
+                </button>
+                <button className="control-more" type="button" aria-label="Choose another interaction" title="Choose another interaction" onClick={() => setNextMenuOpen((current) => !current)}><ListChecks size={19} /></button>
+                <button className="control-return-to-slides" type="button" aria-label="Return to slides" title="Return to slides" onClick={returnToSlides}><Laptop size={19} /></button>
+              </div>
+            ) : (
+              <button className="control-primary" type="button" onClick={() => setNextMenuOpen((current) => !current)}>
+                <span><strong>Show an interaction</strong><small>{sessionPlan.length} {sessionPlan.length === 1 ? 'interaction' : 'interactions'} prepared for this session</small></span>
+                <ArrowRight size={20} />
+              </button>
+            )}
+          </div>
+          <div className="quick-add-wrap">
+            {quickAddOpen && (
+              <section className="quick-add-menu" role="dialog" aria-label="Add something during class">
+                <header>
+                  <div><small>In the moment</small><strong>Add something now</strong></div>
+                  <button type="button" aria-label="Close quick add" onClick={() => { setQuickAddOpen(false); setQuickAddType(null); }}><X size={16} /></button>
+                </header>
+                {quickAddType ? (
+                  <InteractionComposer
+                    key={`quick-${quickAddType}`}
+                    type={quickAddType}
+                    submitLabel="Show now"
+                    onCancel={() => setQuickAddType(null)}
+                    onSubmit={(interaction) => {
+                      const plannedInteraction = { ...interaction, id: `live-${interaction.type}-${Date.now()}` };
+                      void saveSessionPlan([...sessionPlanRef.current, plannedInteraction], `${plannedInteraction.title} was added to the plan.`);
+                      launchInteraction(plannedInteraction);
+                      setQuickAddType(null);
+                      setQuickAddOpen(false);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <p className="activity-picker-intro">What do you want to bring into the room?</p>
+                    <ActivityTypePicker onSelect={setQuickAddType} />
+                    <p className="quick-add-note">It opens now and stays in the Session plan so you can return to it.</p>
+                  </>
+                )}
+              </section>
+            )}
+            <button className="control-quick-add" type="button" aria-haspopup="dialog" aria-expanded={quickAddOpen} onClick={() => { setNextMenuOpen(false); setQuickAddType(null); setQuickAddOpen((open) => !open); }}>
+              <Plus size={19} />
+              <span><strong>Add now</strong><small>Choose and add to plan</small></span>
             </button>
           </div>
+          </>
+          )}
         </footer>
       </main>
 
@@ -1190,7 +1897,13 @@ export default function LiveLessonPrototype() {
               <small><i /> {displayConnected ? 'Connected' : 'Preview'}</small>
             </div>
             <button className="display-preview" type="button" onClick={startProjectorCheck}>
-              {onboardingStep > 0 ? (
+              {lobbyOpen ? (
+                <div className="preview-welcome-state preview-lobby-state">
+                  <span><QrCode size={14} /> Class lobby</span>
+                  <strong>{formatSessionCode(sessionContext.sessionCode)}</strong>
+                  <small>{connectedStudents} {connectedStudents === 1 ? 'student' : 'students'} connected</small>
+                </div>
+              ) : onboardingStep > 0 ? (
                 <div className="preview-welcome-state">
                   <span><GraduationCap size={14} /> Classroom welcome</span>
                   <strong>{onboardingStep === 4 ? 'The class is ready' : welcomeLabels[onboardingStep - 1]}</strong>
@@ -1200,7 +1913,7 @@ export default function LiveLessonPrototype() {
               ) : activeInteraction ? (
                 <div className="preview-welcome-state preview-interaction-state">
                   <span><ListChecks size={14} /> {activeInteraction.label}</span>
-                  <strong>{activeInteraction.prompt}</strong>
+                  <strong>{activeInteraction.title}</strong>
                   <small>Ready on the classroom display</small>
                 </div>
               ) : (
@@ -1251,9 +1964,14 @@ export default function LiveLessonPrototype() {
                   <span className="question-vote-total" aria-label={`${question.votes} student upvotes`}>
                     <ThumbsUp size={16} /> <strong key={question.votes}>{question.votes}</strong>
                   </span>
-                  <button type="button" onClick={() => discussQuestion(question.id)}>
-                    <MessageCircle size={16} /> {activeQuestion === question.id ? 'Remove from display' : discussedQuestions.includes(question.id) ? 'Show again' : 'Discuss on display'}
-                  </button>
+                  <div className="question-action-buttons">
+                    <button type="button" className="question-dismiss-action" disabled={dismissingQuestionIds.includes(question.id)} onClick={() => moderateQuestion(question, true)} aria-label={`Dismiss question: ${question.question}`}>
+                      <X size={15} /> Dismiss
+                    </button>
+                    <button type="button" onClick={() => discussQuestion(question.id)}>
+                      <MessageCircle size={16} /> {activeQuestion === question.id ? 'Remove from display' : discussedQuestions.includes(question.id) ? 'Show again' : 'Discuss on display'}
+                    </button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -1315,27 +2033,66 @@ export default function LiveLessonPrototype() {
               <span>Separate</span>
             </div>
 
-            <div className="session-plan-list">
-              {sessionPlan.map((interaction, index) => (
-                <article key={interaction.id} className={activeInteraction?.id === interaction.id ? 'is-live' : ''}>
-                  <div className="session-plan-index">{String(index + 1).padStart(2, '0')}</div>
-                  <div className="session-plan-copy">
-                    <span><CalendarDays size={13} /> {interaction.plannedTime} · {interaction.label}</span>
-                    <strong>{interaction.title}</strong>
-                    <p>{interaction.prompt}</p>
-                  </div>
-                  <button type="button" onClick={() => launchInteraction(interaction)}>{activeInteraction?.id === interaction.id ? 'Showing' : 'Show'} <ArrowRight size={14} /></button>
-                </article>
-              ))}
+            <div className="session-plan-editor">
+              {planEditingInteraction ? (
+                <>
+                  {activeInteraction?.id === planEditingInteraction.id && <div className="session-plan-live-edit-note"><Lock size={15} /><span><strong>Students keep the current version.</strong> These changes apply the next time you show this interaction.</span></div>}
+                  <InteractionComposer
+                    key={`edit-${planEditingInteraction.id}`}
+                    type={planEditingInteraction.type}
+                    initial={planEditingInteraction}
+                    submitLabel="Save changes"
+                    busy={planSaving}
+                    onCancel={() => setPlanEditingInteraction(null)}
+                    onSubmit={updatePlannedInteraction}
+                  />
+                </>
+              ) : planComposerType ? (
+                <InteractionComposer
+                  key={`plan-${planComposerType}`}
+                  type={planComposerType}
+                  submitLabel="Add to plan"
+                  busy={planSaving}
+                  onCancel={() => setPlanComposerType(null)}
+                  onSubmit={addInteractionToPlan}
+                />
+              ) : (
+                <>
+                  <button className="session-plan-add" type="button" onClick={() => setPlanTypePickerOpen((open) => !open)} aria-expanded={planTypePickerOpen}>
+                    <Plus size={17} /> Add interaction <ChevronLeft className={planTypePickerOpen ? 'is-open' : ''} size={15} />
+                  </button>
+                  {planTypePickerOpen && <ActivityTypePicker onSelect={(type) => { setPlanComposerType(type); setPlanTypePickerOpen(false); }} />}
+                </>
+              )}
             </div>
 
-            <footer className={unplannedQuestionOpen ? 'is-writing-question' : ''}>
-              {unplannedQuestionOpen ? (
-                <div className="unplanned-question-form">
-                  <label htmlFor="unplanned-question">Ask the room now</label>
-                  <div><input id="unplanned-question" autoFocus value={unplannedQuestion} onChange={(event) => setUnplannedQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') launchUnplannedQuestion(); }} placeholder="What do you want to ask?" /><button type="button" onClick={launchUnplannedQuestion} disabled={!unplannedQuestion.trim()}>Show now <ArrowRight size={14} /></button></div>
-                </div>
-              ) : <button type="button" onClick={() => setUnplannedQuestionOpen(true)}><MessageCircle size={16} /> Ask something unplanned</button>}
+            {!planEditingInteraction && !planComposerType && (
+              <DndContext sensors={planDragSensors} collisionDetection={closestCenter} onDragEnd={reorderSessionPlan}>
+                <SortableContext items={sessionPlan.map((interaction) => interaction.id)} strategy={verticalListSortingStrategy}>
+                  <div className="session-plan-list">
+                    {sessionPlan.map((interaction, index) => (
+                      <SortableSessionPlanItem
+                        key={interaction.id}
+                        interaction={interaction}
+                        index={index}
+                        isActive={activeInteraction?.id === interaction.id}
+                        disabled={planSaving}
+                        onEdit={() => setPlanEditingInteraction(interaction)}
+                        onMove={(direction) => movePlannedInteraction(index, direction)}
+                        onRemove={() => removePlannedInteraction(interaction)}
+                        onShow={() => launchInteraction(interaction)}
+                      />
+                    ))}
+                    {!sessionPlan.length && <div className="session-plan-empty"><ListChecks size={22} /><strong>No interactions planned yet</strong><span>Add one above when you are ready.</span></div>}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
+
+            <footer className={`session-plan-save-note ${planSaveIssue ? 'has-issue' : ''}`}>
+              {planSaveIssue ? <Cloud size={15} /> : <CheckCircle2 size={15} />}
+              <span>{planSaving ? 'Saving the plan…' : planSaveIssue ? 'Available in this live class, but not yet saved for later.' : sessionContext.sessionId ? 'Plan changes save here without interrupting the class.' : 'Preview changes last until you reload this page.'}</span>
+              {planSaveIssue && <button type="button" onClick={() => void saveSessionPlan(sessionPlanRef.current, 'Session plan saved.')} disabled={planSaving}>Try saving again</button>}
             </footer>
           </section>
         </div>
@@ -1410,7 +2167,24 @@ export default function LiveLessonPrototype() {
       )}
 
       <ProjectorPreflight open={projectorPreflightOpen} connected={displayConnected} onOpenDisplay={openClassroomDisplay} onConfirm={confirmProjector} onClose={() => setProjectorPreflightOpen(false)} />
-      {toast && <div className="seminar-toast" role="status">{toast}</div>}
+      {dismissedQuestionUndo ? <div className="seminar-toast seminar-toast-with-action" role="status"><span>Question dismissed from the class.</span><button type="button" onClick={() => moderateQuestion(dismissedQuestionUndo, false)}>Undo</button></div> : toast && <div className="seminar-toast" role="status">{toast}</div>}
+      {leaveConsoleOpen && (
+        <div className="end-class-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setLeaveConsoleOpen(false);
+        }}>
+          <section className="end-class-dialog leave-console-dialog" role="dialog" aria-modal="true" aria-labelledby="leave-console-title">
+            <span className="end-class-icon leave-console-icon"><LogOut size={19} /></span>
+            <p className="seminar-eyebrow">Step away without ending class</p>
+            <h2 id="leave-console-title" className="seminar-display">Leave the console?</h2>
+            <p>The class will stay live. Students and the classroom display can continue to see the current activity.</p>
+            <div>
+              <button type="button" onClick={() => setLeaveConsoleOpen(false)}>Keep teaching</button>
+              <button type="button" className="is-leave" onClick={leaveLiveConsole}>Leave console</button>
+              <button type="button" className="is-end-alternative" onClick={() => { setLeaveConsoleOpen(false); setEndClassOpen(true); }}>End class instead</button>
+            </div>
+          </section>
+        </div>
+      )}
       {endClassOpen && (
         <div className="end-class-backdrop" role="presentation">
           <section className="end-class-dialog" role="dialog" aria-modal="true" aria-labelledby="end-class-title">
@@ -1419,6 +2193,19 @@ export default function LiveLessonPrototype() {
             <h2 id="end-class-title" className="seminar-display">End class and review?</h2>
             <p>Student responses will close. You will return to the session record to review attendance and participation.</p>
             <div><button type="button" onClick={() => setEndClassOpen(false)} disabled={endingClass}>Keep teaching</button><button type="button" className="is-primary" onClick={endLiveClass} disabled={endingClass}>{endingClass ? 'Ending class…' : 'End and review'}</button></div>
+          </section>
+        </div>
+      )}
+      {resetSessionOpen && (
+        <div className="end-class-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !resettingSession) setResetSessionOpen(false);
+        }}>
+          <section className="end-class-dialog reset-session-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-session-title">
+            <span className="end-class-icon"><RotateCcw size={19} /></span>
+            <p className="seminar-eyebrow">Start this session again</p>
+            <h2 id="reset-session-title" className="seminar-display">Reset this session?</h2>
+            <p>This clears live answers, pulse results, student questions, votes, and interaction progress. Attendance and connected students stay in place. This cannot be undone.</p>
+            <div><button type="button" onClick={() => setResetSessionOpen(false)} disabled={resettingSession}>Keep current data</button><button type="button" className="is-primary" onClick={resetLiveSession} disabled={resettingSession}>{resettingSession ? 'Resetting…' : 'Reset and start over'}</button></div>
           </section>
         </div>
       )}
@@ -1442,6 +2229,7 @@ export default function LiveLessonPrototype() {
           onOpenDisplay={openClassroomDisplay}
           onOpenConsole={() => window.focus()}
           onFeatureQuestion={discussQuestion}
+          onDismissQuestion={moderateQuestion}
           onLaunchUnplanned={(prompt) => launchInteraction({
             id: `unplanned-${Date.now()}`,
             type: 'open-response',

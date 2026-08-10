@@ -18,6 +18,8 @@
 # local design and browser QA artifacts
 /output/
 /design-qa.md
+/.next-dev/
+/.playwright-cli/
 
 # next.js
 /.next/

@@ -12,6 +12,7 @@ import DashboardLayout from '@/components/teacher/DashboardLayout';
 import StudentResponseModal from '@/components/teacher/StudentResponseModal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import InlineMessage from '@/components/ui/InlineMessage';
 import type { Course, Session, Student } from '@/types';
 import {
   AlertCircle,
@@ -225,7 +226,7 @@ function ProgressContent() {
             </div>
           </header>
 
-          {error && <p className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">{error}</p>}
+          {error && <InlineMessage className="mb-6" title="Progress is taking a moment." message={error} />}
           {loading ? <div className="flex min-h-80 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /></div> : (
             <>
               <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Progress summary">

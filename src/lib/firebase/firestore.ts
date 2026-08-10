@@ -234,7 +234,7 @@ export const getSessionByCode = async (sessionCode: string): Promise<Session | n
 
 export const updateSession = async (id: string, updates: Partial<Session>) => {
   const docRef = doc(db, COLLECTIONS.SESSIONS, id);
-  await updateDoc(docRef, updates);
+  await updateDoc(docRef, omitUndefinedValues(updates));
 };
 
 export const deleteSession = async (id: string) => {

@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { createSession, generateSessionCode, getCaseStudiesByTeacher, getCourse, getSession, updateSession } from '@/lib/firebase/firestore';
 import { auth } from '@/lib/firebase/config';
+import { getUserFacingError } from '@/lib/user-facing-error';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import InlineMessage from '@/components/ui/InlineMessage';
 import type { CaseStudy, Course, SessionInteraction, SessionInteractionType } from '@/types';
 import {
   ArrowDown,
@@ -230,6 +232,13 @@ function NewSessionContent() {
     )));
   };
 
+  const updateTimerDuration = (interaction: SessionInteraction, part: 'minutes' | 'seconds', value: number) => {
+    const currentSeconds = Math.max(1, Math.round((interaction.durationMinutes || 0) * 60));
+    const minutes = part === 'minutes' ? Math.min(99, Math.max(0, value)) : Math.floor(currentSeconds / 60);
+    const seconds = part === 'seconds' ? Math.min(59, Math.max(0, value)) : currentSeconds % 60;
+    updateInteraction(interaction.id, { durationMinutes: Math.max(1, minutes * 60 + seconds) / 60 });
+  };
+
   const updateOption = (interactionId: string, optionIndex: number, value: string) => {
     setInteractions((current) => current.map((interaction) => {
       if (interaction.id !== interactionId || !interaction.options) return interaction;
@@ -338,7 +347,7 @@ function NewSessionContent() {
       setInteractions((current) => [...current, ...drafts]);
       setGenerationNotice('Four drafts were added below. Review the wording, choices, and correct answer before saving.');
     } catch (generationIssue: unknown) {
-      setGenerationError(generationIssue instanceof Error ? generationIssue.message : 'The question drafts could not be generated.');
+      setGenerationError(getUserFacingError(generationIssue, 'The question drafts could not be generated. Check your connection and try again.'));
     } finally {
       setGeneratingInteractions(false);
     }
@@ -383,7 +392,7 @@ function NewSessionContent() {
 
       router.push(`/dashboard/sessions/${sessionId}`);
     } catch (createError: unknown) {
-      setError(createError instanceof Error ? createError.message : 'The session flow could not be saved. Try again.');
+      setError(getUserFacingError(createError, 'The session flow could not be saved. Your work is still here, so you can try again.'));
     } finally {
       setCreating(false);
     }
@@ -540,7 +549,7 @@ function NewSessionContent() {
                     <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" /> {lessonSourceName || 'Plain text only: .txt, .md, .csv, or .tsv'}</span>
                     <span>{lessonContent.length.toLocaleString()} / {MAX_LESSON_CHARS.toLocaleString()} characters</span>
                   </div>
-                  {generationError && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700" role="alert">{generationError}</p>}
+                  {generationError && <InlineMessage className="mt-3" title="The question draft needs another try." message={generationError} />}
                   {generationNotice && <p className="mt-3 rounded-lg border border-[#cce8d2] bg-[#f2fbf4] px-3 py-2 text-sm leading-6 text-[#296e3c]" role="status">{generationNotice}</p>}
                   <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs leading-5 text-[#5a6278]">Creates one pulse, poll, quiz, and short response. You can edit or remove every draft.</p>
@@ -606,10 +615,25 @@ function NewSessionContent() {
                         </div>
                         <div className="grid gap-3">
                           <Input aria-label="Planned moment" value={interaction.plannedTime || ''} onChange={(event) => updateInteraction(interaction.id, { plannedTime: event.target.value })} />
-                          <label className="flex items-center gap-2 text-xs font-semibold text-[#697087]">
-                            <Clock3 className="h-3.5 w-3.5" />
-                            <input aria-label="Estimated minutes" type="number" min={1} max={60} value={interaction.durationMinutes || 1} onChange={(event) => updateInteraction(interaction.id, { durationMinutes: Number(event.target.value) })} className="w-16 rounded-lg border border-[#d7dae5] px-2 py-1.5 text-[#313950] outline-none focus:border-[#5146e5]" /> min
-                          </label>
+                          {interaction.type === 'timer' && (
+                            <label className="grid gap-1.5 text-xs font-semibold text-[#697087]">
+                              <span>Duration</span>
+                              <span className="flex items-center gap-2">
+                                <Clock3 className="h-3.5 w-3.5" />
+                                <input aria-label="Clock duration minutes" type="number" min={0} max={99} value={Math.floor(Math.round((interaction.durationMinutes || 0) * 60) / 60)} onChange={(event) => updateTimerDuration(interaction, 'minutes', Number(event.target.value))} className="w-16 rounded-lg border border-[#d7dae5] px-2 py-1.5 text-[#313950] outline-none focus:border-[#5146e5]" /> min
+                                <input aria-label="Clock duration seconds" type="number" min={0} max={59} value={Math.round((interaction.durationMinutes || 0) * 60) % 60} onChange={(event) => updateTimerDuration(interaction, 'seconds', Number(event.target.value))} className="w-16 rounded-lg border border-[#d7dae5] px-2 py-1.5 text-[#313950] outline-none focus:border-[#5146e5]" /> sec
+                              </span>
+                            </label>
+                          )}
+                          {interaction.type === 'group-work' && (
+                            <label className="grid gap-1.5 text-xs font-semibold text-[#697087]">
+                              <span>Work time</span>
+                              <span className="flex items-center gap-2">
+                                <Clock3 className="h-3.5 w-3.5" />
+                                <input aria-label="Group work minutes" type="number" min={1} max={60} value={interaction.durationMinutes || 1} onChange={(event) => updateInteraction(interaction.id, { durationMinutes: Number(event.target.value) })} className="w-16 rounded-lg border border-[#d7dae5] px-2 py-1.5 text-[#313950] outline-none focus:border-[#5146e5]" /> min
+                              </span>
+                            </label>
+                          )}
                         </div>
                         <div className="flex gap-1 md:flex-col">
                           <button type="button" onClick={() => moveInteraction(index, -1)} disabled={index === 0} className="seminar-focus rounded-lg p-2 text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38] disabled:opacity-30" aria-label={`Move ${interaction.title} up`}><ArrowUp className="h-4 w-4" /></button>
@@ -630,12 +654,12 @@ function NewSessionContent() {
                 <p className="mt-2 text-sm text-[#697087]">{courseCode}{courseName ? ` · ${courseName}` : ''}</p>
                 <div className="mt-6 space-y-3 border-y border-[#dcd8ff] py-5 text-sm">
                   <div className="flex items-center justify-between"><span className="text-[#697087]">Activities</span><strong className="text-[#101a38]">{interactions.length}</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-[#697087]">Activity time</span><strong className="text-[#101a38]">About {estimatedMinutes} min</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-[#697087]">Activity time</span><strong className="text-[#101a38]">About {Math.ceil(estimatedMinutes)} min</strong></div>
                 </div>
                 <div className="mt-5 flex gap-3 text-sm leading-6 text-[#4f576d]"><Check className="mt-1 h-4 w-4 shrink-0 text-[#3aa45a]" /><span>You can add an unplanned question during class without changing this plan.</span></div>
               </section>
 
-              {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700" role="alert">{error}</div>}
+              {error && <InlineMessage title="The session is not saved yet." message={error} />}
 
               <Button type="button" onClick={handleSaveSession} loading={creating} disabled={!courseCode.trim() || !sessionTitle.trim()} size="lg" className="w-full gap-2">
                 <Save className="h-4 w-4" /> {editingSessionId ? 'Save changes' : 'Save session'}

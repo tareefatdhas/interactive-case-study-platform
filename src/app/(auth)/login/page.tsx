@@ -12,6 +12,8 @@ import Button from '@/components/ui/Button';
 import GoogleSignInButton from '@/components/ui/GoogleSignInButton';
 import Input from '@/components/ui/Input';
 import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
+import InlineMessage from '@/components/ui/InlineMessage';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,8 +48,7 @@ export default function LoginPage() {
       await signInTeacher(formData.email, formData.password);
       router.push('/dashboard');
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : '';
-      setError(message || 'We could not sign you in. Check your email and password, then try again.');
+      setError(getUserFacingError(error, 'We could not sign you in. Check your email and password, then try again.'));
     } finally {
       setLoading(false);
     }
@@ -100,11 +101,7 @@ export default function LoginPage() {
                 placeholder="Your password"
               />
 
-              {error && (
-                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                  {error}
-                </div>
-              )}
+              {error && <InlineMessage title="That sign-in did not work." message={error} />}
 
               <Button type="submit" loading={loading} disabled={googleLoading} className="w-full">Sign in</Button>
             </form>

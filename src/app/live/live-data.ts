@@ -57,6 +57,7 @@ export type LiveQuestion = {
   ago: string;
   question: string;
   votes: number;
+  source?: 'instructor' | 'student';
 };
 
 export type LiveTimer = {
@@ -78,6 +79,8 @@ export type LiveSessionContext = {
 
 export type LessonDisplayState = {
   session: LiveSessionContext;
+  lobbyOpen: boolean;
+  connectedStudents: number;
   counts: Counts;
   comparisonCounts: Counts;
   incomingMood: MoodKey | null;
@@ -303,7 +306,12 @@ export function buildWordCloudItems(
     const key = label.toLocaleLowerCase();
     const existing = terms.get(key);
     if (existing) existing.count += 1;
-    else terms.set(key, { label: `${label.charAt(0).toLocaleUpperCase()}${label.slice(1)}`, count: 1, firstSeen: index });
+    else {
+      const readableLabel = label === label.toLocaleUpperCase()
+        ? `${label.charAt(0).toLocaleUpperCase()}${label.slice(1).toLocaleLowerCase()}`
+        : `${label.charAt(0).toLocaleUpperCase()}${label.slice(1)}`;
+      terms.set(key, { label: readableLabel, count: 1, firstSeen: index });
+    }
   });
 
   const ranked = Array.from(terms.entries())
@@ -315,7 +323,9 @@ export function buildWordCloudItems(
     key,
     label: value.label,
     count: value.count,
-    strength: value.count / maximum,
+    strength: maximum === 1
+      ? 0.26
+      : 0.22 + 0.78 * ((value.count - 1) / (maximum - 1)),
   }));
 }
 

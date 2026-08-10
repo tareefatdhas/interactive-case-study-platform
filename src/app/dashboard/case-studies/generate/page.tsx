@@ -11,8 +11,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
+import InlineMessage from '@/components/ui/InlineMessage';
 import type { CaseStudy } from '@/types';
 import { Sparkles, ArrowLeft, Save, Loader2, BookOpen, MessageSquare, Activity, HelpCircle, Award } from 'lucide-react';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 export default function GenerateCaseStudyPage() {
   const { user } = useAuth();
@@ -81,7 +83,7 @@ export default function GenerateCaseStudyPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate case study');
+        throw new Error(data.error || 'The case study draft is not ready yet. Try again in a moment.');
       }
 
       setLoadingProgress('Finalizing case study...');
@@ -91,11 +93,11 @@ export default function GenerateCaseStudyPage() {
       console.error('Generation error:', error);
       
       if (error.name === 'AbortError') {
-        setError('Request timed out. The AI is taking longer than expected. Please try again.');
+        setError('The draft is taking longer than expected. Try again with a shorter source or fewer learning objectives.');
       } else if (error.message.includes('parse') || error.message.includes('JSON')) {
-        setError('AI generated invalid content format. This sometimes happens - please try again.');
+        setError('The draft came back incomplete. Try generating it once more.');
       } else {
-        setError(error.message || 'Failed to generate case study');
+        setError(getUserFacingError(error, 'The case study draft could not be generated. Check your connection and try again.'));
       }
       
       setRetryCount(prev => prev + 1);
@@ -119,7 +121,7 @@ export default function GenerateCaseStudyPage() {
       await createCaseStudy(generatedCaseStudy);
       router.push('/dashboard/case-studies');
     } catch (error: any) {
-      setError(error.message || 'Failed to save case study');
+      setError(getUserFacingError(error, 'The case study could not be saved. The generated draft is still here, so you can try again.'));
     } finally {
       setSaving(false);
     }
@@ -233,27 +235,9 @@ export default function GenerateCaseStudyPage() {
                   </form>
 
                   {error && (
-                    <div className="mt-4 p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <p className="font-medium mb-1">Generation Failed</p>
-                          <p>{error}</p>
-                          {retryCount > 0 && (
-                            <p className="text-xs text-red-600 mt-1">
-                              Attempt {retryCount + 1} - AI generation can sometimes fail, please try again.
-                            </p>
-                          )}
-                        </div>
-                        <Button
-                          onClick={handleRetry}
-                          disabled={loading}
-                          size="sm"
-                          variant="outline"
-                          className="ml-3 border-red-300 text-red-700 hover:bg-red-100"
-                        >
-                          Retry
-                        </Button>
-                      </div>
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <InlineMessage className="flex-1" title="The draft is not ready yet." message={retryCount > 0 ? `${error} This was attempt ${retryCount + 1}.` : error} />
+                      <Button onClick={handleRetry} disabled={loading} size="sm" variant="outline">Try again</Button>
                     </div>
                   )}
 

@@ -12,8 +12,10 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import RichTextEditor from '@/components/ui/RichTextEditor';
+import InlineMessage from '@/components/ui/InlineMessage';
 import type { Section, Question, SectionType } from '@/types';
 import { Plus, Trash2, Save, BookOpen, MessageSquare, Activity } from 'lucide-react';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 export default function NewCaseStudyPage() {
   const { user } = useAuth();
@@ -230,7 +232,7 @@ export default function NewCaseStudyPage() {
       await createCaseStudy(caseStudyData);
       router.push('/dashboard/case-studies');
     } catch (error: any) {
-      setError(error.message || 'Failed to create case study');
+      setError(getUserFacingError(error, 'The case study could not be saved. Your draft is still here, so you can try again.'));
     } finally {
       setLoading(false);
     }
@@ -545,11 +547,7 @@ export default function NewCaseStudyPage() {
               Add Section
             </Button>
 
-            {error && (
-              <div className="p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
-                {error}
-              </div>
-            )}
+            {error && <InlineMessage title="The case study is not saved yet." message={error} />}
 
             <div className="flex gap-4">
               <Button

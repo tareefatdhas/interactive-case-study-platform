@@ -7,17 +7,20 @@ import {
   runTransaction,
   serverTimestamp,
   set,
+  update,
   type Database,
   type DataSnapshot,
 } from 'firebase/database';
 import { auth, realtimeDb } from './config';
-import { ensureStudentAnonymousAuth, studentRealtimeDb } from './student-config';
+import { ensureStudentAnonymousAuth, studentAuth, studentRealtimeDb } from './student-config';
 import { STUDENT_PRIVACY_NOTICE_VERSION } from '@/lib/privacy';
 import type {
   InteractionResponse,
   LessonDisplayState,
+  LiveQuestion,
   LiveSessionContext,
 } from '@/app/live/live-data';
+import { getQuestionPointRule, type QuestionPointRuleKey } from '@/app/live/student/rewards';
 
 export type StoredLiveResponse = InteractionResponse & {
   studentUid: string;
@@ -29,6 +32,21 @@ export type StoredWelcomeResponse = {
   mood: keyof LessonDisplayState['onboardingMoodCounts'];
   studentUid: string;
   submittedAt: number;
+};
+
+export type StoredStudentQuestion = {
+  id: number;
+  question: string;
+  studentUid: string;
+  submittedAt: number;
+};
+
+export type StoredQuestionPointClaim = {
+  type: QuestionPointRuleKey;
+  questionId: number;
+  amount: number;
+  label: string;
+  createdAt: number;
 };
 
 export type AttendanceStatus = 'claimed' | 'participated' | 'confirmed' | 'excused';
@@ -62,7 +80,7 @@ export type LiveJoinRecord = {
   expiresAt: number;
 };
 
-type LiveClassroomMeta = LiveSessionContext & {
+export type LiveClassroomMeta = LiveSessionContext & {
   ownerUid: string;
   status: 'live' | 'ended';
   createdAt: number;
@@ -231,6 +249,9 @@ export async function initializeInstructorClassroom(
 export async function endInstructorClassroom(ownerUid: string, sessionId: string) {
   const instructor = auth.currentUser;
   if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) throw new Error('Instructor sign-in required.');
+  await settleQuestionPointClaims(ownerUid, sessionId).catch((error) => {
+    console.error('Question points could not be settled before class ended:', error);
+  });
   const metaRef = ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/meta`);
   const currentSnapshot = await get(metaRef);
   const current = currentSnapshot.val() as LiveClassroomMeta | null;
@@ -251,6 +272,94 @@ export async function endInstructorClassroom(ownerUid: string, sessionId: string
       await set(joinRef, { ...joinRecord, status: 'ended' });
     }
   }
+}
+
+async function settleQuestionPointClaims(ownerUid: string, sessionId: string) {
+  const basePath = roomPath(ownerUid, sessionId);
+  const [questionsSnapshot, votesSnapshot, claimsSnapshot, recognizedSnapshot] = await Promise.all([
+    get(ref(realtimeDb, `${basePath}/studentQuestions`)),
+    get(ref(realtimeDb, `${basePath}/questionVotes`)),
+    get(ref(realtimeDb, `${basePath}/questionPointClaims`)),
+    get(ref(realtimeDb, `${basePath}/recognizedQuestions`)),
+  ]);
+  const questionsByStudent = (questionsSnapshot.val() || {}) as Record<string, Record<string, StoredStudentQuestion>>;
+  const votesByQuestion = (votesSnapshot.val() || {}) as Record<string, Record<string, true>>;
+  const claimsByStudent = (claimsSnapshot.val() || {}) as Record<string, Record<string, StoredQuestionPointClaim>>;
+  const recognizedQuestions = (recognizedSnapshot.val() || {}) as Record<string, true>;
+  const updates: Record<string, StoredQuestionPointClaim> = {};
+  const now = Date.now();
+
+  const addClaim = (studentUid: string, type: QuestionPointRuleKey, questionId: number) => {
+    const rule = getQuestionPointRule(type);
+    if (claimsByStudent[studentUid]?.[rule.id]) return;
+    updates[`${basePath}/questionPointClaims/${studentUid}/${rule.id}`] = {
+      type,
+      questionId,
+      amount: rule.amount,
+      label: rule.label,
+      createdAt: now,
+    };
+  };
+
+  Object.entries(questionsByStudent).forEach(([studentUid, questionMap]) => {
+    const questions = Object.values(questionMap || {}).sort((a, b) => a.submittedAt - b.submittedAt);
+    if (!questions.length) return;
+    addClaim(studentUid, 'asked', questions[0].id);
+
+    const strongestQuestion = [...questions].sort((a, b) => {
+      const aVotes = Object.values(votesByQuestion[String(a.id)] || {}).filter(Boolean).length;
+      const bVotes = Object.values(votesByQuestion[String(b.id)] || {}).filter(Boolean).length;
+      return bVotes - aVotes;
+    })[0];
+    const strongestVoteCount = Object.values(votesByQuestion[String(strongestQuestion.id)] || {}).filter(Boolean).length;
+    if (strongestVoteCount >= 2) addClaim(studentUid, 'supported', strongestQuestion.id);
+    if (strongestVoteCount >= 5) addClaim(studentUid, 'helpedRoom', strongestQuestion.id);
+
+    const discussedQuestion = questions.find((question) => recognizedQuestions[String(question.id)] === true);
+    if (discussedQuestion) addClaim(studentUid, 'discussed', discussedQuestion.id);
+  });
+
+  if (Object.keys(updates).length) await update(ref(realtimeDb), updates);
+}
+
+export async function resetInstructorClassroom(
+  ownerUid: string,
+  sessionId: string,
+  resetState: LessonDisplayState,
+) {
+  const instructor = auth.currentUser;
+  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) {
+    throw new Error('Instructor sign-in required.');
+  }
+
+  const basePath = roomPath(ownerUid, sessionId);
+  const metaRef = ref(realtimeDb, `${basePath}/meta`);
+  const metaSnapshot = await get(metaRef);
+  const meta = metaSnapshot.val() as LiveClassroomMeta | null;
+  if (!meta || meta.ownerUid !== ownerUid) {
+    throw new Error('The live classroom record could not be found.');
+  }
+
+  const now = Date.now();
+  const expiresAt = Math.max(meta.expiresAt || 0, now + 12 * 60 * 60 * 1000);
+  const updates: Record<string, unknown> = {
+    [`${basePath}/responses`]: null,
+    [`${basePath}/welcomeResponses`]: null,
+    [`${basePath}/studentQuestions`]: null,
+    [`${basePath}/questionVotes`]: null,
+    [`${basePath}/dismissedQuestions`]: null,
+    [`${basePath}/questionPointClaims`]: null,
+    [`${basePath}/recognizedQuestions`]: null,
+    [`${basePath}/publicState`]: cleanFirebaseValue({ ...resetState, updatedAt: now }),
+    [`${basePath}/meta/status`]: 'live',
+    [`${basePath}/meta/updatedAt`]: now,
+    [`${basePath}/meta/expiresAt`]: expiresAt,
+  };
+  if (meta.sessionCode) {
+    updates[`${joinCodePath(meta.sessionCode)}/status`] = 'live';
+    updates[`${joinCodePath(meta.sessionCode)}/expiresAt`] = expiresAt;
+  }
+  await update(ref(realtimeDb), updates);
 }
 
 export async function getInstructorClassroomRecords(
@@ -286,6 +395,12 @@ export async function getLiveClassroomByCode(sessionCode: string) {
   return classroom;
 }
 
+export async function getStudentClassroomMeta(ownerUid: string, sessionId: string) {
+  await ensureStudentAnonymousAuth();
+  const snapshot = await get(ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/meta`));
+  return snapshot.exists() ? snapshot.val() as LiveClassroomMeta : null;
+}
+
 function subscribeToPublicState(
   database: Database,
   ownerUid: string,
@@ -319,6 +434,15 @@ export async function subscribeToStudentPublicState(
 ) {
   await ensureStudentAnonymousAuth();
   return subscribeToPublicState(studentRealtimeDb, ownerUid, sessionId, callback);
+}
+
+export async function subscribeToStudentConnection(
+  callback: (connected: boolean) => void,
+) {
+  await ensureStudentAnonymousAuth();
+  const connectedRef = ref(studentRealtimeDb, '.info/connected');
+  onValue(connectedRef, (snapshot) => callback(snapshot.val() === true));
+  return () => off(connectedRef);
 }
 
 export async function submitStudentInteractionResponse(
@@ -427,6 +551,140 @@ export async function setStudentQuestionVote(
   await set(
     ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/questionVotes/${questionId}/${student.uid}`),
     voted ? true : null,
+  );
+}
+
+export async function getCurrentStudentQuestionIds(ownerUid: string, sessionId: string): Promise<number[]> {
+  const student = await ensureStudentAnonymousAuth();
+  const snapshot = await get(
+    ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/studentQuestions/${student.uid}`),
+  );
+  const questions = (snapshot.val() || {}) as Record<string, StoredStudentQuestion>;
+  return Object.values(questions)
+    .map((question) => question.id)
+    .filter((questionId): questionId is number => typeof questionId === 'number');
+}
+
+export async function submitStudentQuestion(ownerUid: string, sessionId: string, rawQuestion: string): Promise<LiveQuestion> {
+  const student = await ensureStudentAnonymousAuth();
+  const question = rawQuestion.trim().replace(/\s+/g, ' ').slice(0, 180);
+  if (!question) throw new Error('Write a question before sending it.');
+  const id = Date.now() * 100 + Math.floor(Math.random() * 100);
+  const submittedAt = Date.now();
+  const storedQuestion: StoredStudentQuestion = {
+    id,
+    question,
+    studentUid: student.uid,
+    submittedAt,
+  };
+  await set(
+    ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/studentQuestions/${student.uid}/${id}`),
+    storedQuestion,
+  );
+  return { id, initials: 'Q', ago: 'Just now', question, votes: 0, source: 'student' };
+}
+
+export async function claimStudentQuestionPoints(
+  ownerUid: string,
+  sessionId: string,
+  type: QuestionPointRuleKey,
+  questionId: number,
+) {
+  const student = await ensureStudentAnonymousAuth();
+  const rule = getQuestionPointRule(type);
+  const claim: StoredQuestionPointClaim = {
+    type,
+    questionId,
+    amount: rule.amount,
+    label: rule.label,
+    createdAt: Date.now(),
+  };
+  const claimRef = ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/questionPointClaims/${student.uid}/${rule.id}`);
+  const result = await runTransaction(claimRef, (current: StoredQuestionPointClaim | null) => current ? undefined : claim, { applyLocally: false });
+  return {
+    claim: (result.snapshot.val() || claim) as StoredQuestionPointClaim,
+    created: result.committed,
+    eventId: rule.id,
+  };
+}
+
+export function subscribeToStudentQuestionPointClaims(
+  ownerUid: string,
+  sessionId: string,
+  callback: (claims: Record<string, StoredQuestionPointClaim>) => void,
+) {
+  const student = studentAuth.currentUser;
+  if (!student) throw new Error('Student sign-in required.');
+  const claimsRef = ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/questionPointClaims/${student.uid}`);
+  onValue(claimsRef, (snapshot) => callback(snapshot.val() || {}), () => callback({}));
+  return () => off(claimsRef);
+}
+
+export async function setInstructorQuestionRecognized(ownerUid: string, sessionId: string, questionId: number) {
+  const instructor = auth.currentUser;
+  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) throw new Error('Instructor sign-in required.');
+  await set(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/recognizedQuestions/${questionId}`), true);
+}
+
+export function subscribeToInstructorStudentQuestions(
+  ownerUid: string,
+  sessionId: string,
+  callback: (questions: LiveQuestion[]) => void,
+) {
+  const questionsRef = ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/studentQuestions`);
+  const dismissedRef = ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/dismissedQuestions`);
+  let byStudent: Record<string, Record<string, StoredStudentQuestion>> = {};
+  let dismissedQuestions: Record<string, true> = {};
+  let questionsLoaded = false;
+  let dismissedLoaded = false;
+
+  const emit = () => {
+    if (!questionsLoaded || !dismissedLoaded) return;
+    const questions = Object.values(byStudent)
+      .flatMap((studentQuestions) => Object.values(studentQuestions || {}))
+      .filter((question) => typeof question?.id === 'number' && typeof question?.question === 'string')
+      .filter((question) => dismissedQuestions[String(question.id)] !== true)
+      .sort((a, b) => b.submittedAt - a.submittedAt)
+      .map((question) => ({
+        id: question.id,
+        initials: 'Q',
+        ago: 'Just now',
+        question: question.question,
+        votes: 0,
+        source: 'student' as const,
+      }));
+    callback(questions);
+  };
+
+  onValue(questionsRef, (snapshot) => {
+    byStudent = (snapshot.val() || {}) as Record<string, Record<string, StoredStudentQuestion>>;
+    questionsLoaded = true;
+    emit();
+  });
+  onValue(dismissedRef, (snapshot) => {
+    dismissedQuestions = (snapshot.val() || {}) as Record<string, true>;
+    dismissedLoaded = true;
+    emit();
+  });
+  return () => {
+    off(questionsRef);
+    off(dismissedRef);
+  };
+}
+
+export async function setInstructorQuestionDismissed(
+  ownerUid: string,
+  sessionId: string,
+  questionId: number,
+  dismissed: boolean,
+) {
+  const instructor = auth.currentUser;
+  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) {
+    throw new Error('Instructor sign-in required.');
+  }
+  await set(
+    ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/dismissedQuestions/${questionId}`),
+    dismissed ? true : null,
   );
 }
 

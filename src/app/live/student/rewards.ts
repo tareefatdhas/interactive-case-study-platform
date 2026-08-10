@@ -1,3 +1,5 @@
+import type { RewardKind } from '@/types';
+
 export type RewardBalance = 'seminar' | 'score';
 
 export type RewardLedgerEntry = {
@@ -33,70 +35,70 @@ export type CourseReward = {
   name: string;
   description: string;
   pointsRequired: number;
+  kind?: RewardKind;
+  limitPerStudent?: number;
 };
 
-export const COURSE_REWARDS: CourseReward[] = [
-  {
-    id: 'case-choice',
-    name: 'Choose a class example',
-    description: 'Suggest the case or market the class applies next.',
-    pointsRequired: 70,
+export const POINT_RULES = {
+  participation: {
+    pulse: 1,
+    poll: 2,
+    quiz: 2,
+    'peer-learning': 2,
+    'word-cloud': 2,
+    'open-response': 3,
+    'group-work': 5,
   },
-  {
-    id: 'deadline-pass',
-    name: 'One-day deadline pass',
-    description: 'Valid on one eligible low-stakes assignment.',
-    pointsRequired: 120,
+  privatePrediction: 1,
+  roomRead: 3,
+  correctQuizAnswer: 8,
+  strongSecondAnswer: 6,
+  questions: {
+    asked: { id: 'question-asked', amount: 1, label: 'Asked a question' },
+    supported: { id: 'question-upvotes-2', amount: 2, label: 'Question supported by classmates', threshold: 2 },
+    helpedRoom: { id: 'question-upvotes-5', amount: 3, label: 'Question helped the room', threshold: 5 },
+    discussed: { id: 'question-discussed', amount: 3, label: 'Question discussed in class' },
   },
-  {
-    id: 'extra-credit',
-    name: 'Small extra-credit reward',
-    description: 'A small course-capped bonus after instructor approval.',
-    pointsRequired: 150,
-  },
-];
+} as const;
 
-export function createInitialRewardState(demo = false): StudentRewardState {
+export type QuestionPointRuleKey = keyof typeof POINT_RULES.questions;
+
+export function getQuestionPointRule(key: QuestionPointRuleKey) {
+  return POINT_RULES.questions[key];
+}
+
+export function getParticipationPoints(type: string) {
+  return POINT_RULES.participation[type as keyof typeof POINT_RULES.participation] || 0;
+}
+
+export function createInitialRewardState(): StudentRewardState {
   return {
-    seminarPoints: demo ? 86 : 0,
-    classScore: demo ? 18 : 0,
-    classRun: demo ? 3 : 0,
-    longestRun: demo ? 3 : 0,
+    seminarPoints: 0,
+    classScore: 0,
+    classRun: 0,
+    longestRun: 0,
     alias: 'Quiet Comet',
-    ledger: demo ? [
-      {
-        id: 'demo-reflection',
-        eventKey: 'demo:reflection',
-        balance: 'seminar',
-        amount: 5,
-        label: 'Post-class reflection',
-        createdAt: Date.now() - 86_400_000,
-      },
-      {
-        id: 'demo-question',
-        eventKey: 'demo:question',
-        balance: 'seminar',
-        amount: 3,
-        label: 'Question discussed',
-        createdAt: Date.now() - 172_800_000,
-      },
-    ] : [],
+    ledger: [],
     redemptions: [],
   };
 }
 
 function storageKey(scope: string) {
-  return `living-seminar-rewards:${scope}`;
+  // Demo builds previously seeded invented progress. Keep demo storage on a new
+  // key so those values cannot be mistaken for student activity.
+  return scope.startsWith('demo:')
+    ? `classfully-rewards:v2:${scope}`
+    : `living-seminar-rewards:${scope}`;
 }
 
-export function loadRewardState(scope: string, demo = false): StudentRewardState {
-  if (typeof window === 'undefined') return createInitialRewardState(demo);
+export function loadRewardState(scope: string): StudentRewardState {
+  if (typeof window === 'undefined') return createInitialRewardState();
   const stored = window.localStorage.getItem(storageKey(scope));
-  if (!stored) return createInitialRewardState(demo);
+  if (!stored) return createInitialRewardState();
   try {
     const parsed = JSON.parse(stored) as Omit<StudentRewardState, 'redemptions'> & { redemptions?: Array<RewardRedemption & { cost?: number }> };
     return {
-      ...createInitialRewardState(demo),
+      ...createInitialRewardState(),
       ...parsed,
       redemptions: (parsed.redemptions || []).map((redemption) => ({
         ...redemption,
@@ -104,7 +106,7 @@ export function loadRewardState(scope: string, demo = false): StudentRewardState
       })),
     } as StudentRewardState;
   } catch {
-    return createInitialRewardState(demo);
+    return createInitialRewardState();
   }
 }
 

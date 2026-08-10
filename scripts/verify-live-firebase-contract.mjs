@@ -3,7 +3,7 @@ import { config as loadEnv } from 'dotenv';
 import { deleteApp, initializeApp } from 'firebase/app';
 import { createUserWithEmailAndPassword, deleteUser, getAuth, signInAnonymously } from 'firebase/auth';
 import { deleteDoc, doc, getDoc, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore';
-import { get, getDatabase, ref, remove, set } from 'firebase/database';
+import { get, getDatabase, ref, remove, set, update } from 'firebase/database';
 
 loadEnv({ path: '.env.local', quiet: true });
 
@@ -182,6 +182,96 @@ try {
     optionIndex: 0,
     submittedAt: Date.now(),
   });
+
+  const responseContracts = [
+    { id: 'contract-pulse', type: 'pulse', label: 'Pulse', options: ['Ready', 'Not yet'], optionIndex: 0 },
+    { id: 'contract-quiz', type: 'quiz', label: 'Quiz', options: ['A', 'B'], optionIndex: 1 },
+    { id: 'contract-peer-learning', type: 'peer-learning', label: 'Peer learning', options: ['A', 'B'], optionIndex: 0 },
+    { id: 'contract-open-response', type: 'open-response', label: 'Short response', text: 'I need another example.' },
+    { id: 'contract-word-cloud', type: 'word-cloud', label: 'Word cloud', text: 'Curiosity' },
+    { id: 'contract-group-work', type: 'group-work', label: 'Group work', text: 'Our group chose one shared dependency.' },
+  ];
+  const responseContractRuns = [];
+
+  for (const contract of responseContracts) {
+    const contractRunId = `${contract.id}-${Date.now()}`;
+    await update(ref(teacherRealtime, `${roomPath}/publicState`), {
+      activeInteraction: {
+        id: contract.id,
+        type: contract.type,
+        label: contract.label,
+        title: `Contract ${contract.label.toLowerCase()}`,
+        prompt: `Can a ${contract.label.toLowerCase()} response cross the live classroom rules?`,
+        options: contract.options || [],
+        resultVisibility: contract.type === 'open-response' || contract.type === 'group-work' ? 'instructor-only' : 'live',
+      },
+      interactionResults: {
+        runId: contractRunId,
+        open: true,
+        responseCount: 0,
+        optionCounts: contract.options?.map(() => 0) || [],
+        writtenResponses: [],
+        revealed: contract.type !== 'quiz' && contract.type !== 'peer-learning',
+        sharedResponseId: null,
+      },
+      updatedAt: Date.now(),
+    });
+    const answer = typeof contract.optionIndex === 'number'
+      ? { optionIndex: contract.optionIndex }
+      : { text: contract.text };
+    await set(ref(studentRealtime, `${roomPath}/responses/${contractRunId}/${studentUser.uid}`), {
+      id: `${contractRunId}-${studentUser.uid}`,
+      runId: contractRunId,
+      interactionId: contract.id,
+      studentUid: studentUser.uid,
+      ...answer,
+      submittedAt: Date.now(),
+    });
+    responseContractRuns.push({ ...contract, runId: contractRunId });
+  }
+
+  const timerInteractionId = 'contract-timer';
+  const timerRunId = `${timerInteractionId}-${Date.now()}`;
+  await update(ref(teacherRealtime, `${roomPath}/publicState`), {
+    activeInteraction: {
+      id: timerInteractionId,
+      type: 'timer',
+      label: 'Clock',
+      title: 'Contract clock',
+      prompt: 'No student response is needed.',
+      options: [],
+      resultVisibility: 'live',
+    },
+    interactionResults: {
+      runId: timerRunId,
+      open: false,
+      responseCount: 0,
+      optionCounts: [],
+      writtenResponses: [],
+      revealed: true,
+      sharedResponseId: null,
+    },
+    updatedAt: Date.now(),
+  });
+  const timerWriteWasRejected = await set(ref(studentRealtime, `${roomPath}/responses/${timerRunId}/${studentUser.uid}`), {
+    id: `${timerRunId}-${studentUser.uid}`,
+    runId: timerRunId,
+    interactionId: timerInteractionId,
+    studentUid: studentUser.uid,
+    text: 'This should not be accepted.',
+    submittedAt: Date.now(),
+  }).then(() => false).catch(() => true);
+  const studentQuestionId = Date.now() * 100 + 7;
+  await set(ref(studentRealtime, `${roomPath}/studentQuestions/${studentUser.uid}/${studentQuestionId}`), {
+    id: studentQuestionId,
+    question: 'Could you explain this idea with another example?',
+    studentUid: studentUser.uid,
+    submittedAt: Date.now(),
+  });
+  const selfQuestionVoteWasRejected = await set(
+    ref(studentRealtime, `${roomPath}/questionVotes/${studentQuestionId}/${studentUser.uid}`),
+    true,
+  ).then(() => false).catch(() => true);
   await set(ref(studentRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`), true);
   await set(ref(studentRealtime, `${roomPath}/presence/${studentUser.uid}/contract-connection`), {
     connected: true,
@@ -189,24 +279,98 @@ try {
     lastSeen: Date.now(),
   });
 
-  const [attendance, response, welcomeResponse, questionVote, sessionDocument] = await Promise.all([
+  const [attendance, response, welcomeResponse, studentQuestion, questionVote, sessionDocument, timerResponse] = await Promise.all([
     get(ref(teacherRealtime, `${roomPath}/attendanceClaims/${studentUser.uid}`)),
     get(ref(teacherRealtime, `${roomPath}/responses/${interactionRunId}/${studentUser.uid}`)),
     get(ref(teacherRealtime, `${roomPath}/welcomeResponses/1/${studentUser.uid}`)),
+    get(ref(teacherRealtime, `${roomPath}/studentQuestions/${studentUser.uid}/${studentQuestionId}`)),
     get(ref(teacherRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`)),
     getDoc(doc(teacherDb, 'sessions', sessionId)),
+    get(ref(teacherRealtime, `${roomPath}/responses/${timerRunId}/${studentUser.uid}`)),
   ]);
+  const contractResponseSnapshots = await Promise.all(responseContractRuns.map((contract) => (
+    get(ref(teacherRealtime, `${roomPath}/responses/${contract.runId}/${studentUser.uid}`))
+  )));
 
   assertContract(attendance.val()?.studentNumber === 'E2E0001', 'Instructor could not receive the attendance claim.');
   assertContract(response.val()?.optionIndex === 0, 'Instructor could not receive the student response.');
+  responseContractRuns.forEach((contract, index) => {
+    const stored = contractResponseSnapshots[index].val();
+    if (typeof contract.optionIndex === 'number') {
+      assertContract(stored?.optionIndex === contract.optionIndex, `Instructor could not receive the ${contract.type} selection.`);
+    } else {
+      assertContract(stored?.text === contract.text, `Instructor could not receive the ${contract.type} text response.`);
+    }
+  });
+  assertContract(timerWriteWasRejected && !timerResponse.exists(), 'The clock accepted a student response even though no response should be collected.');
   assertContract(welcomeResponse.val()?.mood === 'steady', 'Instructor could not receive the student pulse.');
+  assertContract(studentQuestion.val()?.question === 'Could you explain this idea with another example?', 'Instructor could not receive the student question.');
+  assertContract(selfQuestionVoteWasRejected, 'A student was able to upvote their own question.');
   assertContract(questionVote.val() === true, 'Instructor could not receive the student question vote.');
   assertContract(sessionDocument.exists(), 'The prepared session did not persist in Firestore.');
 
+  await set(ref(studentRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`), null);
+  await set(ref(teacherRealtime, `${roomPath}/dismissedQuestions/1`), true);
+  const dismissedQuestionVoteWasRejected = await set(
+    ref(studentRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`),
+    true,
+  ).then(() => false).catch(() => true);
+  assertContract(dismissedQuestionVoteWasRejected, 'A student was able to upvote a dismissed question.');
+
+  const resetAt = Date.now();
+  const resetExpiresAt = resetAt + 60 * 60 * 1000;
+  await update(ref(teacherRealtime), {
+    [`${roomPath}/responses`]: null,
+    [`${roomPath}/welcomeResponses`]: null,
+    [`${roomPath}/studentQuestions`]: null,
+    [`${roomPath}/questionVotes`]: null,
+    [`${roomPath}/dismissedQuestions`]: null,
+    [`${roomPath}/publicState`]: {
+      ...publicStateSnapshot.val(),
+      counts: emptyCounts,
+      comparisonCounts: emptyCounts,
+      onboardingStep: 0,
+      onboardingRunId: 0,
+      onboardingMoodCounts: emptyCounts,
+      activeInteraction: null,
+      interactionResults: null,
+      featuredQuestionId: null,
+      questions: [],
+      updatedAt: resetAt,
+    },
+    [`${roomPath}/meta/status`]: 'live',
+    [`${roomPath}/meta/updatedAt`]: resetAt,
+    [`${roomPath}/meta/expiresAt`]: resetExpiresAt,
+    [`liveJoinCodes/${sessionCode}/status`]: 'live',
+    [`liveJoinCodes/${sessionCode}/expiresAt`]: resetExpiresAt,
+  });
+
+  const [resetAttendance, resetPresence, resetResponses, resetWelcome, resetQuestions, resetVotes, resetDismissed, resetState] = await Promise.all([
+    get(ref(teacherRealtime, `${roomPath}/attendanceClaims/${studentUser.uid}`)),
+    get(ref(teacherRealtime, `${roomPath}/presence/${studentUser.uid}/contract-connection`)),
+    get(ref(teacherRealtime, `${roomPath}/responses/${interactionRunId}/${studentUser.uid}`)),
+    get(ref(teacherRealtime, `${roomPath}/welcomeResponses/1/${studentUser.uid}`)),
+    get(ref(teacherRealtime, `${roomPath}/studentQuestions/${studentUser.uid}/${studentQuestionId}`)),
+    get(ref(teacherRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`)),
+    get(ref(teacherRealtime, `${roomPath}/dismissedQuestions/1`)),
+    get(ref(teacherRealtime, `${roomPath}/publicState`)),
+  ]);
+  assertContract(resetAttendance.exists(), 'Reset removed attendance that should have been preserved.');
+  assertContract(resetPresence.exists(), 'Reset disconnected a student who should have stayed connected.');
+  assertContract(!resetResponses.exists(), 'Reset did not clear interaction responses.');
+  assertContract(!resetWelcome.exists(), 'Reset did not clear pulse responses.');
+  assertContract(!resetQuestions.exists(), 'Reset did not clear student questions.');
+  assertContract(!resetVotes.exists(), 'Reset did not clear question votes.');
+  assertContract(!resetDismissed.exists(), 'Reset did not clear dismissed question records.');
+  assertContract(!resetState.child('activeInteraction').exists(), 'Reset did not return the classroom to its starting state.');
+
   console.log('PASS Instructor created a production classroom.');
   console.log('PASS Student resolved the join code and read the live activity.');
-  console.log('PASS Attendance, pulse, poll response, presence, and question vote crossed the production rules.');
+  console.log('PASS Pulse, poll, quiz, peer learning, open response, word cloud, and group work crossed the production rules.');
+  console.log('PASS The shared clock correctly rejected an unexpected student response.');
   console.log('PASS Instructor received the student records.');
+  console.log('PASS Dismissed questions reject new student votes.');
+  console.log('PASS Session reset cleared collected data while preserving attendance and presence.');
 } finally {
   if (teacherUser) {
     await Promise.allSettled([

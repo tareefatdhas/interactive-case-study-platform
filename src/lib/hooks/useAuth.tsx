@@ -1,17 +1,19 @@
 'use client';
 
 import { useState, useEffect, useContext, createContext, ReactNode } from 'react';
-import { onAuthChange } from '@/lib/firebase/auth';
+import { getCurrentTeacherAuthUser, onAuthChange } from '@/lib/firebase/auth';
 import type { AuthUser } from '@/types';
 
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  refreshUser: async () => undefined,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -27,7 +29,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const value = { user, loading };
+  const refreshUser = async () => {
+    setUser(await getCurrentTeacherAuthUser());
+  };
+
+  const value = { user, loading, refreshUser };
 
   return (
     <AuthContext.Provider value={value}>

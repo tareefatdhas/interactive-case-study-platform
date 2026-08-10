@@ -4,6 +4,7 @@ import { useState, useEffect, use, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { auth } from '@/lib/firebase/config';
+import { getUserFacingError } from '@/lib/user-facing-error';
 import { 
   getSession, 
   getCaseStudy, 
@@ -133,9 +134,9 @@ export default function PresentationPage({ params }: PresentationPageProps) {
       setAiSummaries(prev => ({
         ...prev,
         [questionId]: {
-          summary: 'Failed to generate AI summary. Please try again.',
-          keyThemes: ['Error'],
-          insights: [`AI summarization failed: ${error instanceof Error ? error.message : 'Unknown error'}`],
+          summary: 'The response summary is not ready yet. Try again in a moment.',
+          keyThemes: [],
+          insights: [getUserFacingError(error, 'Student responses are safe. Only the summary needs another try.')],
           loading: false
         }
       }));
@@ -191,12 +192,12 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         const sessionData = await getSession(resolvedParams.id);
         
         if (!sessionData) {
-          setError('Session not found');
+          setError('We could not find this class session. Return to your classes and choose another session.');
           return;
         }
 
         if (sessionData.teacherId !== user?.uid) {
-          setError('Access denied');
+          setError('This presentation belongs to another instructor account. Sign in with the account that created it.');
           return;
         }
 
@@ -217,8 +218,8 @@ export default function PresentationPage({ params }: PresentationPageProps) {
         const initialResponses = await getResponsesBySession(sessionData.id);
         setResponses(initialResponses);
 
-      } catch (error: any) {
-        setError(error.message || 'Failed to load session');
+      } catch (error: unknown) {
+        setError(getUserFacingError(error, 'The presentation view could not be opened. Return to the session and try again.'));
       } finally {
         setLoading(false);
       }
@@ -710,14 +711,14 @@ export default function PresentationPage({ params }: PresentationPageProps) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-red-400 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-semibold text-white mb-2">Session Error</h2>
+          <div className="text-[#ffb9a8] text-5xl mb-4" aria-hidden="true">!</div>
+          <h2 className="text-2xl font-semibold text-white mb-2">This session is not on screen yet.</h2>
           <p className="text-gray-300 mb-6">{error}</p>
           <button 
             onClick={() => router.push('/dashboard')}
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
           >
-            Back to Dashboard
+            Back to classes
           </button>
         </div>
       </div>

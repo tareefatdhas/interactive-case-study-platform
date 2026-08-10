@@ -179,6 +179,7 @@ export interface Teacher {
   id: string;
   email: string;
   name: string;
+  photoURL?: string;
   courseIds: string[];
   createdAt: Timestamp;
 }
@@ -277,6 +278,7 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   name?: string;
+  photoURL?: string;
 }
 
 // Achievement system types

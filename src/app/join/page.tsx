@@ -15,6 +15,7 @@ import { STUDENT_PRIVACY_NOTICE_VERSION } from '@/lib/privacy';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ClassfullyBrand from '@/components/marketing/ClassfullyBrand';
+import { getUserFacingError } from '@/lib/user-facing-error';
 import { ArrowRight, CheckCircle2, EyeOff, Smartphone, UserRound, Users } from 'lucide-react';
 
 const REMEMBERED_STUDENT_KEY = 'classfully-remembered-student';
@@ -141,7 +142,7 @@ export default function JoinPage() {
       window.sessionStorage.setItem('classfully-pending-student-display-name', normalizedDisplayName);
       router.push(`/session/${session.sessionCode}`);
     } catch (joinError: unknown) {
-      setError(joinError instanceof Error ? joinError.message : 'We could not join the class. Check the code and try again.');
+      setError(getUserFacingError(joinError, 'We could not join the class. Check the code and try again.'));
     } finally {
       setLoading(false);
     }

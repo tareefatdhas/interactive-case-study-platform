@@ -3,19 +3,27 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { IconContext, Pulse as Activity, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, Fire as Flame, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UsersThree as Users } from '@phosphor-icons/react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UserCircle, UsersThree as Users, X } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
+import ClassroomStateGate from '@/components/live/ClassroomStateGate';
+import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import {
+  claimStudentQuestionPoints,
   getStudentQuestionVotes,
+  getStudentClassroomMeta,
+  getCurrentStudentQuestionIds,
   getCurrentStudentAttendance,
   getStudentResponse,
   getStudentWelcomeResponse,
   joinStudentPresence,
   setStudentQuestionVote,
+  submitStudentQuestion,
   submitStudentInteractionResponse,
   submitStudentWelcomeResponse,
+  subscribeToStudentConnection,
   subscribeToStudentPublicState,
+  subscribeToStudentQuestionPointClaims,
 } from '@/lib/firebase/live-classroom';
 import {
   getAvailableRewardsForStudent,
@@ -24,6 +32,7 @@ import {
 } from '@/lib/firebase/rewards';
 import type { RewardDefinition, RewardRequest, RewardRequestStatus } from '@/types';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
+import { getUserFacingError } from '@/lib/user-facing-error';
 import {
   EMPTY_ONBOARDING_COUNTS,
   DEFAULT_LIVE_QUESTIONS,
@@ -41,20 +50,24 @@ import {
 } from '../live-data';
 import './student.css';
 import {
-  COURSE_REWARDS,
   applyReward,
   createInitialRewardState,
+  getParticipationPoints,
+  getQuestionPointRule,
   loadRewardState,
-  requestCourseReward,
+  POINT_RULES,
   saveRewardState,
   type CourseReward,
   type RewardBalance,
   type RewardLedgerEntry,
   type StudentRewardState,
+  type QuestionPointRuleKey,
 } from './rewards';
 
 const DEFAULT_STATE: LessonDisplayState = {
   session: DEMO_SESSION,
+  lobbyOpen: false,
+  connectedStudents: 0,
   counts: HISTORY[0].counts,
   comparisonCounts: HISTORY[1].counts,
   incomingMood: null,
@@ -72,6 +85,13 @@ const DEFAULT_STATE: LessonDisplayState = {
   updatedAt: Date.now(),
 };
 
+const STUDENT_REWARD_KIND_LABELS = {
+  pass: 'Pass',
+  choice: 'Choice',
+  recognition: 'Recognition',
+  'extra-credit': 'Extra credit',
+} as const;
+
 const ParticipationSignal = dynamic(() => import('@/components/live/ParticipationSignal'), { ssr: false });
 
 const OPTION_COLORS = ['#5146e5', '#2f73df', '#d99f18', '#df664e', '#2f8b63'];
@@ -85,22 +105,84 @@ function StudentTimerBanner({ timer }: { timer: NonNullable<LessonDisplayState['
   }, [timer.id]);
   const remaining = Math.max(0, Math.ceil((timer.endsAt - now) / 1000));
   const time = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
-  return <div className={`student-timer-banner ${remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label={`${timer.label}: ${time} remaining`}><span><Timer size={20} /></span><div><small>{remaining === 0 ? 'Time is up' : timer.label}</small><strong>{time}</strong></div><p>{remaining === 0 ? 'Look up when you are ready.' : 'Visible on the classroom screen.'}</p></div>;
+  return <div className={`student-timer-banner ${remaining === 0 ? 'is-complete' : ''}`} role="timer" aria-label={`${timer.label}: ${time} remaining`}><span><Timer size={20} /></span><div><small>{remaining === 0 ? 'Time is up' : timer.label}</small><strong>{time}</strong></div></div>;
 }
 
 function confirmResponseHaptic() {
   if (typeof navigator === 'undefined' || !navigator.vibrate) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  navigator.vibrate(12);
+  navigator.vibrate([12, 42, 18]);
 }
 
 type TransportSignal = {
   id: number;
   color: string;
+  label: string;
   x: number;
   y: number;
   phase: 'gathering' | 'departing' | 'failed';
 };
+
+type PendingQuestionVote = {
+  baseline: number;
+  delta: number;
+};
+
+type StudentGuidanceId = 'questions' | 'upvotes' | 'auto-update' | 'points';
+
+const STUDENT_GUIDANCE_STORAGE_KEY = 'classfully-student-guidance-v1';
+
+function StudentQuietGuide({ id, onAction, onDismiss }: {
+  id: StudentGuidanceId;
+  onAction?: () => void;
+  onDismiss: () => void;
+}) {
+  const guidance = {
+    questions: {
+      icon: <MessageCircle size={20} />,
+      kicker: 'While you wait',
+      title: 'Ask without interrupting.',
+      body: 'Send a question at any time. Classmates will not see your name, and your instructor can respond when the moment is right.',
+      action: 'Open Questions',
+    },
+    upvotes: {
+      icon: <ArrowUp size={20} />,
+      kicker: 'Good to know',
+      title: 'Help choose what gets discussed.',
+      body: 'Upvote a question you also want answered. Your instructor can see what matters to the room.',
+      action: 'See questions',
+    },
+    'auto-update': {
+      icon: <Activity size={20} />,
+      kicker: 'Stay with the class',
+      title: 'Keep this page open.',
+      body: 'The next activity appears here automatically when your instructor is ready.',
+      action: '',
+    },
+    points: {
+      icon: <Sparkles size={20} />,
+      kicker: 'Your course record',
+      title: 'See how participation adds up.',
+      body: 'Points recognize how you answer, predict, and contribute across the course.',
+      action: 'See my progress',
+    },
+  }[id];
+
+  return (
+    <aside className="student-quiet-guide" aria-labelledby={`student-guide-${id}`}>
+      <span className="student-quiet-guide-icon">{guidance.icon}</span>
+      <div>
+        <small>{guidance.kicker}</small>
+        <strong id={`student-guide-${id}`}>{guidance.title}</strong>
+        <p>{guidance.body}</p>
+        <div className="student-quiet-guide-actions">
+          {guidance.action && onAction && <button type="button" onClick={onAction}>{guidance.action}<ArrowRight size={15} /></button>}
+          <button type="button" className="is-quiet" onClick={onDismiss}>Got it</button>
+        </div>
+      </div>
+    </aside>
+  );
+}
 
 function StudentTransportSignal({ signal }: { signal: TransportSignal }) {
   return (
@@ -116,8 +198,9 @@ function StudentTransportSignal({ signal }: { signal: TransportSignal }) {
     >
       <div className="student-transport-portal"><i /><span>{signal.phase === 'gathering' ? 'Sending to the room' : signal.phase === 'departing' ? 'Added to the room' : 'Could not send'}</span></div>
       <i className="student-transport-thread" />
-      <i className="student-transport-orb" />
+      <div className="student-transport-orb"><span>{signal.label}</span></div>
       <i className="student-transport-origin" />
+      <div className="student-transport-ripple" aria-hidden="true"><i /><i /><i /></div>
     </div>
   );
 }
@@ -156,6 +239,9 @@ function StudentPostSubmit({
   answer,
   questions,
   selectedQuestionVotes,
+  ownQuestionIds,
+  pendingQuestionVotes,
+  questionVoteErrors,
   onToggleQuestion,
   confidence,
   onConfidence,
@@ -169,11 +255,15 @@ function StudentPostSubmit({
   rewardState,
   latestReward,
   phase,
+  guidance,
 }: {
   interaction: LiveInteraction;
   answer: string;
   questions: LiveQuestion[];
   selectedQuestionVotes: number[];
+  ownQuestionIds: number[];
+  pendingQuestionVotes: Record<number, PendingQuestionVote>;
+  questionVoteErrors: Record<number, string>;
   onToggleQuestion: (questionId: number) => void;
   confidence: string | null;
   onConfidence: (confidence: string) => void;
@@ -187,13 +277,16 @@ function StudentPostSubmit({
   rewardState: StudentRewardState;
   latestReward: RewardLedgerEntry | null;
   phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
+  guidance?: ReactNode;
 }) {
   const showQuestionCommons = questions.length > 0
     && (interaction.type === 'quiz' || interaction.type === 'open-response');
-  const roomChoice = optionCounts.length
+  const roomChoice = responseCount > 0 && optionCounts.length
     ? optionCounts.reduce((bestIndex, value, index) => value > (optionCounts[bestIndex] ?? -1) ? index : bestIndex, 0)
     : null;
-  const wordCloudItems = buildWordCloudItems(writtenResponses, 12);
+  const wordCloudItems = buildWordCloudItems(writtenResponses, 3);
+  const normalizedAnswer = answer.normalize('NFKC').replace(/\s+/g, ' ').replace(/^[\s.,!?;:'\"“”‘’()[\]{}]+|[\s.,!?;:'\"“”‘’()[\]{}]+$/g, '').trim().toLocaleLowerCase();
+  const studentWordCloudDensity = wordCloudItems.length <= 1 ? 'is-solo' : wordCloudItems.length <= 4 ? 'is-sparse' : 'is-growing';
 
   return (
     <div className="student-after-response">
@@ -230,8 +323,16 @@ function StudentPostSubmit({
           <div className="student-kicker">Class word cloud</div>
           <h2 id="student-word-cloud-title">Your word is joining the room.</h2>
           <p>Repeated ideas grow as more responses arrive. Look up to see the full cloud.</p>
-          <div className="student-mini-word-cloud" aria-label={`${wordCloudItems.length} ideas in the class word cloud`}>
-            {wordCloudItems.map((item) => <span key={`${item.key}-${item.count}`} style={{ '--word-size': `${12 + item.strength * 9}px` } as CSSProperties}>{item.label}{item.count > 1 && <small>{item.count}</small>}</span>)}
+          <div className={`student-mini-word-cloud ${studentWordCloudDensity}`} aria-label={`${wordCloudItems.length} ideas in the class word cloud`}>
+            {responseCount > 0 && <i className="student-mini-cloud-ripple" key={`student-cloud-ripple-${responseCount}`} aria-hidden="true" />}
+            {wordCloudItems.map((item, index) => <span
+              className={`${item.key === normalizedAnswer ? 'is-own' : ''} ${item.count > 1 ? 'is-repeated' : ''}`.trim()}
+              key={`${item.key}-${item.count}`}
+              style={{
+                '--word-size': `${wordCloudItems.length <= 1 ? 34 : wordCloudItems.length <= 4 ? 19 + item.strength * 14 : 14 + item.strength * 12}px`,
+                '--word-delay': `${Math.min(index * 35, 160)}ms`,
+              } as CSSProperties}
+            >{item.label}{item.count > 1 && index < 3 && <small aria-label={`${item.count} responses`}>×{item.count}</small>}</span>)}
           </div>
         </section>
       ) : showQuestionCommons ? (
@@ -243,24 +344,37 @@ function StudentPostSubmit({
           <div className="student-question-commons">
             {questions.slice(0, 2).map((question) => {
               const selected = selectedQuestionVotes.includes(question.id);
+              const isOwnQuestion = ownQuestionIds.includes(question.id);
+              const pendingVote = pendingQuestionVotes[question.id];
+              const displayedVotes = Math.max(0, question.votes + (pendingVote?.delta || 0));
               return (
                 <article key={question.id}>
-                  <HapticButton
-                    type="button"
-                    depth="compact"
-                    className={selected ? 'is-voted' : ''}
-                    aria-pressed={selected}
-                    aria-label={`${selected ? 'Remove upvote from' : 'Upvote'} question. ${question.votes} votes.`}
-                    onClick={() => onToggleQuestion(question.id)}
-                  >
-                    <ArrowUp size={21} />
-                    <strong>{question.votes}</strong>
-                  </HapticButton>
+                  {isOwnQuestion ? <span className="student-own-question"><Check size={16} /> Yours</span> : (
+                    <HapticButton
+                      type="button"
+                      depth="compact"
+                      className={selected ? 'is-voted' : ''}
+                      aria-pressed={selected}
+                      aria-label={`${selected ? 'Remove upvote from' : 'Upvote'} question. ${displayedVotes} ${displayedVotes === 1 ? 'vote' : 'votes'}.`}
+                      disabled={Boolean(pendingVote)}
+                      onClick={() => onToggleQuestion(question.id)}
+                    >
+                      <ArrowUp size={21} />
+                      <strong>{displayedVotes}</strong>
+                    </HapticButton>
+                  )}
                   <div><p>{question.question}</p><small>Anonymous to classmates</small></div>
+                  {questionVoteErrors[question.id] && <small className="student-question-vote-error" role="alert">{questionVoteErrors[question.id]}</small>}
                 </article>
               );
             })}
           </div>
+        </section>
+      ) : interaction.type === 'poll' && revealed && prediction === null ? (
+        <section className="student-waiting-activity student-calm-wait" aria-labelledby="poll-result-ready-title">
+          <div className="student-kicker">Class result</div>
+          <h2 id="poll-result-ready-title">The room’s answer is ready.</h2>
+          <p>Look up to see how the class answered.</p>
         </section>
       ) : interaction.type === 'poll' ? (
         <section className="student-waiting-activity student-private-prompt" aria-labelledby="prediction-title">
@@ -290,11 +404,11 @@ function StudentPostSubmit({
               <Lock size={15} />
             </div>
           )}
-          {revealed && roomChoice !== null && (
+          {prediction !== null && revealed && roomChoice !== null && (
             <div className={`student-prediction-result ${prediction === roomChoice ? 'is-match' : ''}`}>
               <div className="student-prediction-comparison">
-                <span style={{ '--prediction-color': prediction === null ? '#9298a5' : OPTION_COLORS[prediction % OPTION_COLORS.length] } as CSSProperties}>
-                  <i>{prediction === null ? '–' : String.fromCharCode(65 + prediction)}</i><small>You predicted</small>
+                <span style={{ '--prediction-color': OPTION_COLORS[prediction % OPTION_COLORS.length] } as CSSProperties}>
+                  <i>{String.fromCharCode(65 + prediction)}</i><small>You predicted</small>
                 </span>
                 <div><i /><i /><i /></div>
                 <span style={{ '--prediction-color': OPTION_COLORS[roomChoice % OPTION_COLORS.length] } as CSSProperties}>
@@ -328,6 +442,8 @@ function StudentPostSubmit({
         </section>
       )}
 
+      {guidance}
+
       <StudentRoomCurrent responseCount={responseCount} runId={runId} />
       <div className="student-room-status" aria-live="polite">
         <div className="student-live-signal" aria-hidden="true">
@@ -335,9 +451,83 @@ function StudentPostSubmit({
             <i className={index < Math.min(7, responseCount) ? 'is-filled' : ''} key={`${responseCount}-${index}`} style={{ '--signal-delay': `${index * 32}ms` } as CSSProperties} />
           ))}
         </div>
-        <strong key={responseCount}>{responseCount === 1 ? 'Your response is in' : `${responseCount} responses are in`}</strong>
-        <span>Look up when your instructor is ready.</span>
+        <strong key={responseCount}>The room is responding</strong>
+        <span>{responseCount === 1 ? 'You’re the first response.' : `${responseCount} responses are in.`} Stay here for what comes next.</span>
       </div>
+    </div>
+  );
+}
+
+function StudentQuestionSheet({
+  questions,
+  selectedVotes,
+  ownQuestionIds,
+  pendingVotes,
+  voteErrors,
+  draft,
+  submitting,
+  notice,
+  error,
+  onDraftChange,
+  onSubmit,
+  onToggleVote,
+  onClose,
+}: {
+  questions: LiveQuestion[];
+  selectedVotes: number[];
+  ownQuestionIds: number[];
+  pendingVotes: Record<number, PendingQuestionVote>;
+  voteErrors: Record<number, string>;
+  draft: string;
+  submitting: boolean;
+  notice: string;
+  error: string;
+  onDraftChange: (value: string) => void;
+  onSubmit: () => void;
+  onToggleVote: (questionId: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="student-question-layer">
+      <button type="button" className="student-question-backdrop" aria-label="Close questions" onClick={onClose} />
+      <section className="student-question-sheet" role="dialog" aria-modal="true" aria-labelledby="student-question-title">
+        <div className="student-question-sheet-handle" aria-hidden="true" />
+        <header>
+          <div><span>Questions</span><h2 id="student-question-title">Ask without interrupting.</h2></div>
+          <button type="button" aria-label="Close questions" onClick={onClose}><X size={19} weight="bold" aria-hidden="true" /></button>
+        </header>
+        <p className="student-question-privacy"><Lock size={15} /> Anonymous to classmates. Visible to your instructor.</p>
+        <label className="student-question-composer">
+          <span>Your question</span>
+          <textarea autoFocus value={draft} onChange={(event) => onDraftChange(event.target.value.slice(0, 180))} maxLength={180} rows={3} placeholder="What would you like the instructor to explain?" />
+          <small>{draft.length}/180</small>
+        </label>
+        <HapticButton type="button" className="student-question-send" hapticTone="action" disabled={submitting || !draft.trim()} onClick={onSubmit}>
+          <span>{submitting ? 'Sending question' : 'Post question'}</span><Send size={17} />
+        </HapticButton>
+        {notice && <div className="student-question-notice" role="status"><Check size={16} /> {notice}</div>}
+        {error && <div className="student-response-error" role="alert">{error}</div>}
+        <div className="student-question-feed-heading"><strong>Questions from the room</strong><span>{questions.length}</span></div>
+        <div className="student-question-feed">
+          {questions.length ? questions.map((question) => {
+            const selected = selectedVotes.includes(question.id);
+            const isOwnQuestion = ownQuestionIds.includes(question.id);
+            const pendingVote = pendingVotes[question.id];
+            const displayedVotes = Math.max(0, question.votes + (pendingVote?.delta || 0));
+            return (
+              <article key={question.id}>
+                {isOwnQuestion ? <span className="student-own-question"><Check size={16} /> Your question</span> : (
+                  <HapticButton type="button" depth="compact" className={selected ? 'is-voted' : ''} aria-pressed={selected} aria-label={`${selected ? 'Remove upvote from' : 'Upvote'} question. ${displayedVotes} ${displayedVotes === 1 ? 'vote' : 'votes'}.`} disabled={Boolean(pendingVote)} onClick={() => onToggleVote(question.id)}>
+                    <ArrowUp size={18} /><strong>{displayedVotes}</strong>
+                  </HapticButton>
+                )}
+                <p>{question.question}</p>
+                {voteErrors[question.id] && <small className="student-question-vote-error" role="alert">{voteErrors[question.id]}</small>}
+              </article>
+            );
+          }) : <div className="student-question-empty"><MessageCircle size={21} /><span><strong>No questions yet.</strong> Start the conversation when something is unclear.</span></div>}
+        </div>
+      </section>
     </div>
   );
 }
@@ -349,6 +539,11 @@ function StudentCourseHome({
   requestStatuses,
   onRequestReward,
   enableSocialRewards,
+  rewardsLoading,
+  view,
+  onViewChange,
+  classEnded = false,
+  embedded = false,
 }: {
   lessonState: LessonDisplayState;
   rewards: StudentRewardState;
@@ -356,96 +551,111 @@ function StudentCourseHome({
   requestStatuses: Record<string, RewardRequestStatus>;
   onRequestReward: (reward: CourseReward) => void;
   enableSocialRewards: boolean;
+  rewardsLoading: boolean;
+  view: 'home' | 'standing' | 'rewards';
+  onViewChange: (view: 'home' | 'standing' | 'rewards') => void;
+  classEnded?: boolean;
+  embedded?: boolean;
 }) {
-  const [view, setView] = useState<'home' | 'standing' | 'rewards'>('home');
-
   useEffect(() => {
-    if (!enableSocialRewards) setView('home');
-  }, [enableSocialRewards]);
-  const leaderboard = [
-    { alias: 'North Star', points: 124 },
-    { alias: 'Blue Margin', points: 112 },
-    { alias: 'Cedar Note', points: 97 },
-    { alias: rewards.alias, points: rewards.seminarPoints, current: true },
-    { alias: 'Open Atlas', points: 82 },
-  ].sort((a, b) => b.points - a.points);
-  const nextReward = courseRewards.find((reward) => reward.pointsRequired > rewards.seminarPoints) || courseRewards[courseRewards.length - 1];
+    if (!enableSocialRewards) onViewChange('home');
+  }, [enableSocialRewards, onViewChange]);
+  const learningMomentCount = new Set(rewards.ledger.map((entry) => (
+    entry.eventKey.replace(/:(response|prediction|correct|room-read)$/, '')
+  ))).size;
+  const availableRewardCount = courseRewards.filter((reward) => reward.pointsRequired <= rewards.seminarPoints).length;
+  const nextReward = courseRewards.find((reward) => reward.pointsRequired > rewards.seminarPoints);
+  const allRewardsUnlocked = courseRewards.length > 0 && !nextReward;
   const progress = nextReward ? Math.min(100, Math.round((rewards.seminarPoints / nextReward.pointsRequired) * 100)) : 0;
+  const hasProgress = rewards.ledger.length > 0;
 
   return (
-    <div className="student-course-home">
-      <div className="student-live-ready"><i /><span><strong>You’re in the room.</strong> The next activity will appear here.</span></div>
+    <div className={`student-course-home ${embedded ? 'is-embedded' : ''}`}>
+      {!embedded && <div className={`student-live-ready ${classEnded ? 'is-complete' : ''}`}><i />{classEnded ? <span><strong>Class complete.</strong> Your course record is still here.</span> : <span><strong>You’re in the room.</strong> The next activity will appear here.</span>}</div>}
       <div className="student-kicker">{lessonState.session.courseCode} · Course home</div>
       {enableSocialRewards && <nav className="student-home-tabs" aria-label="Course home sections">
-        <button type="button" className={view === 'home' ? 'is-active' : ''} onClick={() => setView('home')}>Home</button>
-        <button type="button" className={view === 'standing' ? 'is-active' : ''} onClick={() => setView('standing')}>Standing</button>
-        <button type="button" className={view === 'rewards' ? 'is-active' : ''} onClick={() => setView('rewards')}>Rewards</button>
+        <button type="button" className={view === 'home' ? 'is-active' : ''} onClick={() => onViewChange('home')}>Home</button>
+        <button type="button" className={view === 'standing' ? 'is-active' : ''} onClick={() => onViewChange('standing')}>Standing</button>
+        <button type="button" className={view === 'rewards' ? 'is-active' : ''} onClick={() => onViewChange('rewards')}>Rewards</button>
       </nav>}
 
       {view === 'home' && (
         <>
-          <h1>Your semester is taking shape.</h1>
-          <p className="student-home-intro">A private record of how you show up, answer, predict, and contribute.</p>
+          <h1>{hasProgress ? 'Your semester is taking shape.' : 'Your course record starts here.'}</h1>
+          <p className="student-home-intro">Your points and learning activity appear here as you participate.</p>
           <section className="student-constellation-card" aria-labelledby="student-progress-title">
             <div className="student-constellation-heading">
               <div><small>Your points</small><strong id="student-progress-title">{rewards.seminarPoints}</strong></div>
-              <span><Flame size={16} /><strong>{rewards.classRun}</strong><small>class run</small></span>
+              <span><Sparkles size={16} /><strong>{learningMomentCount}</strong><small>{learningMomentCount === 1 ? 'learning moment' : 'learning moments'}</small></span>
             </div>
             <div className="student-constellation-visual">
               <Image src="/assets/living-seminar/room-forming.png" alt="A soft constellation formed by your classroom participation" width={2079} height={756} priority />
-              <div className="student-constellation-copy"><Sparkles size={16} /><span><strong>6 learning moments</strong><small>across this course</small></span></div>
+              <div className="student-constellation-copy"><Sparkles size={16} /><span><strong>{learningMomentCount ? `${learningMomentCount} ${learningMomentCount === 1 ? 'learning moment' : 'learning moments'}` : 'No activity recorded yet'}</strong><small>{learningMomentCount ? 'from your participation' : 'Your first response will begin this record'}</small></span></div>
             </div>
-            {enableSocialRewards && nextReward ? <div className="student-reward-progress">
+            {enableSocialRewards && rewardsLoading ? <div className="student-pilot-points"><Gift size={14} /><span><strong>Loading course rewards…</strong></span></div> : enableSocialRewards && nextReward ? <div className="student-reward-progress">
               <div><span>Next reward</span><strong>{nextReward.name}</strong></div>
               <small>{Math.max(0, nextReward.pointsRequired - rewards.seminarPoints)} points to go</small>
               <i><b style={{ width: `${progress}%` }} /></i>
-            </div> : enableSocialRewards ? <div className="student-pilot-points"><Gift size={14} /><span><strong>No rewards have been added yet.</strong> Your points will keep accumulating.</span></div> : <div className="student-pilot-points"><Lock size={14} /><span><strong>Pilot points stay on this device.</strong> They are feedback, not grades or extra credit.</span></div>}
+            </div> : enableSocialRewards && allRewardsUnlocked ? <div className="student-pilot-points"><Gift size={14} /><span><strong>Every course reward is unlocked.</strong> Open Rewards to review your options.</span></div> : enableSocialRewards ? <div className="student-pilot-points"><Gift size={14} /><span><strong>No course rewards yet.</strong> Rewards will appear when they are added to this course.</span></div> : <div className="student-pilot-points"><Lock size={14} /><span><strong>Points stay private.</strong> Join with your student number to connect them to this class.</span></div>}
           </section>
+          {rewards.ledger.length > 0 && <section className="student-earned-activity" aria-labelledby="student-earned-title">
+            <div className="student-section-title"><div><span>Recorded activity</span><h2 id="student-earned-title">Recent points</h2></div><Sparkles size={19} /></div>
+            <div>{rewards.ledger.slice(0, 4).map((entry) => <article key={entry.id}><span>{entry.label}</span><strong>+{entry.amount} {entry.balance === 'score' ? 'class score' : 'points'}</strong></article>)}</div>
+          </section>}
           {enableSocialRewards && <div className="student-home-shortcuts">
-            <HapticButton type="button" depth="compact" onClick={() => setView('standing')}><Trophy size={17} /><span><small>Weekly standing</small><strong>Position {leaderboard.findIndex((entry) => entry.current) + 1}</strong></span><ArrowRight size={15} /></HapticButton>
-            <HapticButton type="button" depth="compact" onClick={() => setView('rewards')}><Gift size={17} /><span><small>My Rewards</small><strong>{courseRewards.filter((reward) => reward.pointsRequired <= rewards.seminarPoints).length} available now</strong></span><ArrowRight size={15} /></HapticButton>
+            <HapticButton type="button" depth="compact" onClick={() => onViewChange('standing')}><Trophy size={17} /><span><small>Class standing</small><strong>No board published</strong></span><ArrowRight size={15} /></HapticButton>
+            <HapticButton type="button" depth="compact" onClick={() => onViewChange('rewards')}><Gift size={17} /><span><small>My Rewards</small><strong>{rewardsLoading ? 'Loading…' : `${availableRewardCount} available now`}</strong></span><ArrowRight size={15} /></HapticButton>
           </div>}
         </>
       )}
 
       {view === 'standing' && (
         <section className="student-home-section is-panel" aria-labelledby="student-standing-title">
-          <div className="student-section-title"><div><span>Weekly standing</span><h2 id="student-standing-title">Around your position</h2></div><Trophy size={19} /></div>
-          <p className="student-section-note">Aliases keep the board social without exposing anyone’s grade.</p>
-          <div className="student-mini-leaderboard">
-            {leaderboard.map((entry, index) => (
-              <div className={entry.current ? 'is-current' : ''} key={entry.alias}>
-                <span>{index + 1}</span><strong>{entry.current ? `${entry.alias} · You` : entry.alias}</strong><b>{entry.points}</b>
-              </div>
-            ))}
-          </div>
-          <div className="student-board-note"><Lock size={14} /> Class scores never appear here.</div>
+          <div className="student-section-title"><div><span>Class standing</span><h2 id="student-standing-title">No board published</h2></div><Trophy size={19} /></div>
+          <div className="student-tab-empty"><Trophy size={24} /><strong>There is no class standing to show.</strong><p>Your {rewards.seminarPoints} points remain private. If a verified leaderboard is published for this course, it will appear here.</p></div>
         </section>
       )}
 
       {view === 'rewards' && (
         <section className="student-home-section is-panel" aria-labelledby="student-rewards-title">
           <div className="student-section-title"><div><span>My Rewards</span><h2 id="student-rewards-title">What you’ve unlocked</h2></div><Gift size={19} /></div>
-          <p className="student-section-note">Your points are permanent. Reaching a milestone unlocks the option to request its reward.</p>
+          <p className="student-section-note">Rewards added by your instructor appear here. Your instructor approves each request.</p>
+          <section className="student-point-guide" aria-labelledby="student-point-guide-title">
+            <div><Sparkles size={17} /><strong id="student-point-guide-title">How points work</strong></div>
+            <ul>
+              <li><span>Take part</span><strong>1–5 points</strong><small>Respond, reflect, or contribute to group work.</small></li>
+              <li><span>Read the room</span><strong>1–3 points</strong><small>Make a prediction and compare it with the class.</small></li>
+              <li><span>Help the room</span><strong>Up to 9</strong><small>Ask one useful question, earn class support, and have it discussed.</small></li>
+            </ul>
+            <p>Correct answers build your class score. They do not replace participation points.</p>
+          </section>
           <div className="student-reward-shelf">
-            {courseRewards.map((reward) => {
+            {!rewardsLoading && courseRewards.map((reward) => {
               const localStatus = rewards.redemptions.find((redemption) => redemption.rewardId === reward.id)?.status;
               const status = requestStatuses[reward.id] || localStatus;
               const pending = status === 'pending';
               const approved = status === 'approved';
               const used = status === 'used';
+              const declined = status === 'declined';
               const available = rewards.seminarPoints >= reward.pointsRequired;
+              const pointsToGo = Math.max(0, reward.pointsRequired - rewards.seminarPoints);
               return (
                 <article key={reward.id}>
                   <span><Award size={18} /></span>
-                  <div><strong>{reward.name}</strong><small>{reward.description}</small></div>
+                  <div className="student-reward-copy">
+                    <div className="student-reward-meta"><b>{reward.pointsRequired} points</b>{reward.kind && <small>{STUDENT_REWARD_KIND_LABELS[reward.kind]}</small>}</div>
+                    <strong>{reward.name}</strong>
+                    <p>{reward.description}</p>
+                    <small className="student-reward-limit">Up to {reward.limitPerStudent || 1} per student</small>
+                  </div>
                   <HapticButton type="button" depth="compact" hapticTone="action" disabled={!available || pending || approved || used} onClick={() => onRequestReward(reward)}>
-                    {pending ? 'Pending' : approved ? 'Approved' : used ? 'Used' : available ? 'Request' : `${reward.pointsRequired} pts`} {!status && available && <ArrowRight size={13} />}
+                    {pending ? 'Request pending' : approved ? 'Ready to use' : used ? 'Used' : declined && available ? 'Request again' : available ? 'Request reward' : `${pointsToGo} points to go`} {!pending && !approved && !used && available && <ArrowRight size={13} />}
                   </HapticButton>
                 </article>
               );
             })}
-            {courseRewards.length === 0 && <div className="student-pilot-points"><Gift size={14} /><span><strong>No rewards available yet.</strong> Your instructor can add rewards for this class.</span></div>}
+            {rewardsLoading && <div className="student-tab-empty"><Gift size={24} /><strong>Loading course rewards…</strong></div>}
+            {!rewardsLoading && courseRewards.length === 0 && <div className="student-tab-empty"><Gift size={24} /><strong>No course rewards yet.</strong><p>When rewards are added to this course, you will see their point requirements and request status here.</p></div>}
           </div>
         </section>
       )}
@@ -455,9 +665,82 @@ function StudentCourseHome({
   );
 }
 
+function StudentCourseSheet({
+  children,
+  points,
+  studentName,
+  onClose,
+}: {
+  children: ReactNode;
+  points: number;
+  studentName: string;
+  onClose: () => void;
+}) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const touchStartY = useRef<number | null>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
+  return (
+    <div className="student-course-layer">
+      <button type="button" className="student-course-backdrop" aria-label="Back to class" onClick={onClose} />
+      <section
+        className="student-course-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="student-course-sheet-title"
+        onKeyDown={(event) => {
+          if (event.key !== 'Tab') return;
+          const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+          if (!focusable.length) return;
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+      >
+        <div
+          className="student-course-sheet-handle"
+          aria-hidden="true"
+          onTouchStart={(event) => { touchStartY.current = event.touches[0]?.clientY ?? null; }}
+          onTouchEnd={(event) => {
+            const endY = event.changedTouches[0]?.clientY;
+            if (touchStartY.current !== null && endY !== undefined && endY - touchStartY.current > 72) onClose();
+            touchStartY.current = null;
+          }}
+        />
+        <header>
+          <div className="student-course-sheet-person"><span><UserCircle size={25} /></span><div><small id="student-course-sheet-title">My course</small><strong>{studentName}</strong></div></div>
+          <div className="student-course-sheet-points"><Sparkles size={14} /><strong>{points}</strong><small>points</small></div>
+          <button ref={closeButtonRef} type="button" aria-label="Close my course" onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
+        </header>
+        <div className="student-course-sheet-content">{children}</div>
+        <div className="student-course-sheet-return"><HapticButton type="button" hapticTone="action" onClick={onClose}>Back to class <ArrowRight size={16} /></HapticButton></div>
+      </section>
+    </div>
+  );
+}
+
 export default function StudentWelcomePage() {
   const [lessonState, setLessonState] = useState<LessonDisplayState>(DEFAULT_STATE);
+  const [classroomStateReady, setClassroomStateReady] = useState(false);
+  const [rewardStateReady, setRewardStateReady] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [connectionRecovery, setConnectionRecovery] = useState<'idle' | 'recovering' | 'failed'>('idle');
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [classroomMoveNotice, setClassroomMoveNotice] = useState('');
   const [selectedMood, setSelectedMood] = useState<MoodKey | null>(null);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [writtenResponse, setWrittenResponse] = useState('');
@@ -469,24 +752,84 @@ export default function StudentWelcomePage() {
   const [submissionError, setSubmissionError] = useState('');
   const [remoteSession, setRemoteSession] = useState<{ sessionId: string; ownerUid: string } | null>(null);
   const [remoteUnavailable, setRemoteUnavailable] = useState(false);
-  const [rewardScope, setRewardScope] = useState('demo:ECON302');
-  const [rewardState, setRewardState] = useState<StudentRewardState>(() => createInitialRewardState(true));
+  const [rewardScope, setRewardScope] = useState('');
+  const [rewardState, setRewardState] = useState<StudentRewardState>(() => createInitialRewardState());
   const [studentNumber, setStudentNumber] = useState('');
   const [studentDisplayName, setStudentDisplayName] = useState('');
   const [managedRewards, setManagedRewards] = useState<RewardDefinition[]>([]);
+  const [managedRewardsLoading, setManagedRewardsLoading] = useState(false);
   const [managedRequests, setManagedRequests] = useState<RewardRequest[]>([]);
   const [rewardRequestError, setRewardRequestError] = useState('');
   const [latestReward, setLatestReward] = useState<RewardLedgerEntry | null>(null);
   const [transportSignal, setTransportSignal] = useState<TransportSignal | null>(null);
+  const [questionSheetOpen, setQuestionSheetOpen] = useState(false);
+  const [courseSpaceOpen, setCourseSpaceOpen] = useState(false);
+  const [courseView, setCourseView] = useState<'home' | 'standing' | 'rewards'>('home');
+  const [remoteEnded, setRemoteEnded] = useState(false);
+  const [questionDraft, setQuestionDraft] = useState('');
+  const [questionSubmitting, setQuestionSubmitting] = useState(false);
+  const [questionNotice, setQuestionNotice] = useState('');
+  const [questionError, setQuestionError] = useState('');
+  const [ownQuestionIds, setOwnQuestionIds] = useState<number[]>([]);
+  const [pendingQuestionVotes, setPendingQuestionVotes] = useState<Record<number, PendingQuestionVote>>({});
+  const [questionVoteErrors, setQuestionVoteErrors] = useState<Record<number, string>>({});
+  const [questionRewardNotice, setQuestionRewardNotice] = useState<{ amount: number; label: string } | null>(null);
+  const [learnedGuidance, setLearnedGuidance] = useState<StudentGuidanceId[]>([]);
+  const [guidanceReady, setGuidanceReady] = useState(false);
+  const [guidanceHiddenForMoment, setGuidanceHiddenForMoment] = useState(false);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const demoVoterIdRef = useRef('');
   const contentRef = useRef<HTMLElement | null>(null);
+  const courseTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const pendingQuestionClaimsRef = useRef(new Set<string>());
+  const demoQuestionClaimsRef = useRef(new Set<string>());
+  const hasReceivedRemoteStateRef = useRef(false);
+  const lastRemoteStateAtRef = useRef(0);
+  const lastRunIdRef = useRef<string | null>(null);
+  const automaticRetryCountRef = useRef(0);
+  const classroomMoveNoticeTimerRef = useRef<number | null>(null);
 
-  const beginTransport = (color: string, origin?: HTMLElement) => {
+  const reconnectToClassroom = useCallback(() => {
+    automaticRetryCountRef.current = 0;
+    setConnected(false);
+    setConnectionRecovery('recovering');
+    setConnectionAttempt((current) => current + 1);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved: unknown = JSON.parse(window.localStorage.getItem(STUDENT_GUIDANCE_STORAGE_KEY) || '[]');
+      if (Array.isArray(saved)) {
+        setLearnedGuidance(saved.filter((id): id is StudentGuidanceId => (
+          typeof id === 'string' && ['questions', 'upvotes', 'auto-update', 'points'].includes(id)
+        )));
+      }
+    } catch {
+      // A damaged preference should never keep a student out of class.
+    }
+    setGuidanceReady(true);
+  }, []);
+
+  const markGuidanceLearned = useCallback((id: StudentGuidanceId) => {
+    setLearnedGuidance((current) => {
+      if (current.includes(id)) return current;
+      const next = [...current, id];
+      window.localStorage.setItem(STUDENT_GUIDANCE_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    setGuidanceHiddenForMoment(true);
+  }, []);
+
+  useEffect(() => {
+    setGuidanceHiddenForMoment(false);
+  }, [lessonState.interactionResults?.runId, lessonState.lobbyOpen]);
+
+  const beginTransport = (color: string, label: string, origin?: HTMLElement) => {
     const bounds = origin?.getBoundingClientRect();
     const signal: TransportSignal = {
       id: Date.now(),
       color,
+      label: label.trim().slice(0, 32) || 'Your response',
       x: bounds ? bounds.left + bounds.width / 2 : window.innerWidth / 2,
       y: bounds ? bounds.top + bounds.height / 2 : window.innerHeight * 0.72,
       phase: 'gathering',
@@ -498,7 +841,7 @@ export default function StudentWelcomePage() {
   const completeTransport = (id: number) => {
     setTransportSignal((current) => current?.id === id ? { ...current, phase: 'departing' } : current);
     confirmResponseHaptic();
-    window.setTimeout(() => setTransportSignal((current) => current?.id === id ? null : current), 980);
+    window.setTimeout(() => setTransportSignal((current) => current?.id === id ? null : current), 1380);
   };
 
   const failTransport = (id: number) => {
@@ -507,10 +850,77 @@ export default function StudentWelcomePage() {
   };
 
   useEffect(() => {
-    const handleOffline = () => setConnected(false);
+    const handleOffline = () => {
+      setConnected(false);
+      setConnectionRecovery('recovering');
+    };
+    const handleOnline = () => reconnectToClassroom();
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) reconnectToClassroom();
+    };
+    const handleVisibility = () => {
+      if (
+        document.visibilityState === 'visible'
+        && lastRemoteStateAtRef.current
+        && Date.now() - lastRemoteStateAtRef.current > 15_000
+      ) reconnectToClassroom();
+    };
     window.addEventListener('offline', handleOffline);
-    return () => window.removeEventListener('offline', handleOffline);
-  }, []);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('pageshow', handlePageShow);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('pageshow', handlePageShow);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [reconnectToClassroom]);
+
+  useEffect(() => {
+    if (!questionSheetOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setQuestionSheetOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [questionSheetOpen]);
+
+  useEffect(() => {
+    if (!remoteSession) return;
+    let cancelled = false;
+    getCurrentStudentQuestionIds(remoteSession.ownerUid, remoteSession.sessionId)
+      .then((questionIds) => {
+        if (!cancelled) setOwnQuestionIds(questionIds);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [remoteSession]);
+
+  useEffect(() => {
+    if (!remoteSession || !ownQuestionIds.length || !selectedQuestionVotes.length) return;
+    const ownVotes = selectedQuestionVotes.filter((questionId) => ownQuestionIds.includes(questionId));
+    if (!ownVotes.length) return;
+    setSelectedQuestionVotes((current) => current.filter((questionId) => !ownVotes.includes(questionId)));
+    ownVotes.forEach((questionId) => {
+      setStudentQuestionVote(remoteSession.ownerUid, remoteSession.sessionId, questionId, false).catch(() => undefined);
+    });
+  }, [ownQuestionIds, remoteSession, selectedQuestionVotes]);
+
+  useEffect(() => {
+    setPendingQuestionVotes((current) => {
+      let changed = false;
+      const next = { ...current };
+      Object.entries(current).forEach(([questionId, pendingVote]) => {
+        const question = lessonState.questions.find((item) => item.id === Number(questionId));
+        if (!question || question.votes !== pendingVote.baseline) {
+          delete next[Number(questionId)];
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [lessonState.questions]);
 
   useEffect(() => {
     const sessionId = new URLSearchParams(window.location.search).get('sessionId');
@@ -519,21 +929,95 @@ export default function StudentWelcomePage() {
       let cancelled = false;
       let stopState: (() => void) | undefined;
       let stopPresence: (() => void) | undefined;
+      let stopConnection: (() => void) | undefined;
+      let retryTimer: number | undefined;
+
+      const scheduleAutomaticRetry = () => {
+        if (cancelled) return;
+        if (!navigator.onLine) {
+          setConnectionRecovery('recovering');
+          return;
+        }
+        if (automaticRetryCountRef.current >= 3) {
+          setConnectionRecovery('failed');
+          return;
+        }
+        const delay = [900, 1800, 3600][automaticRetryCountRef.current] || 3600;
+        automaticRetryCountRef.current += 1;
+        retryTimer = window.setTimeout(() => {
+          if (!cancelled) setConnectionAttempt((current) => current + 1);
+        }, delay);
+      };
 
       const connectRemoteClassroom = async () => {
         if (!ownerUid) throw new Error('Classroom link is incomplete.');
         await ensureStudentAnonymousAuth();
         if (cancelled) return;
         setRemoteSession({ sessionId, ownerUid });
-        setRewardScope(`${ownerUid}:${sessionId}`);
+        stopConnection = await subscribeToStudentConnection((firebaseConnected) => {
+          if (cancelled) return;
+          if (firebaseConnected) {
+            if (hasReceivedRemoteStateRef.current) {
+              lastRemoteStateAtRef.current = Date.now();
+              setConnected(true);
+              setConnectionRecovery('idle');
+            }
+            return;
+          }
+          setConnected(false);
+          setConnectionRecovery('recovering');
+        });
         stopState = await subscribeToStudentPublicState(ownerUid, sessionId, (state) => {
           if (cancelled) return;
           if (!state) {
-            setConnected(false);
-            setRemoteUnavailable(true);
+            void getStudentClassroomMeta(ownerUid, sessionId).then((meta) => {
+              if (cancelled) return;
+              const ended = meta?.status === 'ended' || Boolean(meta?.expiresAt && meta.expiresAt < Date.now());
+              setRemoteEnded(ended);
+              if (meta) {
+                setRewardScope(`${ownerUid}:${meta.courseCode || sessionId}`);
+                setLessonState((current) => ({
+                  ...current,
+                  session: {
+                    sessionId,
+                    ownerUid,
+                    instructorName: meta.instructorName,
+                    sessionCode: meta.sessionCode,
+                    courseCode: meta.courseCode,
+                    courseName: meta.courseName,
+                    sessionTitle: meta.sessionTitle,
+                  },
+                }));
+              }
+              setConnected(false);
+              setRemoteUnavailable(ended || !meta || !hasReceivedRemoteStateRef.current);
+              setConnectionRecovery(ended ? 'idle' : meta ? 'recovering' : 'failed');
+              setClassroomStateReady(true);
+              if (meta && !ended) scheduleAutomaticRetry();
+            }).catch(() => {
+              if (!cancelled) {
+                setConnected(false);
+                setRemoteUnavailable(!hasReceivedRemoteStateRef.current);
+                setConnectionRecovery('recovering');
+                setClassroomStateReady(true);
+                scheduleAutomaticRetry();
+              }
+            });
             return;
           }
+          const nextRunId = state.interactionResults?.runId || null;
+          if (lastRunIdRef.current && nextRunId && lastRunIdRef.current !== nextRunId) {
+            setClassroomMoveNotice('The class moved to the next activity.');
+            if (classroomMoveNoticeTimerRef.current) window.clearTimeout(classroomMoveNoticeTimerRef.current);
+            classroomMoveNoticeTimerRef.current = window.setTimeout(() => setClassroomMoveNotice(''), 4200);
+          }
+          if (nextRunId) lastRunIdRef.current = nextRunId;
+          hasReceivedRemoteStateRef.current = true;
+          lastRemoteStateAtRef.current = Date.now();
+          automaticRetryCountRef.current = 0;
+          setRemoteEnded(false);
           setRemoteUnavailable(false);
+          setConnectionRecovery('idle');
           setRewardScope(`${ownerUid}:${state.session?.courseCode || sessionId}`);
           setLessonState({
             ...DEFAULT_STATE,
@@ -542,6 +1026,7 @@ export default function StudentWelcomePage() {
             session: state.session || DEFAULT_STATE.session,
           });
           setConnected(true);
+          setClassroomStateReady(true);
         });
         stopPresence = await joinStudentPresence(ownerUid, sessionId);
       };
@@ -549,24 +1034,42 @@ export default function StudentWelcomePage() {
       connectRemoteClassroom().catch(() => {
         if (!cancelled) {
           setConnected(false);
-          setRemoteUnavailable(true);
-          setSubmissionError('This classroom is not available yet. Ask your instructor to open the session.');
+          setRemoteUnavailable(!hasReceivedRemoteStateRef.current);
+          setConnectionRecovery('recovering');
+          setClassroomStateReady(true);
+          scheduleAutomaticRetry();
         }
       });
 
       return () => {
         cancelled = true;
+        if (retryTimer) window.clearTimeout(retryTimer);
         stopState?.();
         stopPresence?.();
+        stopConnection?.();
       };
     }
 
+    const acceptDemoState = (state: LessonDisplayState) => {
+      const nextRunId = state.interactionResults?.runId || null;
+      if (lastRunIdRef.current && nextRunId && lastRunIdRef.current !== nextRunId) {
+        setClassroomMoveNotice('The class moved to the next activity.');
+        if (classroomMoveNoticeTimerRef.current) window.clearTimeout(classroomMoveNoticeTimerRef.current);
+        classroomMoveNoticeTimerRef.current = window.setTimeout(() => setClassroomMoveNotice(''), 4200);
+      }
+      if (nextRunId) lastRunIdRef.current = nextRunId;
+      lastRemoteStateAtRef.current = Date.now();
+      setLessonState(state);
+      setConnectionRecovery('idle');
+      setConnected(true);
+    };
+
     const storedState = window.localStorage.getItem(LESSON_STORAGE_KEY);
+    setRewardScope('demo:ECON302');
     if (storedState) {
       try {
         const parsed = JSON.parse(storedState) as Partial<LessonDisplayState>;
-        setLessonState({ ...DEFAULT_STATE, ...parsed, session: parsed.session || DEMO_SESSION });
-        setConnected(true);
+        acceptDemoState({ ...DEFAULT_STATE, ...parsed, session: parsed.session || DEMO_SESSION });
       } catch {
         // Wait for the instructor's next valid state.
       }
@@ -579,18 +1082,17 @@ export default function StudentWelcomePage() {
     if (!savedDemoVoterId) window.localStorage.setItem('living-seminar-demo-student-id', demoVoterIdRef.current);
     channel.onmessage = (event: MessageEvent<{ type?: string; state?: LessonDisplayState }>) => {
       if (event.data?.type === 'lesson-state' && event.data.state) {
-        setLessonState(event.data.state);
-        setConnected(true);
+        acceptDemoState(event.data.state);
       }
     };
     channel.postMessage({ type: 'student-ready' });
+    setClassroomStateReady(true);
 
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== LESSON_STORAGE_KEY || !event.newValue) return;
       try {
         const parsed = JSON.parse(event.newValue) as Partial<LessonDisplayState>;
-        setLessonState({ ...DEFAULT_STATE, ...parsed, session: parsed.session || DEMO_SESSION });
-        setConnected(true);
+        acceptDemoState({ ...DEFAULT_STATE, ...parsed, session: parsed.session || DEMO_SESSION });
       } catch {
         // Ignore partial writes.
       }
@@ -602,10 +1104,26 @@ export default function StudentWelcomePage() {
       channel.close();
       channelRef.current = null;
     };
+  }, [connectionAttempt]);
+
+  useEffect(() => () => {
+    if (classroomMoveNoticeTimerRef.current) window.clearTimeout(classroomMoveNoticeTimerRef.current);
   }, []);
 
   useEffect(() => {
-    setRewardState(loadRewardState(rewardScope, rewardScope.startsWith('demo:')));
+    setCourseSpaceOpen(false);
+  }, [lessonState.interactionResults?.runId]);
+
+  const closeCourseSpace = useCallback(() => {
+    setCourseSpaceOpen(false);
+    window.setTimeout(() => courseTriggerRef.current?.focus(), 0);
+  }, []);
+
+  useEffect(() => {
+    if (!rewardScope) return;
+    setRewardStateReady(false);
+    setRewardState(loadRewardState(rewardScope));
+    setRewardStateReady(true);
   }, [rewardScope]);
 
   useEffect(() => {
@@ -614,6 +1132,7 @@ export default function StudentWelcomePage() {
       setStudentDisplayName('');
       setManagedRewards([]);
       setManagedRequests([]);
+      setManagedRewardsLoading(false);
       return;
     }
     getCurrentStudentAttendance(remoteSession.ownerUid, remoteSession.sessionId)
@@ -630,6 +1149,7 @@ export default function StudentWelcomePage() {
   useEffect(() => {
     if (!remoteSession || !studentNumber || !lessonState.session.courseCode) return;
     let cancelled = false;
+    setManagedRewardsLoading(true);
     Promise.all([
       getAvailableRewardsForStudent(remoteSession.ownerUid, lessonState.session.courseCode),
       getStudentRewardRequests(remoteSession.ownerUid, lessonState.session.courseCode),
@@ -639,6 +1159,8 @@ export default function StudentWelcomePage() {
       setManagedRequests(rewardRequests);
     }).catch(() => {
       if (!cancelled) setRewardRequestError('Rewards could not be loaded. Your classroom responses still work normally.');
+    }).finally(() => {
+      if (!cancelled) setManagedRewardsLoading(false);
     });
     return () => { cancelled = true; };
   }, [lessonState.session.courseCode, remoteSession, studentNumber]);
@@ -653,6 +1175,58 @@ export default function StudentWelcomePage() {
       return applied.state;
     });
   }, [rewardScope]);
+
+  const claimQuestionReward = useCallback(async (type: QuestionPointRuleKey, questionId: number) => {
+    const rule = getQuestionPointRule(type);
+    const claimKey = `${type}:${questionId}`;
+    if (pendingQuestionClaimsRef.current.has(claimKey)) return;
+    pendingQuestionClaimsRef.current.add(claimKey);
+    try {
+      if (remoteSession) {
+        const result = await claimStudentQuestionPoints(remoteSession.ownerUid, remoteSession.sessionId, type, questionId);
+        awardReward(`server:${remoteSession.sessionId}:${result.eventId}`, 'seminar', result.claim.amount, result.claim.label);
+        if (result.created) setQuestionRewardNotice({ amount: result.claim.amount, label: result.claim.label });
+      } else if (!demoQuestionClaimsRef.current.has(rule.id)) {
+        demoQuestionClaimsRef.current.add(rule.id);
+        awardReward(`demo-question:${rule.id}`, 'seminar', rule.amount, rule.label);
+        setQuestionRewardNotice({ amount: rule.amount, label: rule.label });
+      }
+    } catch {
+      // The question remains submitted even if its point claim needs to be settled later.
+    } finally {
+      pendingQuestionClaimsRef.current.delete(claimKey);
+    }
+  }, [awardReward, remoteSession]);
+
+  useEffect(() => {
+    if (!remoteSession) return;
+    let stop: (() => void) | undefined;
+    try {
+      stop = subscribeToStudentQuestionPointClaims(remoteSession.ownerUid, remoteSession.sessionId, (claims) => {
+        Object.entries(claims).forEach(([eventId, claim]) => {
+          awardReward(`server:${remoteSession.sessionId}:${eventId}`, 'seminar', claim.amount, claim.label);
+        });
+      });
+    } catch {
+      // The classroom connection will retry when the student session is ready.
+    }
+    return () => stop?.();
+  }, [awardReward, remoteSession]);
+
+  useEffect(() => {
+    if (!questionRewardNotice) return;
+    const timeout = window.setTimeout(() => setQuestionRewardNotice(null), 4200);
+    return () => window.clearTimeout(timeout);
+  }, [questionRewardNotice]);
+
+  useEffect(() => {
+    const ownQuestions = lessonState.questions.filter((question) => ownQuestionIds.includes(question.id));
+    ownQuestions.forEach((question) => {
+      if (question.votes >= POINT_RULES.questions.supported.threshold) void claimQuestionReward('supported', question.id);
+      if (question.votes >= POINT_RULES.questions.helpedRoom.threshold) void claimQuestionReward('helpedRoom', question.id);
+      if (lessonState.featuredQuestionId === question.id) void claimQuestionReward('discussed', question.id);
+    });
+  }, [claimQuestionReward, lessonState.featuredQuestionId, lessonState.questions, ownQuestionIds]);
 
   useEffect(() => {
     if (!latestReward) return;
@@ -712,8 +1286,9 @@ export default function StudentWelcomePage() {
 
   const submitMood = async (mood: MoodKey, origin?: HTMLElement) => {
     if (selectedMood || lessonState.onboardingStep !== 3) return;
-    const moodColor = MOODS.find((option) => option.key === mood)?.color || '#5146e5';
-    const transportId = beginTransport(moodColor, origin);
+    const moodOption = MOODS.find((option) => option.key === mood);
+    const moodColor = moodOption?.color || '#5146e5';
+    const transportId = beginTransport(moodColor, moodOption?.label || 'Check-in', origin);
     setSubmissionError('');
     try {
       if (remoteSession) {
@@ -758,7 +1333,10 @@ export default function StudentWelcomePage() {
     const transportColor = canShowChoiceColor && selectedOption !== null
       ? OPTION_COLORS[selectedOption % OPTION_COLORS.length]
       : '#6654e9';
-    const transportId = beginTransport(transportColor, origin);
+    const transportLabel = selectedOption !== null
+      ? interaction.options?.[selectedOption] || 'Your choice'
+      : writtenResponse.trim() || 'Your response';
+    const transportId = beginTransport(transportColor, transportLabel, origin);
     setSubmissionError('');
     setIsSubmitting(true);
     try {
@@ -769,9 +1347,9 @@ export default function StudentWelcomePage() {
       }
       setInteractionSubmitted(true);
       completeTransport(transportId);
-      const participationPoints = interaction.type === 'group-work' ? 5 : interaction.type === 'open-response' ? 3 : interaction.type === 'pulse' ? 1 : 2;
+      const participationPoints = getParticipationPoints(interaction.type);
       window.setTimeout(() => {
-        awardReward(`${results.runId}:response`, 'seminar', participationPoints, `${interaction.label} response`);
+        if (participationPoints > 0) awardReward(`${results.runId}:response`, 'seminar', participationPoints, `${interaction.label} response`);
       }, 720);
     } catch {
       const saved = remoteSession
@@ -795,7 +1373,7 @@ export default function StudentWelcomePage() {
     if (prediction !== null || lessonState.interactionResults?.revealed) return;
     setPrediction(optionIndex);
     const runId = lessonState.interactionResults?.runId;
-    if (runId) awardReward(`${runId}:prediction`, 'seminar', 1, 'Private prediction');
+    if (runId) awardReward(`${runId}:prediction`, 'seminar', POINT_RULES.privatePrediction, 'Private prediction');
   };
 
   useEffect(() => {
@@ -804,13 +1382,13 @@ export default function StudentWelcomePage() {
     if (!interactionSubmitted || !interaction || !results?.revealed) return;
 
     if ((interaction.type === 'quiz' || interaction.type === 'peer-learning') && selectedOption === interaction.correctOptionIndex) {
-      awardReward(`${results.runId}:correct`, 'score', interaction.type === 'peer-learning' ? 6 : 8, interaction.type === 'peer-learning' ? 'Strong second answer' : 'Correct quiz answer');
+      awardReward(`${results.runId}:correct`, 'score', interaction.type === 'peer-learning' ? POINT_RULES.strongSecondAnswer : POINT_RULES.correctQuizAnswer, interaction.type === 'peer-learning' ? 'Strong second answer' : 'Correct quiz answer');
     }
 
     if (interaction.type === 'poll' && prediction !== null && results.optionCounts.length) {
       const leadingCount = Math.max(...results.optionCounts);
       if (results.optionCounts[prediction] === leadingCount) {
-        awardReward(`${results.runId}:room-read`, 'seminar', 3, 'Room read');
+        awardReward(`${results.runId}:room-read`, 'seminar', POINT_RULES.roomRead, 'Room read');
       }
     }
   }, [awardReward, interactionSubmitted, lessonState.activeInteraction, lessonState.interactionResults, prediction, selectedOption]);
@@ -833,24 +1411,29 @@ export default function StudentWelcomePage() {
         setManagedRequests(await getStudentRewardRequests(remoteSession.ownerUid, managedReward.courseCode));
         confirmResponseHaptic();
       } catch (requestError) {
-        setRewardRequestError(requestError instanceof Error ? requestError.message : 'The reward request could not be sent. Try again.');
+        setRewardRequestError(getUserFacingError(requestError, 'The reward request did not go through. Your points are unchanged, so you can try again.'));
       }
       return;
     }
-    setRewardState((current) => {
-      const next = requestCourseReward(current, reward);
-      if (next !== current) saveRewardState(rewardScope, next);
-      return next;
-    });
+    setRewardRequestError('Join a live class before requesting a reward.');
   };
 
   const toggleWaitingQuestion = async (questionId: number) => {
+    if (ownQuestionIds.includes(questionId) || pendingQuestionVotes[questionId]) return;
+    const question = lessonState.questions.find((item) => item.id === questionId);
+    if (!question) return;
     const wasVoted = selectedQuestionVotes.includes(questionId);
     const nextVoted = !wasVoted;
+    const pendingVote = { baseline: question.votes, delta: nextVoted ? 1 : -1 };
     setSelectedQuestionVotes((current) => (
       nextVoted ? [...current, questionId] : current.filter((id) => id !== questionId)
     ));
-    setSubmissionError('');
+    setPendingQuestionVotes((current) => ({ ...current, [questionId]: pendingVote }));
+    setQuestionVoteErrors((current) => {
+      const next = { ...current };
+      delete next[questionId];
+      return next;
+    });
     try {
       if (remoteSession) {
         await setStudentQuestionVote(remoteSession.ownerUid, remoteSession.sessionId, questionId, nextVoted);
@@ -862,11 +1445,62 @@ export default function StudentWelcomePage() {
           voted: nextVoted,
         });
       }
+      if (nextVoted) markGuidanceLearned('upvotes');
+      window.setTimeout(() => {
+        setPendingQuestionVotes((current) => {
+          if (current[questionId] !== pendingVote) return current;
+          const next = { ...current };
+          delete next[questionId];
+          return next;
+        });
+      }, 2500);
     } catch {
       setSelectedQuestionVotes((current) => (
         wasVoted ? [...current, questionId] : current.filter((id) => id !== questionId)
       ));
-      setSubmissionError('Your upvote was not saved. Check the connection and try again.');
+      setPendingQuestionVotes((current) => {
+        const next = { ...current };
+        delete next[questionId];
+        return next;
+      });
+      setQuestionVoteErrors((current) => ({ ...current, [questionId]: 'Upvote not saved. Check the connection and try again.' }));
+    }
+  };
+
+  const postStudentQuestion = async () => {
+    const cleanQuestion = questionDraft.trim().replace(/\s+/g, ' ').slice(0, 180);
+    if (!cleanQuestion || questionSubmitting) return;
+    setQuestionSubmitting(true);
+    setQuestionError('');
+    setQuestionNotice('');
+    try {
+      let question: LiveQuestion;
+      if (remoteSession) {
+        question = await submitStudentQuestion(remoteSession.ownerUid, remoteSession.sessionId, cleanQuestion);
+      } else {
+        question = {
+          id: Date.now() * 100 + Math.floor(Math.random() * 100),
+          initials: 'Q',
+          ago: 'Just now',
+          question: cleanQuestion,
+          votes: 0,
+          source: 'student',
+        };
+        channelRef.current?.postMessage({ type: 'student-question-submit', question });
+      }
+      setLessonState((current) => ({
+        ...current,
+        questions: [question, ...current.questions.filter((item) => item.id !== question.id)],
+      }));
+      setOwnQuestionIds((current) => current.includes(question.id) ? current : [...current, question.id]);
+      setQuestionDraft('');
+      await claimQuestionReward('asked', question.id);
+      setQuestionNotice('Question sent. If it helps the room, it can earn up to 9 points this session.');
+      confirmResponseHaptic();
+    } catch (questionSubmitError) {
+      setQuestionError(getUserFacingError(questionSubmitError, 'Your question was not sent. Check the connection and try again.'));
+    } finally {
+      setQuestionSubmitting(false);
     }
   };
 
@@ -883,33 +1517,120 @@ export default function StudentWelcomePage() {
     return statuses;
   }, {});
 
+  const courseSpaceEnabled = !remoteSession || Boolean(studentNumber);
+  const lobbyGuidance: StudentGuidanceId | null = guidanceReady && lessonState.lobbyOpen && !lessonState.activeInteraction
+    ? !learnedGuidance.includes('questions') ? 'questions'
+      : !learnedGuidance.includes('auto-update') ? 'auto-update'
+        : null
+    : null;
+  const waitingGuidance: StudentGuidanceId | null = guidanceReady && interactionSubmitted && lessonState.activeInteraction
+    ? lessonState.questions.length > 0 && !learnedGuidance.includes('upvotes') ? 'upvotes'
+      : latestReward && !learnedGuidance.includes('points') ? 'points'
+        : null
+    : null;
+
+  const openQuestionsFromGuidance = (id: 'questions' | 'upvotes') => {
+    markGuidanceLearned(id);
+    if (id === 'upvotes') markGuidanceLearned('questions');
+    setCourseSpaceOpen(false);
+    setQuestionSheetOpen(true);
+    setQuestionNotice('');
+    setQuestionError('');
+  };
+
+  const openProgressFromGuidance = () => {
+    markGuidanceLearned('points');
+    setQuestionSheetOpen(false);
+    setCourseView('home');
+    setCourseSpaceOpen(true);
+  };
+
+  const courseHomeProps = {
+    lessonState,
+    rewards: rewardState,
+    courseRewards: remoteSession ? managedRewards : [],
+    requestStatuses,
+    onRequestReward: requestReward,
+    enableSocialRewards: courseSpaceEnabled,
+    rewardsLoading: remoteSession ? managedRewardsLoading : false,
+    view: courseView,
+    onViewChange: setCourseView,
+  };
+
+  if (!classroomStateReady || (!remoteUnavailable && !rewardStateReady) || (remoteEnded && !rewardStateReady)) {
+    return <ClassroomStateGate message="Loading the current activity and your private class record." />;
+  }
+
   return (
     <IconContext.Provider value={{ weight: 'duotone' }}>
     <main className="student-welcome-shell">
       <header className="student-welcome-header">
         <div className="student-brand">Classfully<span>.</span></div>
-        <span className={`student-connection ${connected ? 'is-connected' : ''}`}><i /> {remoteUnavailable ? 'Class ended' : connected ? 'Connected' : 'Connecting'}</span>
+        <div className="student-header-actions">
+          <span className={`student-connection ${connected ? 'is-connected' : connectionRecovery === 'recovering' ? 'is-recovering' : ''}`}><i /> {remoteUnavailable ? remoteEnded ? 'Class ended' : connectionRecovery === 'recovering' ? 'Reconnecting' : 'Needs attention' : connected ? 'Connected' : 'Reconnecting'}</span>
+          {courseSpaceEnabled && !remoteUnavailable && step === 0 && Boolean(lessonState.activeInteraction) && <button
+            ref={courseTriggerRef}
+            type="button"
+            className="student-course-trigger"
+            aria-label={`Open my course, ${rewardState.seminarPoints} points`}
+            aria-haspopup="dialog"
+            aria-expanded={courseSpaceOpen}
+            onClick={() => {
+              setQuestionSheetOpen(false);
+              setCourseSpaceOpen(true);
+              markGuidanceLearned('points');
+            }}
+          ><UserCircle size={18} /><span>My course</span><strong>{rewardState.seminarPoints}</strong></button>}
+        </div>
       </header>
 
       <section className="student-welcome-content" ref={contentRef}>
+        {!remoteUnavailable && connectionRecovery !== 'idle' && (
+          <div className={`student-recovery-banner ${connectionRecovery === 'failed' ? 'has-failed' : ''}`} role="status" aria-live="polite">
+            <span><ArrowClockwise size={18} /></span>
+            <div><strong>{connectionRecovery === 'failed' ? 'Connection needs a hand' : 'Reconnecting to class'}</strong><small>{connectionRecovery === 'failed' ? 'Your answer is still here. Try reconnecting when your signal is ready.' : 'Keep this page open. Your unfinished answer is safe.'}</small></div>
+            {connectionRecovery === 'failed' && <HapticButton type="button" depth="compact" onClick={reconnectToClassroom}>Reconnect now</HapticButton>}
+          </div>
+        )}
+        {classroomMoveNotice && <div className="student-class-move-notice" role="status"><Activity size={16} /><span>{classroomMoveNotice}</span></div>}
         {!remoteUnavailable && lessonState.timer && lessonState.activeInteraction?.type !== 'timer' && <StudentTimerBanner timer={lessonState.timer} />}
-        {remoteUnavailable && (
-          <div className="student-ready-state" role="status">
-            <span className="student-round-icon is-success"><Check size={30} /></span>
-            <div className="student-kicker">Class complete</div>
-            <h1>This session has ended.</h1>
-            <p>Your response was saved. You can close this page and return for the next class.</p>
+        {remoteUnavailable && !remoteEnded && (
+          <div className="student-ready-state student-recovery-state" role="status">
+            <span className="student-round-icon"><ArrowClockwise size={28} /></span>
+            <div className="student-kicker">{connectionRecovery === 'recovering' ? 'Reconnecting' : 'Connection help'}</div>
+            <h1>{connectionRecovery === 'recovering' ? 'Finding your class again.' : 'We could not reconnect yet.'}</h1>
+            <p>{connectionRecovery === 'recovering' ? 'Keep this page open. We will bring you back to the current activity automatically.' : 'Check your signal, then try again. If this continues, ask your instructor to confirm the session is open.'}</p>
+            {connectionRecovery === 'failed' && <HapticButton type="button" className="student-reconnect-button" hapticTone="action" onClick={reconnectToClassroom}><ArrowClockwise size={17} /> Reconnect now</HapticButton>}
           </div>
         )}
 
-        {!remoteUnavailable && step === 0 && !lessonState.activeInteraction && (
+        {remoteUnavailable && remoteEnded && rewardStateReady && <StudentCourseHome {...courseHomeProps} classEnded />}
+
+        {!remoteUnavailable && step === 0 && lessonState.lobbyOpen && !lessonState.activeInteraction && (
+          <div className="student-lobby-state">
+            <span className="student-round-icon is-success"><Check size={30} /></span>
+            <div className="student-kicker">You’re in the room</div>
+            <h1>Ready when your instructor is.</h1>
+            <p>Keep this page open. The first activity will appear here automatically.</p>
+            <div className="student-lobby-class-card">
+              <span><Users size={20} /></span>
+              <div><strong>{lessonState.session.courseCode}</strong><small>{lessonState.session.sessionTitle} · {lessonState.session.instructorName || 'Your instructor'}</small></div>
+              <Check size={18} />
+            </div>
+            <div className="student-lobby-waiting"><i /><span><strong>{lessonState.connectedStudents || 0} connected</strong><small>You do not need to refresh</small></span></div>
+            {lobbyGuidance && !guidanceHiddenForMoment && !questionSheetOpen && (
+              <StudentQuietGuide
+                id={lobbyGuidance}
+                onAction={lobbyGuidance === 'questions' ? () => openQuestionsFromGuidance('questions') : undefined}
+                onDismiss={() => markGuidanceLearned(lobbyGuidance)}
+              />
+            )}
+          </div>
+        )}
+
+        {!remoteUnavailable && step === 0 && !lessonState.lobbyOpen && !lessonState.activeInteraction && (
           <StudentCourseHome
-            lessonState={lessonState}
-            rewards={rewardState}
-            courseRewards={remoteSession ? managedRewards : COURSE_REWARDS}
-            requestStatuses={requestStatuses}
-            onRequestReward={requestReward}
-            enableSocialRewards={!remoteSession || Boolean(studentNumber)}
+            {...courseHomeProps}
           />
         )}
 
@@ -923,6 +1644,9 @@ export default function StudentWelcomePage() {
                 answer={lessonState.activeInteraction.options?.[selectedOption ?? -1] || writtenResponse || 'Response saved'}
                 questions={lessonState.questions}
                 selectedQuestionVotes={selectedQuestionVotes}
+                ownQuestionIds={ownQuestionIds}
+                pendingQuestionVotes={pendingQuestionVotes}
+                questionVoteErrors={questionVoteErrors}
                 onToggleQuestion={toggleWaitingQuestion}
                 confidence={confidence}
                 onConfidence={setConfidence}
@@ -936,13 +1660,20 @@ export default function StudentWelcomePage() {
                 rewardState={rewardState}
                 latestReward={latestReward}
                 phase={lessonState.interactionResults.phase}
+                guidance={waitingGuidance && !guidanceHiddenForMoment && !questionSheetOpen && !courseSpaceOpen ? (
+                  <StudentQuietGuide
+                    id={waitingGuidance}
+                    onAction={waitingGuidance === 'upvotes' ? () => openQuestionsFromGuidance('upvotes') : openProgressFromGuidance}
+                    onDismiss={() => markGuidanceLearned(waitingGuidance)}
+                  />
+                ) : undefined}
               />
             ) : lessonState.activeInteraction.type === 'timer' ? (
               <div className="student-clock-module" role="timer">
                 <span className="student-round-icon"><Timer size={27} /></span>
                 <div className="student-kicker">Clock · Live now</div>
-                <h1>{lessonState.activeInteraction.prompt}</h1>
-                <p>This time is yours. The classroom screen and every phone are counting down together.</p>
+                <h1>{lessonState.activeInteraction.title}</h1>
+                <MarkdownContent className="student-clock-instructions" markdown={lessonState.activeInteraction.prompt} />
                 {lessonState.timer && <StudentTimerBanner timer={lessonState.timer} />}
                 <div className="student-clock-note"><Lock size={16} /><span>No response is needed. Look up when the clock ends.</span></div>
               </div>
@@ -950,11 +1681,11 @@ export default function StudentWelcomePage() {
               <>
                 <span className="student-round-icon"><ListChecks size={27} /></span>
                 <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
-                <h1>{lessonState.activeInteraction.prompt}</h1>
-                <p>{lessonState.activeInteraction.type === 'group-work' ? `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Similar answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
+                <MarkdownContent heading className="student-interaction-question" markdown={lessonState.activeInteraction.prompt} />
+                <p>{lessonState.activeInteraction.type === 'group-work' ? `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
 
                 {lessonState.activeInteraction.options?.length ? (
-                  <div className="student-interaction-options" role="radiogroup" aria-label={lessonState.activeInteraction.prompt}>
+                  <div className="student-interaction-options" role="radiogroup" aria-label={markdownToPlainText(lessonState.activeInteraction.prompt)}>
                     {lessonState.activeInteraction.options.map((option, index) => (
                       <HapticButton
                         key={option}
@@ -1086,7 +1817,55 @@ export default function StudentWelcomePage() {
         )}
       </section>
 
+      {!remoteUnavailable && connected && (
+        <HapticButton
+          type="button"
+          depth="compact"
+          className="student-question-launch"
+          aria-expanded={questionSheetOpen}
+          aria-haspopup="dialog"
+          onClick={() => {
+            setQuestionSheetOpen(true);
+            markGuidanceLearned('questions');
+            setQuestionNotice('');
+            setQuestionError('');
+          }}
+        >
+          <MessageCircle size={18} /><span>Questions</span>{lessonState.questions.length > 0 && <strong>{lessonState.questions.length}</strong>}
+        </HapticButton>
+      )}
+
+      {questionSheetOpen && !remoteUnavailable && (
+        <StudentQuestionSheet
+          questions={lessonState.questions}
+          selectedVotes={selectedQuestionVotes}
+          ownQuestionIds={ownQuestionIds}
+          pendingVotes={pendingQuestionVotes}
+          voteErrors={questionVoteErrors}
+          draft={questionDraft}
+          submitting={questionSubmitting}
+          notice={questionNotice}
+          error={questionError}
+          onDraftChange={setQuestionDraft}
+          onSubmit={postStudentQuestion}
+          onToggleVote={toggleWaitingQuestion}
+          onClose={() => setQuestionSheetOpen(false)}
+        />
+      )}
+
+      {courseSpaceOpen && !remoteUnavailable && lessonState.activeInteraction && (
+        <StudentCourseSheet
+          points={rewardState.seminarPoints}
+          studentName={studentDisplayName || (studentNumber ? `Student •${studentNumber.slice(-4)}` : 'Your course record')}
+          onClose={closeCourseSpace}
+        >
+          <StudentCourseHome {...courseHomeProps} embedded />
+        </StudentCourseSheet>
+      )}
+
       {transportSignal && <StudentTransportSignal key={transportSignal.id} signal={transportSignal} />}
+
+      {questionRewardNotice && <div className="student-question-reward-toast" role="status"><Sparkles size={18} /><span><strong>+{questionRewardNotice.amount} points</strong>{questionRewardNotice.label}</span></div>}
 
       <footer className="student-welcome-footer">
         <Link href="/privacy" target="_blank"><Lock size={13} /> Privacy</Link>

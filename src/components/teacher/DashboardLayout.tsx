@@ -7,6 +7,7 @@ import { signOutUser } from '@/lib/firebase/auth';
 import { useAuth } from '@/lib/hooks/useAuth';
 import Button from '@/components/ui/Button';
 import ClassfullyMark from '@/components/brand/ClassfullyMark';
+import InstructorAvatar from '@/components/teacher/InstructorAvatar';
 import { 
   BookOpen,
   Home, 
@@ -149,13 +150,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* User info */}
         <div className="absolute bottom-0 left-0 right-0 border-t border-[#e3e5ed] bg-white p-5">
           <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#101a38]">
-                <span className="text-sm font-medium text-white">
-                  {user?.name?.charAt(0).toUpperCase() || 'T'}
-                </span>
-              </div>
-            </div>
+            <Link href="/dashboard/settings" className="seminar-focus rounded-full" aria-label="Open profile settings">
+              <InstructorAvatar name={user?.name} photoURL={user?.photoURL} size={36} />
+            </Link>
             <div className="ml-3 flex-1">
               <p className="text-sm font-semibold text-[#101a38]">{user?.name}</p>
               <p className="max-w-[120px] truncate text-xs text-[#697087]">{user?.email}</p>

@@ -6,6 +6,8 @@ import { ArrowLeft, MailCheck } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
+import InlineMessage from '@/components/ui/InlineMessage';
+import { getUserFacingError } from '@/lib/user-facing-error';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -28,8 +30,7 @@ export default function ForgotPasswordPage() {
       if (!response.ok) throw new Error(payload.error || 'We could not send the reset email.');
       setSent(true);
     } catch (resetError: unknown) {
-      const message = resetError instanceof Error ? resetError.message : '';
-      setError(message || 'We could not send the reset email. Please try again.');
+      setError(getUserFacingError(resetError, 'We could not send the reset email. Try again in a moment.'));
     } finally {
       setLoading(false);
     }
@@ -71,11 +72,7 @@ export default function ForgotPasswordPage() {
                 placeholder="you@university.edu"
               />
 
-              {error && (
-                <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                  {error}
-                </div>
-              )}
+              {error && <InlineMessage title="The email is still waiting." message={error} />}
 
               <Button type="submit" loading={loading} className="w-full">Send reset link</Button>
             </form>

@@ -222,8 +222,7 @@ Generate a complete, ready-to-use case study that teachers can immediately deplo
     console.error('❌ Error generating case study:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to generate case study. Please try again.',
-        details: error.message 
+        error: 'The case study draft is not ready yet. Try again with a shorter source or fewer learning objectives.'
       },
       { status: 500 }
     );

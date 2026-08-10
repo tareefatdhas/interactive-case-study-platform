@@ -8,6 +8,7 @@ import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import InlineMessage from '@/components/ui/InlineMessage';
 import type { Course, Session, SessionInteraction } from '@/types';
 import {
   ArrowRight,
@@ -170,7 +171,7 @@ export default function ClassesPage() {
             <button type="button" onClick={() => setShowArchived(true)} className={`seminar-focus inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold ${showArchived ? 'bg-[#101a38] text-white' : 'bg-white text-[#697087] hover:bg-[#f8f7fb]'}`}><Archive className="h-4 w-4" /> Archived <span className="tabular-nums">{archivedCount}</span></button>
           </div>
 
-          {error && <p className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
+          {error && <InlineMessage className="mb-6" title="Your classes are still here." message={error} />}
 
           {loading ? (
             <div className="flex min-h-64 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /></div>
