@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Timestamp } from 'firebase/firestore';
@@ -101,6 +101,24 @@ function ProgressContent() {
             stats: { totalResponses: 0, correctResponses: 0, correctPercentage: 0, totalPoints: 0, maxTotalPoints: 0, averageScore: 0, progressPercentage: 0, totalQuestionsAvailable: 0 },
           });
         }));
+        // Live attendance is also mirrored into standalone sessions. Use that
+        // durable roster when a live-room record has expired or is unavailable.
+        sessionData.filter((session) => session.sessionType === 'standalone').forEach((session) => {
+          (session.studentsJoined || []).forEach((studentNumber) => {
+            const normalized = normalizeStudentNumber(studentNumber);
+            if (!normalized || knownNumbers.has(normalized)) return;
+            knownNumbers.add(normalized);
+            attendanceOnlyStudents.push({
+              id: `attendance-${normalized}`,
+              studentId: studentNumber,
+              studentIdNormalized: normalized,
+              name: `Student •${studentNumber.slice(-4)}`,
+              courseIds: session.courseId ? [session.courseId] : [],
+              createdAt: session.createdAt || Timestamp.now(),
+              stats: { totalResponses: 0, correctResponses: 0, correctPercentage: 0, totalPoints: 0, maxTotalPoints: 0, averageScore: 0, progressPercentage: 0, totalQuestionsAvailable: 0 },
+            });
+          });
+        });
         setCourses(courseData);
         setSessions(sessionData);
         setLiveRecords(records);
@@ -126,13 +144,13 @@ function ProgressContent() {
     session.active || session.startedAt || session.endedAt || (session.studentsJoined?.length || 0) > 0
   )), [relevantSessions]);
 
-  const attendedSession = (session: Session, student: StudentWithStats) => {
+  const attendedSession = useCallback((session: Session, student: StudentWithStats) => {
     if (hasStudent(session, student)) return true;
     const target = normalizeStudentNumber(student.studentId);
     return Object.values(liveRecords[session.id]?.attendance || {}).some((claim) => normalizeStudentNumber(claim.studentNumber) === target);
-  };
+  }, [liveRecords]);
 
-  const studentLiveMetrics = (student: StudentWithStats, scopedSessions: Session[]) => {
+  const studentLiveMetrics = useCallback((student: StudentWithStats, scopedSessions: Session[]) => {
     const target = normalizeStudentNumber(student.studentId);
     let responses = 0;
     let quizAnswered = 0;
@@ -154,7 +172,7 @@ function ProgressContent() {
       });
     });
     return { responses, quizAnswered, quizCorrect, quizPercentage: quizAnswered ? Math.round((quizCorrect / quizAnswered) * 100) : null };
-  };
+  }, [liveRecords]);
 
   const visibleStudents = useMemo(() => {
     const inScope = selectedCourseId === 'all'
@@ -171,7 +189,7 @@ function ProgressContent() {
         return { ...student, attended, attendance, lastSeen, liveMetrics: studentLiveMetrics(student, heldSessions) };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [heldSessions, search, selectedCourseId, students]);
+  }, [attendedSession, heldSessions, search, selectedCourseId, studentLiveMetrics, students]);
 
   const allScopedStudents = useMemo(() => {
     const inScope = selectedCourseId === 'all'
@@ -181,13 +199,17 @@ function ProgressContent() {
       const attended = heldSessions.filter((session) => attendedSession(session, student)).length;
       return { ...student, attended, attendance: heldSessions.length ? Math.round((attended / heldSessions.length) * 100) : 0 };
     });
-  }, [heldSessions, selectedCourseId, students]);
+  }, [attendedSession, heldSessions, selectedCourseId, students]);
 
   const averageAttendance = allScopedStudents.length
     ? Math.round(allScopedStudents.reduce((sum, student) => sum + student.attendance, 0) / allScopedStudents.length)
     : 0;
   const activeParticipants = allScopedStudents.filter((student) => student.attendance >= 75).length;
   const needsFollowUp = allScopedStudents.filter((student) => heldSessions.length >= 2 && student.attendance < 60).length;
+  const joinedCount = (session: Session) => new Set([
+    ...(session.studentsJoined || []).map(normalizeStudentNumber),
+    ...Object.values(liveRecords[session.id]?.attendance || {}).map((claim) => normalizeStudentNumber(claim.studentNumber)),
+  ].filter(Boolean)).size;
   const recentSessions = [...heldSessions]
     .sort((a, b) => (b.startedAt?.toDate?.() || b.createdAt?.toDate?.() || new Date(0)).getTime() - (a.startedAt?.toDate?.() || a.createdAt?.toDate?.() || new Date(0)).getTime())
     .slice(0, 6)
@@ -249,7 +271,7 @@ function ProgressContent() {
                 </div>
 
                 <aside className="space-y-5">
-                  <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6"><div className="flex items-start justify-between"><div><p className="seminar-eyebrow mb-2">Attendance trend</p><h2 className="seminar-display text-2xl text-[#101a38]">Recent sessions</h2></div><TrendingUp className="h-5 w-5 text-[#5146e5]" /></div>{recentSessions.length ? <div className="mt-7 flex h-36 items-end gap-2 border-b border-[#dfe2ea] pb-1">{recentSessions.map((session) => { const max = Math.max(...recentSessions.map((item) => item.studentsJoined?.length || 0), 1); const height = Math.max(12, ((session.studentsJoined?.length || 0) / max) * 100); return <div key={session.id} className="group relative flex h-full flex-1 items-end"><div className="w-full rounded-t-lg bg-[#d9d4ff] transition-colors group-hover:bg-[#7067e8]" style={{ height: `${height}%` }} /><span className="absolute -top-5 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-[#101a38] px-2 py-1 text-[10px] text-white group-hover:block">{session.studentsJoined?.length || 0} joined</span></div>; })}</div> : <p className="mt-5 text-sm leading-6 text-[#697087]">Hold a session to begin the trend.</p>}<p className="mt-4 text-xs leading-5 text-[#697087]">Each bar shows how many students joined. Hover to see the count.</p></section>
+                  <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6"><div className="flex items-start justify-between"><div><p className="seminar-eyebrow mb-2">Attendance trend</p><h2 className="seminar-display text-2xl text-[#101a38]">Recent sessions</h2></div><TrendingUp className="h-5 w-5 text-[#5146e5]" /></div>{recentSessions.length ? <div className="mt-7 flex h-36 items-end gap-2 border-b border-[#dfe2ea] pb-1">{recentSessions.map((session) => { const max = Math.max(...recentSessions.map(joinedCount), 1); const count = joinedCount(session); const height = Math.max(12, (count / max) * 100); return <div key={session.id} className="group relative flex h-full flex-1 items-end"><div className="w-full rounded-t-lg bg-[#d9d4ff] transition-colors group-hover:bg-[#7067e8]" style={{ height: `${height}%` }} /><span className="absolute -top-5 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-[#101a38] px-2 py-1 text-[10px] text-white group-hover:block">{count} joined</span></div>; })}</div> : <p className="mt-5 text-sm leading-6 text-[#697087]">Hold a session to begin the trend.</p>}<p className="mt-4 text-xs leading-5 text-[#697087]">Each bar shows how many students joined. Hover to see the count.</p></section>
                   <section className="rounded-3xl border border-[#dcd8ff] bg-[#f7f6ff] p-6"><GraduationCap className="h-5 w-5 text-[#5146e5]" /><h2 className="seminar-display mt-4 text-2xl text-[#101a38]">Progress needs context.</h2><p className="mt-2 text-sm leading-6 text-[#697087]">A low score may mean the concept needs reteaching, not that the student is disengaged. Use attendance, responses, and class patterns together.</p>{selectedCourse && <Link href={`/dashboard/classes/${selectedCourse.id}`} className="seminar-focus mt-4 inline-flex items-center gap-2 rounded-lg text-sm font-bold text-[#5146e5]">Open class workspace <ArrowRight className="h-4 w-4" /></Link>}</section>
                 </aside>
               </section>

@@ -14,7 +14,8 @@ import {
   QuerySnapshot,
   DocumentData,
   WriteBatch,
-  writeBatch
+  writeBatch,
+  arrayUnion
 } from 'firebase/firestore';
 import { db } from './config';
 import type {
@@ -343,6 +344,26 @@ export const joinSession = async (sessionId: string, studentId: string) => {
       await updateSessionActivity(sessionId);
     }
   }
+};
+
+export const syncStandaloneSessionStudents = async (
+  sessionId: string,
+  teacherId: string,
+  studentNumbers: string[],
+) => {
+  const uniqueStudentNumbers = [...new Set(studentNumbers.map((value) => value.trim()).filter(Boolean))];
+  if (!uniqueStudentNumbers.length) return;
+  const sessionRef = doc(db, COLLECTIONS.SESSIONS, sessionId);
+  const sessionSnapshot = await getDoc(sessionRef);
+  if (!sessionSnapshot.exists()) throw new Error('Session not found');
+  const session = sessionSnapshot.data() as Session;
+  if (session.teacherId !== teacherId || session.sessionType !== 'standalone') {
+    throw new Error('Only the owning instructor can sync a live session roster.');
+  }
+  await updateDoc(sessionRef, {
+    studentsJoined: arrayUnion(...uniqueStudentNumbers),
+    lastActivityAt: Timestamp.now(),
+  });
 };
 
 // Students

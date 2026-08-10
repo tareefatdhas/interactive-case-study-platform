@@ -538,6 +538,7 @@ export default function LiveLessonPrototype() {
   const interactionResultsRef = useRef<InteractionResults | null>(null);
   const sessionPlanRef = useRef(sessionPlan);
   const localPublishedTimestampsRef = useRef(new Set<number>());
+  const lastSyncedRosterRef = useRef('');
   const planDragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -1001,9 +1002,12 @@ export default function LiveLessonPrototype() {
   useEffect(() => {
     if (!remoteClassroomReady || !sessionContext.sessionId || !sessionContext.ownerUid) {
       setAttendanceClaims([]);
+      lastSyncedRosterRef.current = '';
       return;
     }
-    return subscribeToInstructorAttendance(sessionContext.ownerUid, sessionContext.sessionId, (claims) => {
+    const sessionId = sessionContext.sessionId;
+    const ownerUid = sessionContext.ownerUid;
+    return subscribeToInstructorAttendance(ownerUid, sessionId, (claims) => {
       const uniqueClaims = new Map<string, StoredAttendanceClaim>();
       Object.values(claims).forEach((claim) => {
         const existing = uniqueClaims.get(claim.studentNumber);
@@ -1019,7 +1023,23 @@ export default function LiveLessonPrototype() {
           updatedAt: Math.max(existing.updatedAt, claim.updatedAt),
         });
       });
-      setAttendanceClaims([...uniqueClaims.values()]);
+      const uniqueAttendance = [...uniqueClaims.values()];
+      setAttendanceClaims(uniqueAttendance);
+      const studentNumbers = [...uniqueClaims.keys()].sort();
+      const rosterSignature = `${sessionId}:${studentNumbers.join('|')}`;
+      if (studentNumbers.length && lastSyncedRosterRef.current !== rosterSignature) {
+        lastSyncedRosterRef.current = rosterSignature;
+        import('@/lib/firebase/firestore')
+          .then(({ syncStandaloneSessionStudents }) => syncStandaloneSessionStudents(
+            sessionId,
+            ownerUid,
+            studentNumbers,
+          ))
+          .catch((syncError) => {
+            if (lastSyncedRosterRef.current === rosterSignature) lastSyncedRosterRef.current = '';
+            console.error('The live attendance roster could not be saved to the session:', syncError);
+          });
+      }
     });
   }, [remoteClassroomReady, sessionContext.ownerUid, sessionContext.sessionId]);
 

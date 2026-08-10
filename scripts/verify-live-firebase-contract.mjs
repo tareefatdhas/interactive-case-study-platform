@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { deleteApp, initializeApp } from 'firebase/app';
 import { createUserWithEmailAndPassword, deleteUser, getAuth, signInAnonymously } from 'firebase/auth';
-import { deleteDoc, doc, getDoc, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore';
+import { arrayUnion, deleteDoc, doc, getDoc, getFirestore, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { get, getDatabase, ref, remove, set, update } from 'firebase/database';
 
 loadEnv({ path: '.env.local', quiet: true });
@@ -182,6 +182,10 @@ try {
     optionIndex: 0,
     submittedAt: Date.now(),
   });
+  await updateDoc(doc(teacherDb, 'sessions', sessionId), {
+    studentsJoined: arrayUnion('E2E0001'),
+    lastActivityAt: serverTimestamp(),
+  });
 
   const responseContracts = [
     { id: 'contract-pulse', type: 'pulse', label: 'Pulse', options: ['Ready', 'Not yet'], optionIndex: 0 },
@@ -279,9 +283,11 @@ try {
     lastSeen: Date.now(),
   });
 
-  const [attendance, response, welcomeResponse, studentQuestion, questionVote, sessionDocument, timerResponse] = await Promise.all([
+  const [attendance, attendanceBranch, response, responsesBranch, welcomeResponse, studentQuestion, questionVote, sessionDocument, timerResponse] = await Promise.all([
     get(ref(teacherRealtime, `${roomPath}/attendanceClaims/${studentUser.uid}`)),
+    get(ref(teacherRealtime, `${roomPath}/attendanceClaims`)),
     get(ref(teacherRealtime, `${roomPath}/responses/${interactionRunId}/${studentUser.uid}`)),
+    get(ref(teacherRealtime, `${roomPath}/responses`)),
     get(ref(teacherRealtime, `${roomPath}/welcomeResponses/1/${studentUser.uid}`)),
     get(ref(teacherRealtime, `${roomPath}/studentQuestions/${studentUser.uid}/${studentQuestionId}`)),
     get(ref(teacherRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`)),
@@ -293,7 +299,9 @@ try {
   )));
 
   assertContract(attendance.val()?.studentNumber === 'E2E0001', 'Instructor could not receive the attendance claim.');
+  assertContract(attendanceBranch.child(studentUser.uid).val()?.studentNumber === 'E2E0001', 'Progress could not read the session attendance branch.');
   assertContract(response.val()?.optionIndex === 0, 'Instructor could not receive the student response.');
+  assertContract(responsesBranch.child(`${interactionRunId}/${studentUser.uid}`).val()?.optionIndex === 0, 'Progress could not read the session response branch.');
   responseContractRuns.forEach((contract, index) => {
     const stored = contractResponseSnapshots[index].val();
     if (typeof contract.optionIndex === 'number') {
@@ -308,6 +316,7 @@ try {
   assertContract(selfQuestionVoteWasRejected, 'A student was able to upvote their own question.');
   assertContract(questionVote.val() === true, 'Instructor could not receive the student question vote.');
   assertContract(sessionDocument.exists(), 'The prepared session did not persist in Firestore.');
+  assertContract(sessionDocument.data()?.studentsJoined?.includes('E2E0001'), 'The durable session roster did not include the joined student.');
 
   await set(ref(studentRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`), null);
   await set(ref(teacherRealtime, `${roomPath}/dismissedQuestions/1`), true);
@@ -364,13 +373,65 @@ try {
   assertContract(!resetDismissed.exists(), 'Reset did not clear dismissed question records.');
   assertContract(!resetState.child('activeInteraction').exists(), 'Reset did not return the classroom to its starting state.');
 
+  const finalQuestionId = Date.now() * 100 + 9;
+  await set(ref(studentRealtime, `${roomPath}/studentQuestions/${studentUser.uid}/${finalQuestionId}`), {
+    id: finalQuestionId,
+    question: 'Will final question points settle when class ends?',
+    studentUid: studentUser.uid,
+    submittedAt: Date.now(),
+  });
+  await set(ref(studentRealtime, `${roomPath}/questionPointClaims/${studentUser.uid}/question-asked`), {
+    type: 'asked',
+    questionId: finalQuestionId,
+    amount: 1,
+    label: 'Asked a question',
+    createdAt: Date.now(),
+  });
+  await set(ref(teacherRealtime, `${roomPath}/recognizedQuestions/${finalQuestionId}`), true);
+
+  const [questionsBeforeEnd, claimsBeforeEnd, recognizedBeforeEnd] = await Promise.all([
+    get(ref(teacherRealtime, `${roomPath}/studentQuestions`)),
+    get(ref(teacherRealtime, `${roomPath}/questionPointClaims`)),
+    get(ref(teacherRealtime, `${roomPath}/recognizedQuestions`)),
+  ]);
+  assertContract(questionsBeforeEnd.exists(), 'Instructor could not read questions during final settlement.');
+  assertContract(claimsBeforeEnd.child(`${studentUser.uid}/question-asked`).exists(), 'Instructor could not read question point claims during final settlement.');
+  assertContract(recognizedBeforeEnd.child(String(finalQuestionId)).val() === true, 'Instructor could not read recognized questions during final settlement.');
+
+  await update(ref(teacherRealtime), {
+    [`${roomPath}/questionPointClaims/${studentUser.uid}/question-discussed`]: {
+      type: 'discussed',
+      questionId: finalQuestionId,
+      amount: 3,
+      label: 'Question discussed in class',
+      createdAt: Date.now(),
+    },
+  });
+  await set(ref(teacherRealtime, `${roomPath}/meta/status`), 'ended');
+  await set(ref(teacherRealtime, `${roomPath}/meta/updatedAt`), Date.now());
+  await set(ref(teacherRealtime, `liveJoinCodes/${sessionCode}/status`), 'ended');
+  await updateDoc(doc(teacherDb, 'sessions', sessionId), { active: false, endedAt: serverTimestamp() });
+
+  const [endedMeta, endedJoinCode, discussedClaim, endedSession] = await Promise.all([
+    get(ref(teacherRealtime, `${roomPath}/meta`)),
+    get(ref(teacherRealtime, `liveJoinCodes/${sessionCode}`)),
+    get(ref(teacherRealtime, `${roomPath}/questionPointClaims/${studentUser.uid}/question-discussed`)),
+    getDoc(doc(teacherDb, 'sessions', sessionId)),
+  ]);
+  assertContract(endedMeta.val()?.status === 'ended', 'The live classroom was not marked ended.');
+  assertContract(endedJoinCode.val()?.status === 'ended', 'The student join record was not marked ended.');
+  assertContract(discussedClaim.val()?.amount === 3, 'Final instructor question points were not saved.');
+  assertContract(endedSession.data()?.active === false, 'The prepared session record remained active after ending.');
+
   console.log('PASS Instructor created a production classroom.');
   console.log('PASS Student resolved the join code and read the live activity.');
   console.log('PASS Pulse, poll, quiz, peer learning, open response, word cloud, and group work crossed the production rules.');
   console.log('PASS The shared clock correctly rejected an unexpected student response.');
   console.log('PASS Instructor received the student records.');
+  console.log('PASS Progress can read attendance and responses, with a durable session roster fallback.');
   console.log('PASS Dismissed questions reject new student votes.');
   console.log('PASS Session reset cleared collected data while preserving attendance and presence.');
+  console.log('PASS Session ending settled final question points and closed both live records.');
 } finally {
   if (teacherUser) {
     await Promise.allSettled([

@@ -250,7 +250,8 @@ export async function endInstructorClassroom(ownerUid: string, sessionId: string
   const instructor = auth.currentUser;
   if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) throw new Error('Instructor sign-in required.');
   await settleQuestionPointClaims(ownerUid, sessionId).catch((error) => {
-    console.error('Question points could not be settled before class ended:', error);
+    const reason = error instanceof Error ? error.message : 'Unknown database response';
+    console.warn(`Final question points were not settled. Class ending will continue. ${reason}`);
   });
   const metaRef = ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/meta`);
   const currentSnapshot = await get(metaRef);
@@ -370,14 +371,17 @@ export async function getInstructorClassroomRecords(
   if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) {
     throw new Error('Instructor sign-in required.');
   }
-  const roomSnapshot = await get(ref(realtimeDb, roomPath(ownerUid, sessionId)));
-  const room = roomSnapshot.val() as {
-    attendanceClaims?: Record<string, StoredAttendanceClaim>;
-    responses?: Record<string, Record<string, StoredLiveResponse>>;
-  } | null;
+  // Read the protected branches directly. Realtime Database rules are not
+  // filters, so reading their parent room is denied even when the instructor
+  // is allowed to read each branch.
+  const attendanceSnapshot = await get(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/attendanceClaims`));
+  const responsesSnapshot = await get(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/responses`)).catch((error) => {
+    console.error('Live responses could not be loaded for progress:', error);
+    return null;
+  });
   return {
-    attendance: room?.attendanceClaims || {},
-    responses: room?.responses || {},
+    attendance: (attendanceSnapshot.val() || {}) as Record<string, StoredAttendanceClaim>,
+    responses: (responsesSnapshot?.val() || {}) as Record<string, Record<string, StoredLiveResponse>>,
   };
 }
 
