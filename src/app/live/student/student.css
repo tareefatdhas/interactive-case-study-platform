@@ -21,6 +21,9 @@
   position: relative;
   transform: translateY(0);
   touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
   transition:
     transform 90ms var(--student-press-ease),
@@ -1201,8 +1204,13 @@ body:has(.student-welcome-shell) {
   bottom: 48px;
   left: 0;
   padding: 14px 20px 15px 82px;
+  pointer-events: none;
   background: linear-gradient(180deg, rgba(255, 254, 250, 0), rgba(255, 254, 250, 0.96) 22%, var(--student-paper) 52%);
   animation: student-action-dock-in 180ms ease-out both;
+}
+
+.student-response-action.is-ready .student-send-response {
+  pointer-events: auto;
 }
 
 .student-welcome-content:has(.student-response-action.is-ready) {
@@ -1210,8 +1218,9 @@ body:has(.student-welcome-shell) {
 }
 
 .student-welcome-shell:has(.student-response-action.is-ready) .student-question-launch {
+  --tactile-depth: var(--student-press-depth);
   right: auto;
-  bottom: 63px;
+  bottom: 68px;
   left: 20px;
   width: 50px;
   min-height: 50px;
@@ -1219,6 +1228,9 @@ body:has(.student-welcome-shell) {
   place-items: center;
   padding: 0;
   border-radius: 11px;
+  box-shadow:
+    0 var(--tactile-depth) 0 var(--tactile-base),
+    0 calc(var(--tactile-depth) + 8px) 22px -10px var(--tactile-glow);
 }
 
 .student-welcome-shell:has(.student-response-action.is-ready) .student-question-launch > span {
@@ -1229,6 +1241,13 @@ body:has(.student-welcome-shell) {
   position: absolute;
   top: -6px;
   right: -6px;
+}
+
+.student-welcome-shell:has(.student-response-action.is-ready) .student-question-launch.student-tactile:not(:disabled):active {
+  transform: translateY(var(--tactile-depth));
+  box-shadow:
+    0 0 0 var(--tactile-base),
+    0 3px 7px -6px var(--tactile-glow);
 }
 
 .student-send-response {

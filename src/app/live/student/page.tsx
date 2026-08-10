@@ -1571,6 +1571,23 @@ export default function StudentWelcomePage() {
           ? 'Add to word cloud'
           : 'Send response';
 
+  useEffect(() => {
+    if (!responseReady || interactionSubmitted) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const scrollRegion = document.querySelector<HTMLElement>('.student-welcome-content');
+      const actionDock = document.querySelector<HTMLElement>('.student-response-action.is-ready');
+      if (!scrollRegion || !actionDock) return;
+
+      // The action tray is fixed so it remains reachable. Settle the scroll
+      // region at its reserved bottom space as soon as the tray appears,
+      // keeping the remaining choices above the tray instead of behind it.
+      scrollRegion.scrollTop = scrollRegion.scrollHeight - scrollRegion.clientHeight;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [interactionSubmitted, responseReady, selectedOption]);
+
   if (!classroomStateReady || (!remoteUnavailable && !rewardStateReady) || (remoteEnded && !rewardStateReady)) {
     return <ClassroomStateGate message="Loading the current activity and your private class record." />;
   }

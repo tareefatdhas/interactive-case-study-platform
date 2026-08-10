@@ -125,6 +125,7 @@ test('tapping an answer uses selection styling without a second focus ring', asy
   await expect(submitResponse).toContainText('Send answer B');
   const askQuestion = page.getByRole('button', { name: /^Questions/ });
   await expect(askQuestion).toBeVisible();
+  await page.waitForTimeout(240);
   const submitBox = await submitResponse.boundingBox();
   const askQuestionBox = await askQuestion.boundingBox();
   const viewport = page.viewportSize();
@@ -133,14 +134,38 @@ test('tapping an answer uses selection styling without a second focus ring', asy
   expect(viewport).not.toBeNull();
   expect((submitBox?.y || 0) + (submitBox?.height || 0)).toBeLessThanOrEqual((viewport?.height || 0) - 48);
   expect((askQuestionBox?.x || 0) + (askQuestionBox?.width || 0)).toBeLessThanOrEqual((submitBox?.x || 0) - 8);
+  expect(Math.abs((askQuestionBox?.y || 0) - (submitBox?.y || 0))).toBeLessThanOrEqual(1);
+  const dockTop = await page.locator('.student-response-action.is-ready').evaluate((element) => element.getBoundingClientRect().top);
+  const crossingChoices = await page.getByRole('radio').evaluateAll((choices, boundary) => choices.filter((choice) => {
+    const bounds = choice.getBoundingClientRect();
+    return bounds.top < boundary && bounds.bottom > boundary - 1;
+  }).length, dockTop);
+  expect(crossingChoices).toBe(0);
   const selectedStyle = await answer.evaluate((element) => {
     const styles = window.getComputedStyle(element);
     return {
       outlineStyle: styles.outlineStyle,
       selected: element.classList.contains('is-selected'),
+      userSelect: styles.userSelect,
     };
   });
-  expect(selectedStyle).toEqual({ outlineStyle: 'none', selected: true });
+  expect(selectedStyle).toEqual({ outlineStyle: 'none', selected: true, userSelect: 'none' });
+
+  const nextAnswer = page.getByRole('radio').nth(2);
+  await nextAnswer.tap();
+  await expect(nextAnswer).toHaveAttribute('aria-checked', 'true');
+  await answer.tap();
+  await expect(answer).toHaveAttribute('aria-checked', 'true');
+
+  await askQuestion.tap();
+  const questionSheet = page.getByRole('dialog', { name: 'Ask without interrupting.' });
+  await expect(questionSheet).toBeVisible();
+  await questionSheet.getByRole('button', { name: 'Close questions' }).tap();
+  await expect(questionSheet).toBeHidden();
+  await expect(answer).toHaveAttribute('aria-checked', 'true');
+  await expect(submitResponse).toBeVisible();
+  await submitResponse.tap();
+  await expect(page.getByText('Response sent')).toBeVisible();
 
   await page.goto('/live/student');
   const keyboardFocusedAnswer = page.getByRole('radio').first();
