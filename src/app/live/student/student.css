@@ -448,47 +448,138 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   --transport-color: #6654e9;
   --transport-x: 50vw;
   --transport-y: 72vh;
+  --transport-progress: 12;
   position: fixed;
-  z-index: 40;
+  z-index: 60;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 6%, color-mix(in srgb, var(--transport-color) 12%, transparent), transparent 29%),
-    rgba(255, 254, 250, 0.08);
+    radial-gradient(ellipse 80% 32% at 50% -4%, color-mix(in srgb, var(--transport-color) 20%, transparent), transparent 72%),
+    rgba(255, 254, 250, 0.14);
+  backdrop-filter: saturate(1.04);
   animation: student-transport-veil 220ms ease-out both;
 }
 
-.student-transport-portal {
+.student-transfer-edge {
   position: absolute;
-  z-index: 3;
-  top: max(14px, env(safe-area-inset-top));
-  left: 50%;
-  display: flex;
-  min-width: 152px;
-  height: 34px;
-  padding: 0 12px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid color-mix(in srgb, var(--transport-color) 22%, white);
-  border-radius: 999px;
-  color: color-mix(in srgb, var(--transport-color) 75%, #101a38);
-  background: rgba(255, 255, 252, 0.9);
-  box-shadow: 0 10px 30px rgba(25, 28, 60, 0.1);
-  transform: translateX(-50%);
-  backdrop-filter: blur(16px);
-  font-size: 10px;
-  font-weight: 760;
+  z-index: 4;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: max(76px, calc(env(safe-area-inset-top) + 62px));
+  overflow: hidden;
+  opacity: .88;
+  filter: saturate(1.08);
 }
 
-.student-transport-portal i {
-  width: 7px;
-  height: 7px;
+.student-transfer-edge::before,
+.student-transfer-edge::after {
+  content: '';
+  position: absolute;
+  right: -14%;
+  left: -14%;
+  height: 2px;
   border-radius: 50%;
-  background: var(--transport-color);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--transport-color) 10%, transparent);
-  animation: student-portal-listen 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent 5%, color-mix(in srgb, var(--transport-color) 36%, white) 28%, white 50%, color-mix(in srgb, var(--transport-color) 36%, white) 72%, transparent 95%);
+  filter: blur(.4px);
+  transform: scaleX(.62);
+}
+
+.student-transfer-edge::before { top: max(2px, env(safe-area-inset-top)); opacity: .72; }
+.student-transfer-edge::after { top: max(5px, calc(env(safe-area-inset-top) + 3px)); opacity: .28; filter: blur(4px); }
+
+.student-transfer-edge-glow {
+  position: absolute;
+  top: max(-42px, calc(env(safe-area-inset-top) - 45px));
+  left: 50%;
+  width: min(92vw, 620px);
+  height: 104px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--transport-color) 34%, white), color-mix(in srgb, var(--transport-color) 10%, transparent) 46%, transparent 72%);
+  opacity: .58;
+  filter: blur(14px);
+  transform: translateX(-50%) scaleX(.65);
+  animation: student-edge-breathe 1.15s ease-in-out infinite alternate;
+}
+
+.student-transfer-edge-wave {
+  position: absolute;
+  top: max(-58px, calc(env(safe-area-inset-top) - 61px));
+  left: 50%;
+  width: min(98vw, 680px);
+  height: 122px;
+  border: 1.5px solid color-mix(in srgb, var(--transport-color) 54%, white);
+  border-radius: 50%;
+  opacity: .42;
+  transform: translateX(-50%) scaleX(.7);
+}
+
+.student-transfer-edge > span {
+  position: absolute;
+  top: max(1px, env(safe-area-inset-top));
+  left: calc(50% + var(--spark-x, 0px));
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 10px 3px color-mix(in srgb, var(--transport-color) 52%, transparent);
+  opacity: 0;
+  animation: student-edge-spark 1.05s ease-in-out infinite;
+}
+
+.student-transfer-edge > span:nth-of-type(1) { --spark-x: -124px; animation-delay: -780ms; }
+.student-transfer-edge > span:nth-of-type(2) { --spark-x: -62px; animation-delay: -310ms; }
+.student-transfer-edge > span:nth-of-type(3) { --spark-x: 0px; animation-delay: -620ms; }
+.student-transfer-edge > span:nth-of-type(4) { --spark-x: 68px; animation-delay: -90ms; }
+.student-transfer-edge > span:nth-of-type(5) { --spark-x: 132px; animation-delay: -470ms; }
+
+.student-transport-status {
+  position: absolute;
+  z-index: 6;
+  top: max(18px, calc(env(safe-area-inset-top) + 10px));
+  left: 50%;
+  display: flex;
+  min-width: 196px;
+  height: 48px;
+  padding: 0 16px 0 9px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--transport-color) 24%, white);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--transport-color) 75%, #101a38);
+  background: rgba(255, 255, 252, 0.88);
+  box-shadow: 0 12px 38px rgba(25, 28, 60, 0.12), inset 0 1px rgba(255,255,255,.75);
+  transform: translateX(-50%);
+  backdrop-filter: blur(18px) saturate(1.2);
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: -.01em;
+}
+
+.student-transfer-progress {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+}
+
+.student-transfer-progress svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.student-transfer-progress circle { fill: none; stroke: color-mix(in srgb, var(--transport-color) 12%, #e8e7ef); stroke-width: 3; }
+.student-transfer-progress circle.is-progress {
+  stroke: var(--transport-color);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--transport-progress));
+  transition: stroke-dashoffset 180ms cubic-bezier(.22,1,.36,1);
+}
+.student-transfer-progress > i { position: relative; z-index: 1; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--transport-color); font-style: normal; }
+.student-transport.is-gathering .student-transfer-progress > i { width: 6px; height: 6px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--transport-color) 10%, transparent); animation: student-progress-core 850ms ease-in-out infinite; }
+
+.student-transport.is-departing .student-transport-status {
+  animation: student-status-receive 540ms cubic-bezier(0.2, 0.8, 0.2, 1) 480ms both;
 }
 
 .student-transport-orb,
@@ -497,16 +588,16 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   z-index: 2;
   top: var(--transport-y);
   left: var(--transport-x);
-  width: 84px;
-  height: 84px;
-  margin: -42px 0 0 -42px;
-  border-radius: 26px;
+  width: 104px;
+  height: 104px;
+  margin: -52px 0 0 -52px;
+  border-radius: 34px;
 }
 
 .student-transport-orb {
   display: grid;
   place-items: center;
-  padding: 10px;
+  padding: 14px;
   overflow: hidden;
   color: white;
   background:
@@ -514,17 +605,28 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
     var(--transport-color);
   border: 1px solid rgba(255, 255, 255, 0.48);
   box-shadow:
-    0 0 0 12px color-mix(in srgb, var(--transport-color) 10%, transparent),
-    0 22px 55px color-mix(in srgb, var(--transport-color) 34%, transparent);
+    0 0 0 14px color-mix(in srgb, var(--transport-color) 10%, transparent),
+    0 0 42px color-mix(in srgb, var(--transport-color) 22%, transparent),
+    0 26px 68px color-mix(in srgb, var(--transport-color) 38%, transparent);
   animation: student-signal-gather 360ms cubic-bezier(0.18, 0.9, 0.25, 1.15) both;
 }
 
+.student-transport-orb-shine {
+  position: absolute;
+  inset: -30%;
+  background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.38) 47%, transparent 64%);
+  transform: translateX(-60%) rotate(8deg);
+  animation: student-orb-shimmer 920ms ease-in-out infinite;
+}
+
 .student-transport-orb span {
+  position: relative;
+  z-index: 1;
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 780;
   line-height: 1.15;
   text-align: center;
@@ -540,11 +642,13 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
 .student-transport-thread {
   position: absolute;
   z-index: 1;
-  top: 46px;
+  top: 60px;
   left: 50%;
   width: 1px;
-  height: max(0px, calc(var(--transport-y) - 46px));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--transport-color) 30%, transparent), transparent);
+  width: 2px;
+  height: max(0px, calc(var(--transport-y) - 60px));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--transport-color) 48%, white), color-mix(in srgb, var(--transport-color) 14%, transparent) 58%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--transport-color) 28%, transparent);
   transform: scaleY(0);
   transform-origin: bottom;
 }
@@ -557,14 +661,10 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   animation: student-thread-rise 780ms cubic-bezier(0.2, 0.76, 0.24, 1) both;
 }
 
-.student-transport.is-departing .student-transport-portal {
-  animation: student-portal-receive 580ms cubic-bezier(0.2, 0.8, 0.2, 1) 490ms both;
-}
-
 .student-transport-ripple {
   position: absolute;
   z-index: 0;
-  top: 31px;
+  top: max(4px, env(safe-area-inset-top));
   left: 50%;
   width: 72px;
   height: 72px;
@@ -585,7 +685,7 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
 }
 
 .student-transport.is-departing .student-transport-ripple i {
-  animation: student-room-ripple 920ms cubic-bezier(0.16, 0.78, 0.28, 1) 660ms both;
+  animation: student-room-ripple 980ms cubic-bezier(0.16, 0.78, 0.28, 1) 620ms both;
 }
 
 .student-transport.is-departing .student-transport-ripple i:nth-child(2) { animation-delay: 750ms; }
@@ -595,7 +695,9 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   animation: student-signal-fail 460ms ease-out both;
 }
 
-.student-transport.is-failed .student-transport-portal { color: #a94431; border-color: #efb7aa; }
+.student-transport.is-failed .student-transport-status { color: #a94431; border-color: #efb7aa; }
+.student-transport.is-failed .student-transfer-progress > i { background: #b54c38; }
+.student-transport.is-departing .student-transfer-edge { animation: student-edge-arrival 820ms cubic-bezier(.16,1,.3,1) 470ms both; }
 
 @keyframes student-transport-veil {
   from { opacity: 0; }
@@ -615,9 +717,9 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
 
 @keyframes student-signal-depart {
   0% { top: var(--transport-y); left: var(--transport-x); opacity: 1; transform: scale(1); }
-  30% { top: calc(var(--transport-y) - 92px); left: calc(var(--transport-x) + 24px); transform: scale(0.9) rotate(2deg); }
-  76% { top: 78px; left: calc(50% - 12px); opacity: 1; transform: scale(0.56) rotate(-2deg); }
-  100% { top: 31px; left: 50%; opacity: 0; transform: scale(0.16); }
+  28% { top: calc(var(--transport-y) - 108px); left: calc(var(--transport-x) + 28px); transform: scale(0.9) rotate(2deg); }
+  75% { top: 92px; left: calc(50% - 14px); opacity: 1; transform: scale(0.5) rotate(-2deg); }
+  100% { top: max(5px, env(safe-area-inset-top)); left: 50%; opacity: 0; transform: scale(0.12); }
 }
 
 @keyframes student-thread-rise {
@@ -626,9 +728,9 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   100% { opacity: 0; transform: scaleY(1); }
 }
 
-@keyframes student-portal-receive {
+@keyframes student-status-receive {
   0% { transform: translateX(-50%) scale(1); }
-  42% { transform: translateX(-50%) scale(1.055); box-shadow: 0 10px 38px color-mix(in srgb, var(--transport-color) 20%, transparent); }
+  42% { transform: translateX(-50%) scale(1.045); box-shadow: 0 14px 44px color-mix(in srgb, var(--transport-color) 24%, transparent); }
   100% { transform: translateX(-50%) scale(1); }
 }
 
@@ -638,16 +740,94 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   100% { width: 160vmax; height: 160vmax; opacity: 0; }
 }
 
-@keyframes student-portal-listen {
+@keyframes student-progress-core {
   0%, 100% { transform: scale(0.9); opacity: 0.72; }
   50% { transform: scale(1.12); opacity: 1; }
 }
+
+@keyframes student-edge-breathe { to { opacity: .82; transform: translateX(-50%) scaleX(.86); } }
+@keyframes student-edge-spark { 0%, 20%, 100% { opacity: 0; transform: translateY(4px) scale(.45); } 42% { opacity: .9; transform: translateY(0) scale(1); } 72% { opacity: 0; transform: translateY(16px) scale(.65); } }
+@keyframes student-edge-arrival { 0% { filter: brightness(1); } 38% { filter: brightness(1.65); } 100% { filter: brightness(1); } }
+@keyframes student-orb-shimmer { from { transform: translateX(-72%) rotate(8deg); } to { transform: translateX(72%) rotate(8deg); } }
 
 @keyframes student-signal-fail {
   0%, 100% { transform: translateX(0); }
   24% { transform: translateX(-7px); }
   52% { transform: translateX(6px); }
   76% { transform: translateX(-3px); }
+}
+
+body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
+
+.student-effect-preview {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(320px, 430px) minmax(240px, 360px);
+  align-items: center;
+  justify-content: center;
+  gap: 52px;
+  padding: 30px;
+  color: var(--student-ink);
+  background:
+    radial-gradient(circle at 20% 14%, rgba(255, 219, 119, .27), transparent 24%),
+    radial-gradient(circle at 82% 78%, rgba(81, 70, 229, .15), transparent 28%),
+    #f6f4ee;
+}
+
+.student-effect-preview-phone {
+  position: relative;
+  min-height: min(780px, calc(100dvh - 60px));
+  overflow: hidden;
+  border: 1px solid var(--student-line);
+  border-radius: 28px;
+  background: var(--student-paper);
+  box-shadow: 0 28px 80px rgba(16,26,56,.16);
+}
+
+.student-effect-preview-phone > header {
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--student-line);
+}
+
+.student-effect-preview-phone > header > span { font-family: var(--seminar-font-display); font-size: 25px; }
+.student-effect-preview-phone > header > span::after { content: ''; display: inline-block; width: 4px; height: 4px; margin-left: 2px; border-radius: 50%; background: #df664e; }
+.student-effect-preview-phone > header small { display: flex; align-items: center; gap: 8px; color: #2f774a; font-size: 12px; }
+.student-effect-preview-phone > header small i { width: 9px; height: 9px; border-radius: 50%; background: #35a45a; box-shadow: 0 0 0 7px rgba(53,164,90,.1); }
+.student-effect-preview-body { padding: 48px 22px 24px; }
+.student-effect-preview-body h1 { margin: 18px 0 10px; font-family: var(--seminar-font-display); font-size: clamp(42px, 5vw, 56px); font-weight: 480; letter-spacing: -.045em; line-height: .98; }
+.student-effect-preview-body > p { margin: 0 0 28px; color: var(--student-muted); font-size: 14px; }
+.student-effect-preview-choice { min-height: 76px; display: grid; grid-template-columns: 48px minmax(0,1fr) 22px; align-items: center; gap: 13px; margin-bottom: 24px; padding: 0 16px; border: 1px solid #2f73df; border-radius: 15px; color: #182441; background: #edf4ff; box-shadow: 0 6px 0 #76a2ea; }
+.student-effect-preview-choice > span { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; color: white; background: #2f73df; font-family: var(--seminar-font-display); font-size: 25px; }
+.student-effect-preview-choice > strong { font-size: 17px; }
+.student-effect-preview-choice > svg { color: #2f73df; }
+.student-effect-preview-tools { display: flex; justify-content: center; gap: 10px; margin-top: 22px; }
+.student-effect-preview-tools button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border: 1px solid #ddd9ef; border-radius: 10px; color: #575f75; background: white; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.student-effect-preview > aside > small { color: var(--student-violet); font-size: 10px; font-weight: 820; letter-spacing: .1em; text-transform: uppercase; }
+.student-effect-preview > aside h2 { margin: 11px 0 12px; font-family: var(--seminar-font-display); font-size: clamp(42px, 5vw, 64px); font-weight: 480; letter-spacing: -.04em; line-height: .95; }
+.student-effect-preview > aside p { max-width: 320px; margin: 0; color: #676e80; font-size: 14px; line-height: 1.6; }
+
+@media (max-width: 760px) {
+  .student-effect-preview { display: block; padding: 0; background: var(--student-paper); }
+  .student-effect-preview-phone { min-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+  .student-effect-preview > aside { display: none; }
+  .student-effect-preview-body { padding-top: 40px; }
+  .student-effect-preview-body h1 { font-size: clamp(40px, 12vw, 54px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .student-transport { background: rgba(255,254,250,.34); }
+  .student-transfer-edge > span,
+  .student-transfer-edge-wave,
+  .student-transport-thread,
+  .student-transport-origin,
+  .student-transport-ripple,
+  .student-transport-orb-shine { display: none; }
+  .student-transport-orb { top: 92px; left: 50%; opacity: 0; }
+  .student-transfer-edge-glow { opacity: .3; }
 }
 
 .student-reward-arrival {

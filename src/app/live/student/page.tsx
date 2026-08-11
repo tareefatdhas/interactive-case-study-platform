@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UserCircle, UsersThree as Users, X } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
+import ResponseTransferEffect, { type ResponseTransferSignal } from '@/components/student/ResponseTransferEffect';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import {
@@ -113,17 +114,14 @@ function StudentTimerBanner({ timer }: { timer: NonNullable<LessonDisplayState['
 function confirmResponseHaptic() {
   if (typeof navigator === 'undefined' || !navigator.vibrate) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  navigator.vibrate([12, 42, 18]);
+  navigator.vibrate([9, 30, 18]);
 }
 
-type TransportSignal = {
-  id: number;
-  color: string;
-  label: string;
-  x: number;
-  y: number;
-  phase: 'gathering' | 'departing' | 'failed';
-};
+function failResponseHaptic() {
+  if (typeof navigator === 'undefined' || !navigator.vibrate) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  navigator.vibrate([24, 44, 24]);
+}
 
 type PendingQuestionVote = {
   baseline: number;
@@ -183,27 +181,6 @@ function StudentQuietGuide({ id, onAction, onDismiss }: {
         </div>
       </div>
     </aside>
-  );
-}
-
-function StudentTransportSignal({ signal }: { signal: TransportSignal }) {
-  return (
-    <div
-      className={`student-transport is-${signal.phase}`}
-      style={{
-        '--transport-color': signal.color,
-        '--transport-x': `${signal.x}px`,
-        '--transport-y': `${signal.y}px`,
-      } as CSSProperties}
-      role="status"
-      aria-live="polite"
-    >
-      <div className="student-transport-portal"><i /><span>{signal.phase === 'gathering' ? 'Sending to the room' : signal.phase === 'departing' ? 'Added to the room' : 'Could not send'}</span></div>
-      <i className="student-transport-thread" />
-      <div className="student-transport-orb"><span>{signal.label}</span></div>
-      <i className="student-transport-origin" />
-      <div className="student-transport-ripple" aria-hidden="true"><i /><i /><i /></div>
-    </div>
   );
 }
 
@@ -767,7 +744,7 @@ export default function StudentWelcomePage() {
   const [managedRequests, setManagedRequests] = useState<RewardRequest[]>([]);
   const [rewardRequestError, setRewardRequestError] = useState('');
   const [latestReward, setLatestReward] = useState<RewardLedgerEntry | null>(null);
-  const [transportSignal, setTransportSignal] = useState<TransportSignal | null>(null);
+  const [transportSignal, setTransportSignal] = useState<ResponseTransferSignal | null>(null);
   const [questionSheetOpen, setQuestionSheetOpen] = useState(false);
   const [courseSpaceOpen, setCourseSpaceOpen] = useState(false);
   const [courseView, setCourseView] = useState<'home' | 'standing' | 'rewards'>('home');
@@ -832,7 +809,7 @@ export default function StudentWelcomePage() {
 
   const beginTransport = (color: string, label: string, origin?: HTMLElement) => {
     const bounds = origin?.getBoundingClientRect();
-    const signal: TransportSignal = {
+    const signal: ResponseTransferSignal = {
       id: Date.now(),
       color,
       label: label.trim().slice(0, 32) || 'Your response',
@@ -852,6 +829,7 @@ export default function StudentWelcomePage() {
 
   const failTransport = (id: number) => {
     setTransportSignal((current) => current?.id === id ? { ...current, phase: 'failed' } : current);
+    failResponseHaptic();
     window.setTimeout(() => setTransportSignal((current) => current?.id === id ? null : current), 700);
   };
 
@@ -1993,7 +1971,7 @@ export default function StudentWelcomePage() {
         </StudentCourseSheet>
       )}
 
-      {transportSignal && <StudentTransportSignal key={transportSignal.id} signal={transportSignal} />}
+      {transportSignal && <ResponseTransferEffect key={transportSignal.id} signal={transportSignal} />}
 
       {questionRewardNotice && <div className="student-question-reward-toast" role="status"><Sparkles size={18} /><span><strong>+{questionRewardNotice.amount} points</strong>{questionRewardNotice.label}</span></div>}
 
