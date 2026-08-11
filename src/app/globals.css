@@ -2444,20 +2444,25 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .classroom-stage[data-phase='arrived'] .stage-phone-send { opacity: 0; }
 .stage-replay {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  display: inline-flex;
-  min-height: 30px;
+  right: 0;
+  bottom: 1px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
   align-items: center;
-  margin-top: 0.7rem;
-  border: 0;
+  border: 1px solid #d9d6fb;
+  border-radius: 9px;
   padding: 0;
-  background: transparent;
+  background: white;
   color: var(--seminar-violet);
-  font-size: 0.6rem;
-  font-weight: 800;
   cursor: pointer;
+  box-shadow: 0 6px 16px -12px rgba(16,26,56,.55);
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
 }
+.stage-replay:hover { border-color: #b8b2f4; background: #f7f5ff; transform: translateY(-1px); }
+.stage-replay:active { transform: translateY(1px); }
+.stage-replay svg { width: 15px; height: 15px; }
 .stage-replay:disabled { pointer-events: none; }
 .stage-new-response-dot { animation: stage-new-dot 760ms cubic-bezier(0.16,1,0.3,1) both !important; }
 

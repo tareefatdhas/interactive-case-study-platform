@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ArrowCounterClockwise,
   Broadcast as Radio,
   CaretRight as ChevronRight,
   ChatCircleDots as MessageCircleQuestion,
@@ -216,8 +217,10 @@ export default function ClassroomStage() {
               <span className="seminar-eyebrow">Response sent</span>
               <strong className="seminar-display">See what the class is thinking.</strong>
               <div className="stage-phone-answer"><Radio /><span>Your answer</span><b>One more example</b></div>
-              <div className="stage-phone-wait"><Users /><span><b>While the room responds</b><small>Upvote a question you want discussed.</small></span></div>
-              <button type="button" className="stage-replay" onClick={playResponse} disabled={!showReceivedState} tabIndex={showReceivedState ? 0 : -1}>Replay response</button>
+              <div className="stage-phone-wait"><Users /><span><b>While the room responds</b></span></div>
+              <button type="button" className="stage-replay" onClick={playResponse} disabled={!showReceivedState} tabIndex={showReceivedState ? 0 : -1} aria-label="Replay response" title="Replay response">
+                <ArrowCounterClockwise aria-hidden="true" />
+              </button>
             </div>
           </div>
         </div>
