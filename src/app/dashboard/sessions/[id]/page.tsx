@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use, useMemo } from 'react';
+import { useState, useEffect, use, useMemo, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
@@ -533,16 +533,23 @@ export default function SessionPage({ params }: SessionPageProps) {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <div className="p-6 lg:p-8">
+        <div className="instructor-page p-4 sm:p-6 lg:p-8">
           {/* Header */}
-          <div className="mb-8">
-            <Link href={session?.courseId ? `/dashboard/classes/${session.courseId}` : '/dashboard/sessions'} className="seminar-focus mb-5 inline-flex items-center gap-2 rounded-lg text-sm font-semibold text-[#697087] hover:text-[#101a38]"><ArrowLeft className="h-4 w-4" /> {session?.courseName || 'All sessions'}</Link>
+          <section className="session-hero mb-8 p-5 sm:p-6 lg:p-7">
+            <Link href={session?.courseId ? `/dashboard/classes/${session.courseId}` : '/dashboard/sessions'} className="seminar-focus mb-6 inline-flex min-h-9 items-center gap-2 rounded-lg text-sm font-semibold text-[#697087] transition-colors hover:text-[#5146e5]"><ArrowLeft className="h-4 w-4" /> {session?.courseName || 'All sessions'}</Link>
             <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <p className="seminar-eyebrow mb-2">{session?.courseCode || 'Class session'}</p>
-                <h1 className="seminar-display text-4xl text-[#101a38]">{session?.title || caseStudy?.title || 'Class session'}</h1>
-                <p className="text-gray-600 mt-1">
-                  {session?.courseName ? `${session.courseName} · ` : ''}{session?.sessionCode} · {session?.active ? 'Live' : 'Prepared'}
+                <h1 className="seminar-display max-w-4xl text-4xl leading-[1.04] text-[#101a38] sm:text-[2.8rem]">{session?.title || caseStudy?.title || 'Class session'}</h1>
+                <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[#697087]">
+                  {session?.courseName && <span>{session.courseName}</span>}
+                  <span aria-hidden="true">·</span>
+                  <span className="font-mono text-xs font-bold tracking-[0.08em] text-[#313950]">{session?.sessionCode}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className={`inline-flex items-center gap-1.5 font-semibold ${session?.active ? 'text-[#287a43]' : 'text-[#697087]'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${session?.active ? 'bg-[#3aa45a]' : 'bg-[#a5a9b6]'}`} aria-hidden="true" />
+                    {session?.active ? 'Live' : 'Prepared'}
+                  </span>
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -581,7 +588,7 @@ export default function SessionPage({ params }: SessionPageProps) {
               </div>
             </div>
             {courseSessions.length > 1 && (
-              <nav aria-label="Move between class sessions" className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-[#e3e5ed] bg-[#faf9ff] p-2.5 sm:grid-cols-[128px_minmax(0,1fr)_128px] sm:items-center">
+              <nav aria-label="Move between class sessions" className="mt-7 grid grid-cols-2 gap-2 rounded-2xl border border-[#e3e5ed] bg-[#f8f7fb] p-2.5 sm:grid-cols-[128px_minmax(0,1fr)_128px] sm:items-center">
                 {previousSession ? (
                   <Link
                     href={`/dashboard/sessions/${previousSession.id}`}
@@ -626,20 +633,20 @@ export default function SessionPage({ params }: SessionPageProps) {
                 )}
               </nav>
             )}
-          </div>
+          </section>
 
-          <div className="grid lg:grid-cols-3 gap-8">
+          <div className="grid gap-8 2xl:grid-cols-3">
             {/* Main Content */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="space-y-6 2xl:col-span-2">
               {/* Stats */}
-              <div className="grid md:grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center">
-                      <Users className="h-8 w-8 text-blue-600" />
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-600">Students Joined</p>
-                        <p className="text-2xl font-bold text-gray-900">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card className="session-metric-card" style={{ '--metric-tint': '#e9f1ff' } as CSSProperties}>
+                  <CardContent className="p-4 sm:p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="session-metric-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#edf3ff] text-[#2f73df]"><Users className="h-5 w-5" /></span>
+                      <div className="relative z-10 min-w-0">
+                        <p className="text-xs font-semibold text-[#697087]">Students joined</p>
+                        <p className="mt-0.5 text-2xl font-bold tabular-nums text-[#101a38]">
                           {session?.studentsJoined?.length || 0}
                         </p>
                       </div>
@@ -647,15 +654,15 @@ export default function SessionPage({ params }: SessionPageProps) {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center">
-                      <BarChart className="h-8 w-8 text-green-600" />
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-600">
-                          {session?.sessionType === 'standalone' ? 'Avg Participation' : 'Avg Progress'}
+                <Card className="session-metric-card" style={{ '--metric-tint': '#e6f6eb' } as CSSProperties}>
+                  <CardContent className="p-4 sm:p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="session-metric-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eaf8ee] text-[#29954a]"><BarChart className="h-5 w-5" /></span>
+                      <div className="relative z-10 min-w-0">
+                        <p className="text-xs font-semibold text-[#697087]">
+                          {session?.sessionType === 'standalone' ? 'Avg participation' : 'Avg progress'}
                         </p>
-                        <p className="text-2xl font-bold text-gray-900">
+                        <p className="mt-0.5 text-2xl font-bold tabular-nums text-[#101a38]">
                           {displayedAverage}%
                         </p>
                       </div>
@@ -663,13 +670,13 @@ export default function SessionPage({ params }: SessionPageProps) {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center">
-                      <CheckCircle className="h-8 w-8 text-purple-600" />
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-600">Responses</p>
-                        <p className="text-2xl font-bold text-gray-900">
+                <Card className="session-metric-card" style={{ '--metric-tint': '#eeebff' } as CSSProperties}>
+                  <CardContent className="p-4 sm:p-5">
+                    <div className="flex items-center gap-3">
+                      <span className="session-metric-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f0efff] text-[#5146e5]"><CheckCircle className="h-5 w-5" /></span>
+                      <div className="relative z-10 min-w-0">
+                        <p className="text-xs font-semibold text-[#697087]">Responses</p>
+                        <p className="mt-0.5 text-2xl font-bold tabular-nums text-[#101a38]">
                           {session?.sessionType === 'standalone' ? standaloneResponseCount : responses.length}
                         </p>
                       </div>
@@ -679,7 +686,7 @@ export default function SessionPage({ params }: SessionPageProps) {
               </div>
 
               {session?.sessionType === 'standalone' && participationSummary && participationSummary.interactions.length > 0 && (
-                <Card>
+                <Card className="session-primary-card">
                   <CardHeader>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                       <div>
@@ -700,7 +707,7 @@ export default function SessionPage({ params }: SessionPageProps) {
               )}
 
               {/* Prepared content and interactions */}
-              <Card>
+              <Card className="session-primary-card">
                 <CardHeader>
                   <CardTitle>{session?.sessionType === 'standalone' ? 'Prepared interactions' : 'Section management'}</CardTitle>
                   <CardDescription>
@@ -896,28 +903,30 @@ export default function SessionPage({ params }: SessionPageProps) {
             </div>
 
             {/* Sidebar */}
-            <div className="space-y-6">
+            <aside className="grid gap-6 md:grid-cols-2 2xl:sticky 2xl:top-6 2xl:block 2xl:self-start 2xl:space-y-6">
               {/* QR Code */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <QrCode className="w-5 h-5 mr-2" />
-                    Student Access
+              <Card className="student-access-card overflow-hidden">
+                <CardHeader className="border-b border-[#eceef3] bg-[#faf9ff] pb-5">
+                  <CardTitle className="flex items-center gap-2 text-[1.65rem]">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#5146e5] shadow-[0_8px_20px_-14px_rgba(81,70,229,0.7)]"><QrCode className="h-[18px] w-[18px]" /></span>
+                    Student access
                   </CardTitle>
+                  <CardDescription>Keep this ready when students need to join.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
+                <CardContent className="p-5 sm:p-6">
+                  <div className="space-y-5">
                     <div className="text-center">
-                      <div className="bg-white p-4 rounded-lg border inline-block">
+                      <div className="inline-block rounded-2xl border border-[#dfe1ea] bg-white p-4 shadow-[0_14px_34px_-26px_rgba(16,26,56,0.52)]">
                         <QRCode 
                           value={joinUrl}
-                          size={150}
+                          size={176}
                         />
                       </div>
                     </div>
 
                     <div className="text-center">
-                      <div className="text-2xl font-bold font-mono text-gray-900 mb-2">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8a90a2]">Class code</p>
+                      <div className="student-access-code seminar-display mb-3 mt-1 text-3xl text-[#101a38]">
                         {session?.sessionCode}
                       </div>
                       <Button
@@ -926,26 +935,25 @@ export default function SessionPage({ params }: SessionPageProps) {
                         size="sm"
                         className="text-xs"
                       >
-                        <Copy className="w-3 h-3 mr-1" />
-                        Copy Code
+                        <Copy className="mr-1.5 h-3.5 w-3.5" />
+                        Copy code
                       </Button>
                     </div>
 
-                    <div className="text-center space-y-2">
-                      <p className="text-xs text-gray-600">
-                        Students can join at:
-                      </p>
-                      <div className="flex gap-2">
-                        <code className="text-xs bg-gray-100 px-2 py-1 rounded flex-1">
-                          {process.env.NEXT_PUBLIC_APP_URL}/join
+                    <div className="rounded-xl bg-[#f8f7fb] p-3">
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[#8a90a2]">Join at</p>
+                      <div className="flex items-center gap-2">
+                        <code className="min-w-0 flex-1 truncate text-xs font-semibold text-[#313950]">
+                          {appUrl}/join
                         </code>
                         <Button
                           onClick={copyJoinUrl}
                           variant="outline"
                           size="sm"
-                          className="px-2"
+                          className="h-9 min-h-9 px-2.5"
+                          aria-label="Copy student join link"
                         >
-                          <Copy className="w-3 h-3" />
+                          <Copy className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
@@ -954,43 +962,43 @@ export default function SessionPage({ params }: SessionPageProps) {
               </Card>
 
               {/* Session Info */}
-              <Card>
+              <Card className="session-primary-card">
                 <CardHeader>
-                  <CardTitle>Session Details</CardTitle>
+                  <CardTitle className="text-[1.65rem]">Session details</CardTitle>
+                  <CardDescription>The setup students and the classroom display use.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Status:</span>
-                      <span className={`font-medium ${
-                        session?.active ? 'text-green-600' : 'text-gray-600'
-                      }`}>
-                        {session?.active ? 'Active' : 'Inactive'}
-                      </span>
+                  <dl className="divide-y divide-[#eceef3] text-sm">
+                    <div className="flex items-center justify-between py-3 first:pt-0">
+                      <dt className="text-[#697087]">Status</dt>
+                      <dd className={`inline-flex items-center gap-1.5 font-semibold ${session?.active ? 'text-[#287a43]' : 'text-[#697087]'}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${session?.active ? 'bg-[#3aa45a]' : 'bg-[#a5a9b6]'}`} aria-hidden="true" />
+                        {session?.active ? 'Live' : 'Prepared'}
+                      </dd>
                     </div>
                     {session?.sessionType === 'standalone' ? (
                       <>
-                        <div className="flex justify-between"><span className="text-gray-600">Interactions:</span><span className="font-medium">{session.interactions?.length || 0}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-600">Presentation:</span><span className="font-medium">Separate</span></div>
+                        <div className="flex justify-between py-3"><dt className="text-[#697087]">Activities</dt><dd className="font-semibold tabular-nums text-[#101a38]">{session.interactions?.length || 0}</dd></div>
+                        <div className="flex justify-between py-3"><dt className="text-[#697087]">Slides</dt><dd className="font-semibold text-[#101a38]">Stay separate</dd></div>
                       </>
                     ) : (
                       <>
-                        <div className="flex justify-between"><span className="text-gray-600">Sections:</span><span className="font-medium">{caseStudy?.sections.length}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-600">Total points:</span><span className="font-medium">{caseStudy?.totalPoints}</span></div>
+                        <div className="flex justify-between py-3"><dt className="text-[#697087]">Sections</dt><dd className="font-semibold tabular-nums text-[#101a38]">{caseStudy?.sections.length}</dd></div>
+                        <div className="flex justify-between py-3"><dt className="text-[#697087]">Total points</dt><dd className="font-semibold tabular-nums text-[#101a38]">{caseStudy?.totalPoints}</dd></div>
                       </>
                     )}
                     {session?.createdAt && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Created:</span>
-                        <span className="font-medium">
-                          {new Date(session.createdAt.seconds * 1000).toLocaleString()}
-                        </span>
+                      <div className="flex items-start justify-between gap-4 py-3 last:pb-0">
+                        <dt className="text-[#697087]">Created</dt>
+                        <dd className="text-right font-semibold text-[#101a38]">
+                          {new Date(session.createdAt.seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                        </dd>
                       </div>
                     )}
-                  </div>
+                  </dl>
                 </CardContent>
               </Card>
-            </div>
+            </aside>
           </div>
           {toast && <div className="fixed bottom-5 right-5 z-[80] rounded-xl bg-[#101a38] px-4 py-3 text-sm font-semibold text-white shadow-xl" role="status">{toast}</div>}
           <Dialog
