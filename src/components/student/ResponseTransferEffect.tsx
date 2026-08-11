@@ -72,11 +72,13 @@ export default function ResponseTransferEffect({ signal, contained = false }: { 
     if (signal.phase !== 'arrived') return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    // A full-surface SVG displacement filter is visually effective on desktop,
-    // but it forces mobile WebKit to repaint most of the student interface on
-    // every frame. The mobile effect keeps the same color bloom and expanding
-    // ripples in CSS, which Safari can composite without rerasterizing the page.
-    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return;
+    const touchSurface = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+    // Keep the full-strength screen displacement on phones. Mobile WebKit gets
+    // a single cached noise octave, while the displacement amplitude and reach
+    // remain identical to desktop. This avoids regenerating a complex noise
+    // texture every frame without weakening the visible surface ripple.
+    if (touchSurface) turbulenceRef.current?.setAttribute('numOctaves', '1');
 
     const root = contained
       ? effectRef.current?.parentElement
@@ -122,7 +124,7 @@ export default function ResponseTransferEffect({ signal, contained = false }: { 
       const verticalFrequency = 0.037 - progress * 0.015;
 
       displacementRef.current?.setAttribute('scale', displacement.toFixed(2));
-      if (!contained) turbulenceRef.current?.setAttribute('baseFrequency', `${horizontalFrequency.toFixed(4)} ${verticalFrequency.toFixed(4)}`);
+      if (!contained && !touchSurface) turbulenceRef.current?.setAttribute('baseFrequency', `${horizontalFrequency.toFixed(4)} ${verticalFrequency.toFixed(4)}`);
 
       if (progress < 1) frame = window.requestAnimationFrame(renderRipple);
       else previous.forEach(({ surface, filter, willChange }) => {
