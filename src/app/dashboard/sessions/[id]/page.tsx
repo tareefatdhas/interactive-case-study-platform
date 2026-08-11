@@ -45,7 +45,12 @@ import {
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { Timestamp } from 'firebase/firestore';
-import { endInstructorClassroom } from '@/lib/firebase/live-classroom';
+import { endInstructorClassroom, getInstructorClassroomRecords } from '@/lib/firebase/live-classroom';
+import {
+  countClassroomResponses,
+  interactionRunSummariesDiffer,
+  reconcileInteractionRuns,
+} from '@/lib/session-response-summary';
 import { getUserFacingError } from '@/lib/user-facing-error';
 
 interface SessionPageProps {
@@ -62,6 +67,7 @@ export default function SessionPage({ params }: SessionPageProps) {
   const [courseSessions, setCourseSessions] = useState<Session[]>([]);
   const [caseStudy, setCaseStudy] = useState<CaseStudy | null>(null);
   const [responses, setResponses] = useState<Response[]>([]);
+  const [standaloneResponseCount, setStandaloneResponseCount] = useState(0);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -85,6 +91,7 @@ export default function SessionPage({ params }: SessionPageProps) {
       setError('');
       setCaseStudy(null);
       setResponses([]);
+      setStandaloneResponseCount(0);
       setStudents([]);
       try {
         const sessionData = await getSession(resolvedParams.id);
@@ -99,7 +106,46 @@ export default function SessionPage({ params }: SessionPageProps) {
           return;
         }
 
-        setSession(sessionData);
+        let hydratedSession = sessionData;
+        if (sessionData.sessionType === 'standalone') {
+          try {
+            const classroomRecords = await getInstructorClassroomRecords(sessionData.teacherId, sessionData.id);
+            const reconciledRuns = reconcileInteractionRuns(
+              sessionData.interactionRuns,
+              classroomRecords.responses,
+              sessionData.interactions,
+            );
+            const joinedStudents = Array.from(new Set([
+              ...(sessionData.studentsJoined || []),
+              ...Object.values(classroomRecords.attendance).map((claim) => claim.studentNumber),
+            ]));
+            hydratedSession = {
+              ...sessionData,
+              interactionRuns: reconciledRuns,
+              studentsJoined: joinedStudents,
+            };
+            setStandaloneResponseCount(countClassroomResponses(classroomRecords.responses));
+
+            if (
+              interactionRunSummariesDiffer(sessionData.interactionRuns, reconciledRuns)
+              || joinedStudents.length !== (sessionData.studentsJoined || []).length
+            ) {
+              await updateSession(sessionData.id, {
+                interactionRuns: reconciledRuns,
+                studentsJoined: joinedStudents,
+              }).catch((summaryError) => {
+                console.warn('Recovered classroom summaries could not be saved:', summaryError);
+              });
+            }
+          } catch (classroomError) {
+            console.warn('Preserved classroom responses could not be reconciled:', classroomError);
+            setStandaloneResponseCount(
+              (sessionData.interactionRuns || []).reduce((total, run) => total + run.responseCount, 0),
+            );
+          }
+        }
+
+        setSession(hydratedSession);
 
         const teacherSessions = await getSessionsByTeacher(sessionData.teacherId);
         const relatedSessions = teacherSessions
@@ -613,7 +659,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                       <div className="ml-3">
                         <p className="text-sm font-medium text-gray-600">Responses</p>
                         <p className="text-2xl font-bold text-gray-900">
-                          {responses.length}
+                          {session?.sessionType === 'standalone' ? standaloneResponseCount : responses.length}
                         </p>
                       </div>
                     </div>

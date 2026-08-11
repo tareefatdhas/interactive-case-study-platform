@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:live-contract": "node scripts/verify-live-firebase-contract.mjs",
+    "test:session-response-summary": "tsx scripts/verify-session-response-summary.ts",
     "test:course-sources": "node scripts/verify-course-source-contract.mjs",
     "test:course-source-api": "node scripts/verify-course-source-api.mjs",
     "check": "npm run typecheck && npm run lint && npm run build && npm run test:e2e",
@@ -71,6 +72,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }

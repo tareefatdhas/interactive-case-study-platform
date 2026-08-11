@@ -26,6 +26,7 @@ import InstructorAvatar from '@/components/teacher/InstructorAvatar';
 import { useAuth } from '@/lib/hooks/useAuth';
 import {
   initializeInstructorClassroom,
+  getInstructorClassroomRecords,
   publishInstructorState,
   subscribeToInstructorDisplayPresence,
   subscribeToInstructorAttendance,
@@ -44,6 +45,7 @@ import {
 } from '@/lib/firebase/live-classroom';
 import { Timestamp } from 'firebase/firestore';
 import type { SessionInteractionRun } from '@/types';
+import { interactionRunSummariesDiffer, reconcileInteractionRuns } from '@/lib/session-response-summary';
 import {
   Activity,
   ArrowRight,
@@ -894,7 +896,20 @@ export default function LiveLessonPrototype() {
 
       const prepared = prepareLiveInteractions(session.interactions);
       if (prepared.length) setSessionPlan(prepared);
-      const savedRuns = [...(session.interactionRuns || [])].sort((a, b) => a.startedAt - b.startedAt);
+      const classroomRecords = await getInstructorClassroomRecords(session.teacherId, sessionId).catch((recordsError) => {
+        console.warn('Preserved activity responses could not be reconciled:', recordsError);
+        return null;
+      });
+      const savedRuns = reconcileInteractionRuns(
+        session.interactionRuns,
+        classroomRecords?.responses || {},
+        session.interactions,
+      );
+      if (interactionRunSummariesDiffer(session.interactionRuns, savedRuns)) {
+        await updateSession(sessionId, { interactionRuns: savedRuns }).catch((summaryError) => {
+          console.warn('Recovered activity summaries could not be saved:', summaryError);
+        });
+      }
 
       const remoteState = await initializeInstructorClassroom(sessionId, context, {
         ...displayStateRef.current,
@@ -952,7 +967,7 @@ export default function LiveLessonPrototype() {
       setActiveQuestion(remoteState.featuredQuestionId || null);
       setLiveTimer(remoteState.timer || null);
       if (!session.active) {
-        await updateSession(sessionId, { active: true, startedAt: Timestamp.now() });
+        await updateSession(sessionId, { active: true, startedAt: Timestamp.now(), lastActivityAt: Timestamp.now() });
       }
       if (!cancelled) {
         setConnectedStudents(0);
@@ -969,6 +984,21 @@ export default function LiveLessonPrototype() {
     });
     return () => { cancelled = true; };
   }, [authLoading, user]);
+
+  useEffect(() => {
+    if (!remoteClassroomReady || !sessionContext.sessionId) return;
+
+    const sessionId = sessionContext.sessionId;
+    const recordHeartbeat = () => {
+      import('@/lib/firebase/firestore')
+        .then(({ updateSessionActivity }) => updateSessionActivity(sessionId))
+        .catch((heartbeatError) => console.warn('The live session heartbeat could not be saved:', heartbeatError));
+    };
+
+    recordHeartbeat();
+    const heartbeat = window.setInterval(recordHeartbeat, 60 * 1000);
+    return () => window.clearInterval(heartbeat);
+  }, [remoteClassroomReady, sessionContext.sessionId]);
 
   useEffect(() => {
     if (!courseIdRef.current || !formedTeams.length) return;
