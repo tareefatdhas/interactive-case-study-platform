@@ -31,11 +31,12 @@ export default function SessionsPage() {
     const loadData = async () => {
       if (user) {
         try {
-          // Load case studies (including archived ones for session display) and sessions
-          const [studies, sessionsData] = await Promise.all([
+          // Reconcile stale live flags before showing session status.
+          const [studies] = await Promise.all([
             getCaseStudiesByTeacher(user.uid, true), // Include archived for session references
-            getSessionsByTeacher(user.uid)
+            checkAndTimeoutInactiveSessions(user.uid),
           ]);
+          const sessionsData = await getSessionsByTeacher(user.uid);
           
           setCaseStudies(studies);
           setSessions(sessionsData);

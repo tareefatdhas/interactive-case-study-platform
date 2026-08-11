@@ -294,7 +294,7 @@ export const releaseNextSection = async (sessionId: string, nextSectionIndex: nu
 };
 
 export const checkAndTimeoutInactiveSessions = async (teacherId: string) => {
-  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
   
   // Get all active sessions first, then filter in JavaScript
   const q = query(
@@ -309,9 +309,12 @@ export const checkAndTimeoutInactiveSessions = async (teacherId: string) => {
   
   querySnapshot.docs.forEach(doc => {
     const data = doc.data();
-    const lastActivity = data.lastActivityAt?.toDate?.() || data.createdAt?.toDate?.() || new Date(0);
+    const lastActivity = data.lastActivityAt?.toDate?.()
+      || data.startedAt?.toDate?.()
+      || data.createdAt?.toDate?.()
+      || new Date(0);
     
-    if (lastActivity < thirtyMinutesAgo) {
+    if (lastActivity < fiveMinutesAgo) {
       batch.update(doc.ref, {
         active: false,
         endedAt: new Date()

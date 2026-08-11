@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { checkAndTimeoutInactiveSessions, getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
@@ -46,8 +46,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([getCoursesByTeacher(user.uid), getSessionsByTeacher(user.uid)])
-      .then(([teacherCourses, teacherSessions]) => {
+    Promise.all([getCoursesByTeacher(user.uid), checkAndTimeoutInactiveSessions(user.uid)])
+      .then(async ([teacherCourses]) => {
+        const teacherSessions = await getSessionsByTeacher(user.uid);
         setCourses(teacherCourses.filter((course) => !course.archived));
         setSessions(teacherSessions);
       })
@@ -64,7 +65,7 @@ export default function DashboardPage() {
 
   const liveSession = sessions.find((session) => session.active);
   const upcomingSession = [...sessions]
-    .filter((session) => !session.active && session.scheduledFor && sessionDate(session).getTime() >= Date.now())
+    .filter((session) => !session.active && !session.endedAt && session.scheduledFor && sessionDate(session).getTime() >= Date.now())
     .sort((a, b) => sessionDate(a).getTime() - sessionDate(b).getTime())[0];
   const nextSession = liveSession || upcomingSession;
   const nextCourse = nextSession
