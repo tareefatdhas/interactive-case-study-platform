@@ -74,11 +74,13 @@ export default function ResponseTransferEffect({ signal, contained = false }: { 
 
     const touchSurface = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
-    // Keep the full-strength screen displacement on phones. Mobile WebKit gets
-    // a single cached noise octave, while the displacement amplitude and reach
-    // remain identical to desktop. This avoids regenerating a complex noise
-    // texture every frame without weakening the visible surface ripple.
-    if (touchSurface) turbulenceRef.current?.setAttribute('numOctaves', '1');
+    // Give phones a broader, more physical surface wave without asking mobile
+    // WebKit to regenerate multi-octave noise on every frame. The lower noise
+    // frequency reads as a sheet of glass flexing instead of visual static.
+    if (touchSurface) {
+      turbulenceRef.current?.setAttribute('numOctaves', '1');
+      turbulenceRef.current?.setAttribute('baseFrequency', '0.0055 0.022');
+    }
 
     const root = contained
       ? effectRef.current?.parentElement
@@ -109,7 +111,7 @@ export default function ResponseTransferEffect({ signal, contained = false }: { 
     let frame = 0;
     let startedAt = 0;
     let lastRenderedAt = 0;
-    const duration = contained ? 920 : 1040;
+    const duration = contained ? 920 : touchSurface ? 1180 : 1040;
     const renderRipple = (now: number) => {
       if (!startedAt) startedAt = now;
       if (contained && lastRenderedAt && now - lastRenderedAt < 31) {
@@ -118,8 +120,10 @@ export default function ResponseTransferEffect({ signal, contained = false }: { 
       }
       lastRenderedAt = now;
       const progress = Math.min(1, (now - startedAt) / duration);
-      const envelope = Math.sin(progress * Math.PI) * Math.pow(1 - progress, 0.18);
-      const displacement = (contained ? 7.2 : 23) * envelope;
+      const peakShape = touchSurface ? 0.72 : 1;
+      const tailShape = touchSurface ? 0.08 : 0.18;
+      const envelope = Math.pow(Math.sin(progress * Math.PI), peakShape) * Math.pow(1 - progress, tailShape);
+      const displacement = (contained ? 7.2 : touchSurface ? 34 : 23) * envelope;
       const horizontalFrequency = 0.006 + progress * 0.004;
       const verticalFrequency = 0.037 - progress * 0.015;
 
