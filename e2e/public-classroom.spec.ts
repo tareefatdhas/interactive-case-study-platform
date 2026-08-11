@@ -727,6 +727,8 @@ test('group work collects one group submission beside a shared clock', async ({ 
   await expect(studentPage.getByRole('timer', { name: /Group work/ })).toBeVisible();
   await studentPage.getByRole('textbox', { name: 'Your group response' }).fill('The platform depends on one payment provider.');
   await studentPage.getByRole('button', { name: 'Send group response' }).click();
+  await expect(studentPage.getByRole('status', { name: 'Reaching the room' })).toBeVisible();
+  await expect(studentPage.getByRole('status', { name: 'Response joined the room' })).toBeVisible();
 
   await expect(remotePage.getByText('team submissions')).toBeVisible();
   await expect(consolePage.getByText('The platform depends on one payment provider.')).toBeVisible();
@@ -848,6 +850,8 @@ test('a short word answer grows into the live class word cloud', async ({ browse
   await expect(studentPage.getByRole('textbox', { name: 'Your word or short phrase' })).toBeVisible();
   await studentPage.getByRole('textbox', { name: 'Your word or short phrase' }).fill('Trust');
   await studentPage.getByRole('button', { name: 'Add to word cloud' }).click();
+  await expect(studentPage.getByRole('status', { name: 'Reaching the room' })).toBeVisible();
+  await expect(studentPage.getByRole('status', { name: 'Response joined the room' })).toBeVisible();
   await expect(displayPage.locator('.display-word-cloud')).toHaveClass(/is-solo/);
   await expect.poll(async () => Number.parseFloat(await displayPage.locator('.display-word-cloud > span').evaluate((word) => getComputedStyle(word).fontSize))).toBeGreaterThan(90);
   await secondStudentPage.getByRole('textbox', { name: 'Your word or short phrase' }).fill('trust');

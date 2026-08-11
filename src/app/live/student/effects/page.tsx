@@ -3,20 +3,27 @@
 import { ArrowClockwise, Check, PaperPlaneTilt as Send } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import HapticButton from '@/components/student/HapticButton';
-import ResponseTransferEffect, { type ResponseTransferSignal } from '@/components/student/ResponseTransferEffect';
+import ResponseTransferEffect, { RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/student/ResponseTransferEffect';
+import { triggerStudentHaptic } from '@/lib/student-haptics';
 import '../student.css';
 
 export default function StudentEffectsPreview() {
   const [signal, setSignal] = useState<ResponseTransferSignal | null>(null);
   const timers = useRef<number[]>([]);
+  const sourceRef = useRef<HTMLButtonElement | null>(null);
 
   const clearPreview = () => {
     timers.current.forEach((timer) => window.clearTimeout(timer));
     timers.current = [];
+    sourceRef.current?.classList.remove('student-response-source-hidden');
+    sourceRef.current = null;
     setSignal(null);
   };
 
-  useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
+  useEffect(() => () => {
+    timers.current.forEach((timer) => window.clearTimeout(timer));
+    sourceRef.current?.classList.remove('student-response-source-hidden');
+  }, []);
 
   const play = (origin: HTMLButtonElement, outcome: 'sent' | 'failed', delay = 900) => {
     clearPreview();
@@ -26,18 +33,32 @@ export default function StudentEffectsPreview() {
       id,
       color: '#5146e5',
       label: 'Steady',
+      sourceLabel: origin.innerText.trim().replace(/\s+/g, ' '),
       x: bounds.left + bounds.width / 2,
       y: bounds.top + bounds.height / 2,
+      width: bounds.width,
+      height: bounds.height,
       phase: 'gathering',
     };
     setSignal(next);
+    sourceRef.current = origin;
+    window.requestAnimationFrame(() => origin.classList.add('student-response-source-hidden'));
     timers.current.push(window.setTimeout(() => {
       setSignal((current) => current?.id === id ? { ...current, phase: outcome === 'sent' ? 'departing' : 'failed' } : current);
-      if (navigator.vibrate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        navigator.vibrate(outcome === 'sent' ? [9, 30, 18] : [24, 44, 24]);
-      }
+      if (outcome === 'failed') triggerStudentHaptic('error');
+      if (outcome === 'failed') timers.current.push(window.setTimeout(() => origin.classList.remove('student-response-source-hidden'), 180));
     }, delay));
-    timers.current.push(window.setTimeout(() => setSignal((current) => current?.id === id ? null : current), delay + (outcome === 'sent' ? 1400 : 720)));
+    if (outcome === 'sent') {
+      timers.current.push(window.setTimeout(() => {
+        setSignal((current) => current?.id === id ? { ...current, phase: 'arrived' } : current);
+        triggerStudentHaptic('success');
+      }, delay + RESPONSE_TRANSFER_DEPART_MS));
+    }
+    timers.current.push(window.setTimeout(() => {
+      setSignal((current) => current?.id === id ? null : current);
+      origin.classList.remove('student-response-source-hidden');
+      if (sourceRef.current === origin) sourceRef.current = null;
+    }, delay + (outcome === 'sent' ? RESPONSE_TRANSFER_LIFETIME_MS : 720)));
   };
 
   return (

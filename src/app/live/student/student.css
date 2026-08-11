@@ -444,22 +444,29 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   line-height: 1.45;
 }
 
+.student-response-source-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
+
 .student-transport {
   --transport-color: #6654e9;
   --transport-x: 50vw;
   --transport-y: 72vh;
+  --transport-start-width: 196px;
+  --transport-start-height: 56px;
   --transport-progress: 12;
   position: fixed;
   z-index: 60;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  background:
-    radial-gradient(ellipse 80% 32% at 50% -4%, color-mix(in srgb, var(--transport-color) 20%, transparent), transparent 72%),
-    rgba(255, 254, 250, 0.14);
-  backdrop-filter: saturate(1.04);
+  background: transparent;
   animation: student-transport-veil 220ms ease-out both;
 }
+
+.student-ripple-filter-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 .student-transfer-edge {
   position: absolute;
@@ -469,8 +476,12 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   left: 0;
   height: max(76px, calc(env(safe-area-inset-top) + 62px));
   overflow: hidden;
-  opacity: .88;
+  opacity: 0;
   filter: saturate(1.08);
+}
+
+.student-transport.is-departing .student-transfer-edge {
+  animation: student-edge-anticipate 760ms cubic-bezier(.18,.7,.16,1) both;
 }
 
 .student-transfer-edge::before,
@@ -540,7 +551,7 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   top: max(18px, calc(env(safe-area-inset-top) + 10px));
   left: 50%;
   display: flex;
-  min-width: 196px;
+  min-width: 224px;
   height: 48px;
   padding: 0 16px 0 9px;
   align-items: center;
@@ -555,6 +566,9 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   font-size: 11px;
   font-weight: 780;
   letter-spacing: -.01em;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
 }
 
 .student-transfer-progress {
@@ -576,10 +590,12 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   transition: stroke-dashoffset 180ms cubic-bezier(.22,1,.36,1);
 }
 .student-transfer-progress > i { position: relative; z-index: 1; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--transport-color); font-style: normal; }
-.student-transport.is-gathering .student-transfer-progress > i { width: 6px; height: 6px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--transport-color) 10%, transparent); animation: student-progress-core 850ms ease-in-out infinite; }
+.student-transport.is-gathering .student-transfer-progress > i,
+.student-transport.is-departing .student-transfer-progress > i { width: 6px; height: 6px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--transport-color) 10%, transparent); animation: student-progress-core 850ms ease-in-out infinite; }
 
-.student-transport.is-departing .student-transport-status {
-  animation: student-status-receive 540ms cubic-bezier(0.2, 0.8, 0.2, 1) 480ms both;
+.student-transport.is-arrived .student-transport-status {
+  visibility: visible;
+  animation: student-status-receive 540ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .student-transport-orb,
@@ -588,16 +604,91 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   z-index: 2;
   top: var(--transport-y);
   left: var(--transport-x);
-  width: 104px;
-  height: 104px;
-  margin: -52px 0 0 -52px;
-  border-radius: 34px;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 20px;
+}
+
+.student-response-imprint {
+  position: absolute;
+  z-index: 3;
+  top: var(--transport-y);
+  left: var(--transport-x);
+  width: var(--transport-start-width);
+  height: var(--transport-start-height);
+  margin-top: calc(var(--transport-start-height) / -2);
+  margin-left: calc(var(--transport-start-width) / -2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  overflow: hidden;
+  border: 1.5px solid color-mix(in srgb, var(--transport-color) 68%, white);
+  border-radius: 16px;
+  color: color-mix(in srgb, var(--transport-color) 78%, #101a38);
+  background: color-mix(in srgb, var(--transport-color) 9%, rgba(255,255,252,.96));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--transport-color) 15%, transparent);
+  transform-origin: center;
+}
+
+.student-response-imprint span {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-response-imprint i {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 18px 5px color-mix(in srgb, var(--transport-color) 58%, transparent);
+  opacity: 0;
+}
+
+.student-transport.is-gathering .student-response-imprint { animation: student-response-condense 440ms cubic-bezier(.2,.82,.24,1) both; }
+.student-transport.is-gathering .student-response-imprint span { animation: student-response-label-fold 300ms ease-out both; }
+.student-transport.is-gathering .student-response-imprint i { animation: student-response-seed 440ms cubic-bezier(.2,.82,.24,1) both; }
+.student-transport.is-departing .student-response-imprint,
+.student-transport.is-arrived .student-response-imprint,
+.student-transport.is-failed .student-response-imprint { display: none; }
+
+.student-flight-path {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.student-flight-path path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-dasharray: 0 100;
+}
+
+.student-flight-path-glow { stroke-width: 11; filter: blur(7px); }
+.student-flight-path-core { stroke-width: 1.8; filter: drop-shadow(0 0 4px color-mix(in srgb, var(--transport-color) 46%, transparent)); }
+
+.student-transport.is-departing .student-flight-path {
+  opacity: 1;
+}
+
+.student-transport.is-departing .student-flight-path path {
+  animation: student-flight-trace 760ms cubic-bezier(.2,.68,.18,1) both;
 }
 
 .student-transport-orb {
   display: grid;
   place-items: center;
-  padding: 14px;
+  padding: 8px;
   overflow: hidden;
   color: white;
   background:
@@ -605,11 +696,14 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
     var(--transport-color);
   border: 1px solid rgba(255, 255, 255, 0.48);
   box-shadow:
-    0 0 0 14px color-mix(in srgb, var(--transport-color) 10%, transparent),
-    0 0 42px color-mix(in srgb, var(--transport-color) 22%, transparent),
-    0 26px 68px color-mix(in srgb, var(--transport-color) 38%, transparent);
-  animation: student-signal-gather 360ms cubic-bezier(0.18, 0.9, 0.25, 1.15) both;
+    0 0 0 8px color-mix(in srgb, var(--transport-color) 9%, transparent),
+    0 0 28px color-mix(in srgb, var(--transport-color) 24%, transparent),
+    0 18px 40px color-mix(in srgb, var(--transport-color) 30%, transparent);
+  opacity: 0;
 }
+
+.student-transport.is-departing .student-transport-orb,
+.student-transport.is-failed .student-transport-orb { opacity: 1; }
 
 .student-transport-orb-shine {
   position: absolute;
@@ -626,7 +720,7 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  font-size: 12px;
+  font-size: 0;
   font-weight: 780;
   line-height: 1.15;
   text-align: center;
@@ -636,29 +730,27 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
 .student-transport-origin {
   border: 1px solid var(--transport-color);
   border-radius: 50%;
-  animation: student-origin-ring 520ms ease-out both;
+  opacity: 0;
 }
 
-.student-transport-thread {
-  position: absolute;
-  z-index: 1;
-  top: 60px;
-  left: 50%;
-  width: 1px;
-  width: 2px;
-  height: max(0px, calc(var(--transport-y) - 60px));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--transport-color) 48%, white), color-mix(in srgb, var(--transport-color) 14%, transparent) 58%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--transport-color) 28%, transparent);
-  transform: scaleY(0);
-  transform-origin: bottom;
-}
+.student-transport.is-departing .student-transport-origin { animation: student-origin-ring 420ms ease-out both; }
 
 .student-transport.is-departing .student-transport-orb {
-  animation: student-signal-depart 880ms cubic-bezier(0.2, 0.76, 0.24, 1) both;
+  top: 0;
+  left: 0;
+  margin: 0;
+  offset-anchor: center;
+  offset-distance: 0%;
+  offset-rotate: 0deg;
+  animation: student-signal-flight 760ms linear both;
 }
 
-.student-transport.is-departing .student-transport-thread {
-  animation: student-thread-rise 780ms cubic-bezier(0.2, 0.76, 0.24, 1) both;
+.student-transport.is-arrived .student-transport-orb {
+  top: max(5px, env(safe-area-inset-top));
+  left: 50%;
+  opacity: 0;
+  transform: scale(.12);
+  animation: none;
 }
 
 .student-transport-ripple {
@@ -672,6 +764,96 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   pointer-events: none;
 }
 
+.student-surface-ripple {
+  position: absolute;
+  z-index: 5;
+  top: max(-20px, calc(env(safe-area-inset-top) - 24px));
+  left: 50%;
+  width: 100vw;
+  height: 72vh;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.student-surface-spectrum {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: multiply;
+}
+
+.student-surface-spectrum::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  top: max(-38px, calc(env(safe-area-inset-top) - 42px));
+  left: 50%;
+  width: min(128vw, 620px);
+  height: 150px;
+  border-radius: 0 0 50% 50%;
+  background: linear-gradient(90deg, #ffd45c 0%, #ff7b68 22%, var(--transport-color) 48%, #3a8fff 70%, #43d7c7 100%);
+  filter: blur(24px) saturate(1.3);
+  opacity: .72;
+  transform: translateX(-50%) scaleX(.38) scaleY(.32);
+}
+
+.student-surface-spectrum i {
+  position: absolute;
+  top: -14vh;
+  width: 72vw;
+  height: 54vh;
+  border-radius: 50%;
+  filter: blur(34px) saturate(1.25);
+  opacity: 0;
+  transform: translate3d(0, -12%, 0) scale(.35);
+}
+
+.student-surface-spectrum i:nth-child(1) { left: -32vw; background: rgba(255, 198, 64, .64); }
+.student-surface-spectrum i:nth-child(2) { left: 2vw; background: color-mix(in srgb, var(--transport-color) 76%, #ef6c71); }
+.student-surface-spectrum i:nth-child(3) { right: -8vw; background: rgba(47, 115, 223, .62); }
+.student-surface-spectrum i:nth-child(4) { right: -42vw; background: rgba(60, 211, 194, .58); }
+
+.student-transport.is-arrived .student-surface-spectrum {
+  animation: student-spectrum-veil 1080ms cubic-bezier(.16,.76,.22,1) both;
+}
+
+.student-transport.is-arrived .student-surface-spectrum::before {
+  animation: student-spectrum-edge 920ms cubic-bezier(.16,.86,.22,1) both;
+}
+
+.student-transport.is-arrived .student-surface-spectrum i {
+  animation: student-spectrum-bloom 1080ms cubic-bezier(.16,.76,.22,1) both;
+}
+
+.student-transport.is-arrived .student-surface-spectrum i:nth-child(2) { animation-delay: 40ms; }
+.student-transport.is-arrived .student-surface-spectrum i:nth-child(3) { animation-delay: 75ms; }
+.student-transport.is-arrived .student-surface-spectrum i:nth-child(4) { animation-delay: 110ms; }
+
+.student-surface-ripple i {
+  position: absolute;
+  top: -20vw;
+  left: 50%;
+  width: 36vw;
+  height: 36vw;
+  border: 2px solid color-mix(in srgb, var(--transport-color) 42%, white);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 16px color-mix(in srgb, var(--transport-color) 16%, transparent),
+    0 0 22px color-mix(in srgb, var(--transport-color) 12%, transparent);
+  opacity: 0;
+  transform: translateX(-50%) scale(.25);
+}
+
+.student-transport.is-arrived .student-surface-ripple { opacity: 1; }
+.student-transport.is-arrived .student-surface-ripple i { animation: student-surface-wave 920ms cubic-bezier(.16,.76,.22,1) both; }
+.student-transport.is-arrived .student-surface-ripple i:nth-child(2) { animation-delay: 80ms; }
+.student-transport.is-arrived .student-surface-ripple i:nth-child(3) { animation-delay: 160ms; }
+
 .student-transport-ripple i {
   position: absolute;
   top: 50%;
@@ -684,30 +866,42 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   transform: translate(-50%, -50%);
 }
 
-.student-transport.is-departing .student-transport-ripple i {
-  animation: student-room-ripple 980ms cubic-bezier(0.16, 0.78, 0.28, 1) 620ms both;
+.student-transport.is-arrived .student-transport-ripple i {
+  animation: student-room-ripple 980ms cubic-bezier(0.16, 0.78, 0.28, 1) both;
 }
 
-.student-transport.is-departing .student-transport-ripple i:nth-child(2) { animation-delay: 750ms; }
-.student-transport.is-departing .student-transport-ripple i:nth-child(3) { animation-delay: 840ms; }
+.student-transport.is-arrived .student-transport-ripple i:nth-child(2) { animation-delay: 90ms; }
+.student-transport.is-arrived .student-transport-ripple i:nth-child(3) { animation-delay: 180ms; }
 
 .student-transport.is-failed .student-transport-orb {
   animation: student-signal-fail 460ms ease-out both;
 }
 
-.student-transport.is-failed .student-transport-status { color: #a94431; border-color: #efb7aa; }
+.student-transport.is-failed .student-transport-status { visibility: visible; opacity: 1; color: #a94431; border-color: #efb7aa; }
 .student-transport.is-failed .student-transfer-progress > i { background: #b54c38; }
-.student-transport.is-departing .student-transfer-edge { animation: student-edge-arrival 820ms cubic-bezier(.16,1,.3,1) 470ms both; }
+.student-transport.is-arrived .student-transfer-edge { animation: student-edge-arrival 820ms cubic-bezier(.16,1,.3,1) both; }
 
 @keyframes student-transport-veil {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes student-signal-gather {
-  0% { opacity: 0; transform: scale(1.7); }
-  65% { opacity: 1; transform: scale(0.82); }
-  100% { opacity: 1; transform: scale(1); }
+@keyframes student-response-condense {
+  0% { width: var(--transport-start-width); height: var(--transport-start-height); margin-top: calc(var(--transport-start-height) / -2); margin-left: calc(var(--transport-start-width) / -2); border-radius: 16px; opacity: .25; transform: scale(.97); }
+  20% { opacity: 1; transform: scale(1); }
+  68% { color: transparent; background: color-mix(in srgb, var(--transport-color) 36%, white); }
+  100% { width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 20px; color: transparent; background: var(--transport-color); box-shadow: 0 0 0 8px color-mix(in srgb, var(--transport-color) 9%, transparent), 0 0 28px color-mix(in srgb, var(--transport-color) 24%, transparent); }
+}
+
+@keyframes student-response-label-fold {
+  0%, 42% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(.72); }
+}
+
+@keyframes student-response-seed {
+  0%, 55% { opacity: 0; transform: scale(.3); }
+  82% { opacity: 1; transform: scale(1.2); }
+  100% { opacity: .95; transform: scale(1); }
 }
 
 @keyframes student-origin-ring {
@@ -715,23 +909,26 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   to { opacity: 0; transform: scale(3); }
 }
 
-@keyframes student-signal-depart {
-  0% { top: var(--transport-y); left: var(--transport-x); opacity: 1; transform: scale(1); }
-  28% { top: calc(var(--transport-y) - 108px); left: calc(var(--transport-x) + 28px); transform: scale(0.9) rotate(2deg); }
-  75% { top: 92px; left: calc(50% - 14px); opacity: 1; transform: scale(0.5) rotate(-2deg); }
-  100% { top: max(5px, env(safe-area-inset-top)); left: 50%; opacity: 0; transform: scale(0.12); }
+@keyframes student-signal-flight {
+  0% { offset-distance: 0%; opacity: 1; transform: scale(1) rotate(0deg); filter: brightness(1); }
+  18% { offset-distance: 10%; opacity: 1; transform: scale(.96) rotate(-1.5deg); filter: brightness(1.04); animation-timing-function: cubic-bezier(.22,.72,.18,1); }
+  56% { offset-distance: 54%; opacity: 1; transform: scale(.72) rotate(1deg); filter: brightness(1.16); animation-timing-function: cubic-bezier(.16,.72,.12,1); }
+  84% { offset-distance: 91%; opacity: 1; transform: scale(.42) rotate(0deg); filter: brightness(1.35); animation-timing-function: cubic-bezier(.12,.7,.08,1); }
+  94% { offset-distance: 99%; opacity: .9; transform: scale(.38,.18); filter: brightness(1.7); }
+  100% { offset-distance: 100%; opacity: 0; transform: scale(.08,.24); filter: brightness(2); }
 }
 
-@keyframes student-thread-rise {
-  0% { opacity: 0; transform: scaleY(0); }
-  28% { opacity: 0.65; }
-  100% { opacity: 0; transform: scaleY(1); }
+@keyframes student-flight-trace {
+  0% { stroke-dasharray: 0 100; stroke-dashoffset: 0; opacity: 0; }
+  18% { stroke-dasharray: 18 82; stroke-dashoffset: -1; opacity: .9; }
+  62% { stroke-dasharray: 32 68; stroke-dashoffset: -34; opacity: .76; }
+  100% { stroke-dasharray: 0 100; stroke-dashoffset: -100; opacity: 0; }
 }
 
 @keyframes student-status-receive {
-  0% { transform: translateX(-50%) scale(1); }
+  0% { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(.96); }
   42% { transform: translateX(-50%) scale(1.045); box-shadow: 0 14px 44px color-mix(in srgb, var(--transport-color) 24%, transparent); }
-  100% { transform: translateX(-50%) scale(1); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 
 @keyframes student-room-ripple {
@@ -747,8 +944,36 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
 
 @keyframes student-edge-breathe { to { opacity: .82; transform: translateX(-50%) scaleX(.86); } }
 @keyframes student-edge-spark { 0%, 20%, 100% { opacity: 0; transform: translateY(4px) scale(.45); } 42% { opacity: .9; transform: translateY(0) scale(1); } 72% { opacity: 0; transform: translateY(16px) scale(.65); } }
-@keyframes student-edge-arrival { 0% { filter: brightness(1); } 38% { filter: brightness(1.65); } 100% { filter: brightness(1); } }
+@keyframes student-edge-anticipate { 0%, 52% { opacity: 0; transform: scaleX(.7); } 76% { opacity: .32; transform: scaleX(.9); } 100% { opacity: .7; transform: scaleX(1); } }
+@keyframes student-edge-arrival { 0% { opacity: .7; filter: brightness(1); } 38% { opacity: 1; filter: brightness(1.65); } 100% { opacity: .82; filter: brightness(1); } }
 @keyframes student-orb-shimmer { from { transform: translateX(-72%) rotate(8deg); } to { transform: translateX(72%) rotate(8deg); } }
+@keyframes student-surface-wave {
+  0% { opacity: 0; transform: translateX(-50%) scale(.28); filter: blur(1px); }
+  14% { opacity: .72; }
+  62% { opacity: .24; filter: blur(2px); }
+  100% { opacity: 0; transform: translateX(-50%) scale(5.8); filter: blur(4px); }
+}
+
+@keyframes student-spectrum-veil {
+  0% { opacity: 0; }
+  12% { opacity: .68; }
+  48% { opacity: .46; }
+  100% { opacity: 0; }
+}
+
+@keyframes student-spectrum-edge {
+  0% { opacity: 0; transform: translateX(-50%) scaleX(.3) scaleY(.24); }
+  18% { opacity: .9; transform: translateX(-50%) scaleX(.72) scaleY(.72); }
+  58% { opacity: .44; transform: translateX(-50%) scaleX(1.1) scaleY(1.5); }
+  100% { opacity: 0; transform: translateX(-50%) scaleX(1.26) scaleY(2.25); }
+}
+
+@keyframes student-spectrum-bloom {
+  0% { opacity: 0; transform: translate3d(0, -15%, 0) scale(.32); }
+  22% { opacity: .54; }
+  64% { opacity: .28; }
+  100% { opacity: 0; transform: translate3d(0, 62%, 0) scale(1.55); }
+}
 
 @keyframes student-signal-fail {
   0%, 100% { transform: translateX(0); }
@@ -822,8 +1047,11 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
   .student-transport { background: rgba(255,254,250,.34); }
   .student-transfer-edge > span,
   .student-transfer-edge-wave,
-  .student-transport-thread,
+  .student-flight-path,
+  .student-response-imprint,
   .student-transport-origin,
+  .student-surface-spectrum,
+  .student-surface-ripple,
   .student-transport-ripple,
   .student-transport-orb-shine { display: none; }
   .student-transport-orb { top: 92px; left: 50%; opacity: 0; }

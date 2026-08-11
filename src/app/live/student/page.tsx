@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UserCircle, UsersThree as Users, X } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
-import ResponseTransferEffect, { type ResponseTransferSignal } from '@/components/student/ResponseTransferEffect';
+import ResponseTransferEffect, { RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/student/ResponseTransferEffect';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import {
@@ -34,6 +34,7 @@ import {
 import type { RewardDefinition, RewardRequest, RewardRequestStatus } from '@/types';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { triggerStudentHaptic } from '@/lib/student-haptics';
 import {
   EMPTY_ONBOARDING_COUNTS,
   DEFAULT_LIVE_QUESTIONS,
@@ -112,15 +113,11 @@ function StudentTimerBanner({ timer }: { timer: NonNullable<LessonDisplayState['
 }
 
 function confirmResponseHaptic() {
-  if (typeof navigator === 'undefined' || !navigator.vibrate) return;
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  navigator.vibrate([9, 30, 18]);
+  triggerStudentHaptic('success');
 }
 
 function failResponseHaptic() {
-  if (typeof navigator === 'undefined' || !navigator.vibrate) return;
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  navigator.vibrate([24, 44, 24]);
+  triggerStudentHaptic('error');
 }
 
 type PendingQuestionVote = {
@@ -745,6 +742,7 @@ export default function StudentWelcomePage() {
   const [rewardRequestError, setRewardRequestError] = useState('');
   const [latestReward, setLatestReward] = useState<RewardLedgerEntry | null>(null);
   const [transportSignal, setTransportSignal] = useState<ResponseTransferSignal | null>(null);
+  const transportOriginsRef = useRef(new Map<number, HTMLElement>());
   const [questionSheetOpen, setQuestionSheetOpen] = useState(false);
   const [courseSpaceOpen, setCourseSpaceOpen] = useState(false);
   const [courseView, setCourseView] = useState<'home' | 'standing' | 'rewards'>('home');
@@ -808,30 +806,59 @@ export default function StudentWelcomePage() {
   }, [lessonState.interactionResults?.runId, lessonState.lobbyOpen]);
 
   const beginTransport = (color: string, label: string, origin?: HTMLElement) => {
+    transportOriginsRef.current.forEach((element) => element.classList.remove('student-response-source-hidden'));
+    transportOriginsRef.current.clear();
     const bounds = origin?.getBoundingClientRect();
     const signal: ResponseTransferSignal = {
       id: Date.now(),
       color,
       label: label.trim().slice(0, 32) || 'Your response',
+      sourceLabel: origin?.innerText.trim().replace(/\s+/g, ' ').slice(0, 40),
       x: bounds ? bounds.left + bounds.width / 2 : window.innerWidth / 2,
       y: bounds ? bounds.top + bounds.height / 2 : window.innerHeight * 0.72,
+      width: bounds?.width,
+      height: bounds?.height,
       phase: 'gathering',
     };
     setTransportSignal(signal);
+    if (origin) {
+      transportOriginsRef.current.set(signal.id, origin);
+      window.setTimeout(() => {
+        if (origin.isConnected) origin.classList.add('student-response-source-hidden');
+      }, 90);
+    }
     return signal.id;
+  };
+
+  const releaseTransportOrigin = (id: number, delay = 0) => {
+    window.setTimeout(() => {
+      const origin = transportOriginsRef.current.get(id);
+      origin?.classList.remove('student-response-source-hidden');
+      transportOriginsRef.current.delete(id);
+    }, delay);
   };
 
   const completeTransport = (id: number) => {
     setTransportSignal((current) => current?.id === id ? { ...current, phase: 'departing' } : current);
-    confirmResponseHaptic();
-    window.setTimeout(() => setTransportSignal((current) => current?.id === id ? null : current), 1380);
+    window.setTimeout(() => {
+      setTransportSignal((current) => current?.id === id ? { ...current, phase: 'arrived' } : current);
+      confirmResponseHaptic();
+    }, RESPONSE_TRANSFER_DEPART_MS);
+    window.setTimeout(() => setTransportSignal((current) => current?.id === id ? null : current), RESPONSE_TRANSFER_LIFETIME_MS);
+    releaseTransportOrigin(id, RESPONSE_TRANSFER_LIFETIME_MS);
   };
 
   const failTransport = (id: number) => {
     setTransportSignal((current) => current?.id === id ? { ...current, phase: 'failed' } : current);
     failResponseHaptic();
     window.setTimeout(() => setTransportSignal((current) => current?.id === id ? null : current), 700);
+    releaseTransportOrigin(id, 180);
   };
+
+  useEffect(() => () => {
+    transportOriginsRef.current.forEach((element) => element.classList.remove('student-response-source-hidden'));
+    transportOriginsRef.current.clear();
+  }, []);
 
   useEffect(() => {
     const handleOffline = () => {
@@ -1829,7 +1856,7 @@ export default function StudentWelcomePage() {
                 {!lessonState.interactionResults.open ? (
                   <div className="student-submitted is-locked" role="status"><Lock size={18} /><span><strong>Responses are locked.</strong> Look up for the class discussion.</span></div>
                 ) : (
-                  <div className={`student-response-action ${responseReady ? 'is-ready' : ''}`}>
+                  <div className="student-response-action is-ready">
                     <HapticButton
                       type="button"
                       className={`student-send-response ${isSubmitting ? 'is-sending' : ''}`}

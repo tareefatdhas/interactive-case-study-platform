@@ -436,13 +436,16 @@ Rules:
 
 ### Signal to field
 
-Use one shared motion language across the student phone and projector:
+Use the Classfully response transfer as the shared motion language across student submissions:
 
-1. **Select:** the chosen answer lifts slightly and its color trace fills behind the label. Unchosen answers become quieter, but remain readable.
-2. **Send:** a short trace crosses the send button only while the response is being saved.
-3. **Arrive:** one new signal enters the projector or class activity meter. Existing data stays still.
-4. **Settle:** the signal joins the result field within 500–700ms.
-5. **Reveal:** result rows appear in a short sequence. The proportional field grows from the same edge, followed by its dots and exact value.
+1. **Yield:** the real response control keeps its layout and focus state, but its visible surface temporarily disappears. Never leave a duplicate control underneath the animation.
+2. **Condense:** an animated copy begins at the exact source bounds, retains the action label briefly, and folds into a small colored signal.
+3. **Travel:** the signal follows one curved path toward the top edge. Keep the trail narrow and quiet. Do not add extra particles that compete with the destination.
+4. **Impact:** the top edge responds only as the signal approaches. Contact triggers the color wave, surface ripple, success message, and haptic feedback together.
+5. **Recover:** restore the source quickly when sending fails. After success, restore it when the effect ends unless the interface has already moved to its submitted state.
+6. **Settle:** the projector or class field receives the new response without restarting existing data.
+
+This is an earned effect. Use it when a student sends something into the shared classroom, including a pulse, poll answer, quiz answer, written response, word, or team response. Do not use it for navigation, opening a panel, changing a private draft, timers, or passive projector updates.
 
 The phone and projector should feel connected, but they do not need synchronized choreography. Network timing varies. Confirm the phone action immediately, then let the projector reflect the shared class total when it arrives.
 
