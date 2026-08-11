@@ -48,6 +48,7 @@ import { Timestamp } from 'firebase/firestore';
 import { endInstructorClassroom, getInstructorClassroomRecords } from '@/lib/firebase/live-classroom';
 import {
   countClassroomResponses,
+  getSessionParticipationSummary,
   interactionRunSummariesDiffer,
   reconcileInteractionRuns,
 } from '@/lib/session-response-summary';
@@ -484,6 +485,13 @@ export default function SessionPage({ params }: SessionPageProps) {
       : 0;
   }, [studentProgress]);
 
+  const participationSummary = useMemo(() => (
+    session?.sessionType === 'standalone'
+      ? getSessionParticipationSummary(session.interactionRuns, session.interactions)
+      : null
+  ), [session]);
+  const displayedAverage = participationSummary?.averageParticipationPercent ?? averageProgress;
+
   const currentSessionIndex = session ? courseSessions.findIndex((candidate) => candidate.id === session.id) : -1;
   const previousSession = currentSessionIndex > 0 ? courseSessions[currentSessionIndex - 1] : null;
   const nextSession = currentSessionIndex >= 0 && currentSessionIndex < courseSessions.length - 1 ? courseSessions[currentSessionIndex + 1] : null;
@@ -643,9 +651,11 @@ export default function SessionPage({ params }: SessionPageProps) {
                     <div className="flex items-center">
                       <BarChart className="h-8 w-8 text-green-600" />
                       <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-600">Avg Progress</p>
+                        <p className="text-sm font-medium text-gray-600">
+                          {session?.sessionType === 'standalone' ? 'Avg Participation' : 'Avg Progress'}
+                        </p>
                         <p className="text-2xl font-bold text-gray-900">
-                          {averageProgress}%
+                          {displayedAverage}%
                         </p>
                       </div>
                     </div>
@@ -666,6 +676,65 @@ export default function SessionPage({ params }: SessionPageProps) {
                   </CardContent>
                 </Card>
               </div>
+
+              {session?.sessionType === 'standalone' && participationSummary && participationSummary.interactions.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <CardTitle>Participation by interaction</CardTitle>
+                        <CardDescription>
+                          Compared with the busiest activity in this session.
+                        </CardDescription>
+                      </div>
+                      <div className="rounded-full bg-[#f0efff] px-3 py-1.5 text-xs font-semibold text-[#5146e5]">
+                        Peak: {participationSummary.benchmarkResponseCount} responses
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {participationSummary.interactions.map((item) => {
+                        const roundsForInteraction = participationSummary.interactions.filter(
+                          (candidate) => candidate.interactionId === item.interactionId,
+                        ).length;
+                        return (
+                          <div key={item.runId}>
+                            <div className="mb-2 flex min-w-0 items-end justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-[#101a38]">{item.title}</p>
+                                <p className="text-xs text-[#73798d]">
+                                  {roundsForInteraction > 1 ? `Round ${item.round} · ` : ''}{item.responseCount} {item.responseCount === 1 ? 'response' : 'responses'}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <span className="text-lg font-semibold text-[#101a38]">{item.participationPercent}%</span>
+                                {item.isBenchmark && <span className="ml-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[#5146e5]">Peak</span>}
+                              </div>
+                            </div>
+                            <div
+                              className="h-2.5 overflow-hidden rounded-full bg-[#ececf4]"
+                              role="progressbar"
+                              aria-label={`${item.title}: ${item.participationPercent}% of peak participation`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={item.participationPercent}
+                            >
+                              <div
+                                className={`h-full rounded-full transition-[width] duration-500 ${item.isBenchmark ? 'bg-[#5146e5]' : 'bg-[#8b82ee]'}`}
+                                style={{ width: `${item.participationPercent}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-5 border-t border-[#eceef3] pt-4 text-xs leading-5 text-[#73798d]">
+                      The busiest response activity is set to 100%. Timers, wheels, and team submissions are not included because they use different participation units.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Prepared content and interactions */}
               <Card>

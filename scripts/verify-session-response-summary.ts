@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   countClassroomResponses,
+  getSessionParticipationSummary,
   interactionRunSummariesDiffer,
   reconcileInteractionRuns,
 } from '../src/lib/session-response-summary';
@@ -51,5 +52,21 @@ const alreadyCorrect = [{ ...savedRuns[0], responseCount: 3 }];
 const preserved = reconcileInteractionRuns(alreadyCorrect, { 'run-1': responseRuns['run-1'] }, interactions);
 assert.equal(preserved[0].responseCount, 3, 'a durable summary must not be reduced when live records are incomplete');
 assert.equal(interactionRunSummariesDiffer(alreadyCorrect, preserved), false, 'an unchanged summary should not trigger a write');
+
+const participation = getSessionParticipationSummary([
+  { ...savedRuns[0], id: 'pulse-run', interactionId: 'pulse-1', responseCount: 89 },
+  { ...savedRuns[0], id: 'cloud-run', interactionId: 'cloud-1', responseCount: 96, startedAt: 200 },
+  { ...savedRuns[0], id: 'poll-run', interactionId: 'poll-1', responseCount: 74, startedAt: 300 },
+  { ...savedRuns[0], id: 'timer-run', interactionId: 'timer-1', responseCount: 0, startedAt: 400 },
+], [
+  { id: 'pulse-1', type: 'pulse', title: 'Arrival check-in', prompt: 'How are you arriving?' },
+  { id: 'cloud-1', type: 'word-cloud', title: 'Word cloud', prompt: 'One word' },
+  interactions[0],
+  { id: 'timer-1', type: 'timer', title: 'Break timer', prompt: 'Take five' },
+]);
+assert.equal(participation.benchmarkResponseCount, 96, 'the busiest response activity should set the benchmark');
+assert.equal(participation.interactions.length, 3, 'non-response modules should not affect participation');
+assert.equal(participation.interactions[0].participationPercent, 93, 'each interaction should be compared with the peak');
+assert.equal(participation.averageParticipationPercent, 90, 'the headline should average interaction participation rates');
 
 console.log('Session response reconciliation checks passed.');
