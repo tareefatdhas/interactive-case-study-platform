@@ -270,7 +270,9 @@ These colors must remain stable so students learn their meaning over time.
 - Use full-strength semantic colors on small dots, icons, and key values. Use pale tints for backgrounds.
 - Pair every color with a label, value, or position. Never rely on color alone.
 - Red and coral should indicate a genuine need for attention, not ordinary negative movement.
-- Avoid gradients by default. Flat surfaces make the data easier to read and preserve the academic tone.
+- Do not use gradients as general surface decoration. Flat surfaces make the data easier to read and preserve the academic tone.
+- Avoid blurred glows, oversized pastel shapes, and decorative dot fields in operational instructor views.
+- Every additional layer, tint, or shape must communicate grouping, state, hierarchy, or interaction. Remove it if the screen works the same without it.
 - New work should use the canonical tokens above instead of creating near-duplicate grays or purples.
 
 ## 6. Layout by surface
