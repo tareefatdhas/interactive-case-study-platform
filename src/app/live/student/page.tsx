@@ -1,9 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UserCircle, UsersThree as Users, X } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
 import { SharedMomentEffect, RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/motion';
@@ -96,6 +95,29 @@ const STUDENT_REWARD_KIND_LABELS = {
   'extra-credit': 'Extra credit',
 } as const;
 
+/* ─────────────────────────────────────────────────────────
+ * COURSE PROGRESS RIPPLE
+ *
+ *    0ms   the quiet course wave is visible
+ *  320ms   recorded moments settle onto the wave (60ms stagger)
+ *  740ms   each new marker releases one restrained ripple
+ * idle     the origin breathes until the first moment is recorded
+ * ───────────────────────────────────────────────────────── */
+const COURSE_PROGRESS_RIPPLE = {
+  path: 'M 4 64 C 42 64, 52 34, 90 42 S 138 76, 178 54 S 224 24, 268 46 S 310 72, 356 44',
+  maxVisibleMoments: 7,
+  markerStaggerMs: 60,
+  points: [
+    { x: 17, y: 48 },
+    { x: 30, y: 50 },
+    { x: 43, y: 66 },
+    { x: 56, y: 49 },
+    { x: 69, y: 34 },
+    { x: 82, y: 52 },
+    { x: 94, y: 45 },
+  ],
+} as const;
+
 const ParticipationSignal = dynamic(() => import('@/components/live/ParticipationSignal'), { ssr: false });
 
 const OPTION_COLORS = ['#5146e5', '#2f73df', '#d99f18', '#df664e', '#2f8b63'];
@@ -183,30 +205,40 @@ function StudentQuietGuide({ id, onAction, onDismiss }: {
 }
 
 function studentSignalStyle(index: number): CSSProperties {
-  const x = (index * 31 + 7) % 94;
-  const y = 50 + Math.sin(index * 1.35) * 28;
+  const column = index % 12;
+  const row = Math.floor(index / 12);
+  const x = 8 + column * 7.55 + Math.sin(index * 2.17) * 1.8;
+  const y = 60 + Math.sin(column * 0.72) * 10 + row * 7 + Math.cos(index * 1.41) * 2.4;
+  const colors = ['#5146e5', '#2f73df', '#766de9', '#31905a'];
   return {
     '--room-x': `${x}%`,
-    '--room-y': `${Math.max(12, Math.min(86, y))}%`,
-    '--room-size': `${4 + (index % 4)}px`,
+    '--room-y': `${Math.max(38, Math.min(86, y))}%`,
+    '--room-size': `${5 + (index % 3)}px`,
+    '--room-color': colors[index % colors.length],
+    '--room-delay': `${Math.min(index * 26, 520)}ms`,
+    '--room-entry-x': `${index % 2 ? 44 : -38}px`,
+    '--room-entry-y': `${-42 - (index % 4) * 10}px`,
+    '--room-breathe-delay': `${-(index % 8) * 0.43}s`,
   } as CSSProperties;
 }
 
 function StudentRoomCurrent({ responseCount, runId }: { responseCount: number; runId: string }) {
-  const visiblePoints = Math.min(responseCount, 36);
+  const visiblePoints = Math.min(responseCount, 48);
+  const waveOpacity = Math.min(0.78, 0.25 + responseCount * 0.018);
   return (
-    <div className="student-room-current" aria-hidden="true">
-      <Image src="/assets/living-seminar/room-forming.png" alt="" width={2079} height={756} priority />
+    <div className={`student-room-current ${responseCount > 0 ? 'has-responses' : 'is-quiet'}`} style={{ '--room-wave-opacity': waveOpacity } as CSSProperties} aria-hidden="true">
       <svg viewBox="0 0 420 130" preserveAspectRatio="none">
-        <path d="M-10 83 C82 20 145 114 222 59 S342 32 430 73" />
-        <path d="M-14 45 C68 105 159 9 245 70 S362 105 438 35" />
+        <path className="student-room-wave is-back" d="M-14 45 C68 105 159 9 245 70 S362 105 438 35" />
+        <path className="student-room-wave is-middle" d="M-10 96 C72 35 148 115 226 68 S340 42 430 82" />
+        <path className="student-room-wave is-surface" d="M-10 83 C82 20 145 114 222 59 S342 32 430 73" />
       </svg>
+      <span className="student-room-self"><i /><i /></span>
       <div className="student-room-points">
         {Array.from({ length: visiblePoints }).map((_, index) => (
-          <i key={`${runId}-${index}`} style={studentSignalStyle(index)} />
+          <i className={index === visiblePoints - 1 ? 'is-latest' : ''} key={`${runId}-${index}`} style={studentSignalStyle(index)} />
         ))}
       </div>
-      {responseCount > 0 && <i className="student-room-arrival" key={`student-arrival-${responseCount}`} />}
+      {responseCount > 0 && <span className="student-room-arrival" key={`student-arrival-${responseCount}`}><i /></span>}
     </div>
   );
 }
@@ -271,7 +303,7 @@ function StudentPostSubmit({
 
       <div className={`student-reward-arrival ${latestReward ? 'is-arriving' : ''}`} data-reward={latestReward ? `+${latestReward.amount}` : undefined} aria-live="polite">
         <ParticipationSignal active={Boolean(latestReward)} />
-        <span><Sparkles size={17} /></span>
+        <span><span className="student-ripple-glyph" aria-hidden="true"><i /><i /></span></span>
         <div>
           <small>{latestReward?.label || 'Points'}</small>
           <strong>{latestReward ? `+${latestReward.amount} ${latestReward.balance === 'score' ? 'class score' : 'points'}` : `${rewardState.seminarPoints} points`}</strong>
@@ -423,11 +455,7 @@ function StudentPostSubmit({
 
       <StudentRoomCurrent responseCount={responseCount} runId={runId} />
       <div className="student-room-status" aria-live="polite">
-        <div className="student-live-signal" aria-hidden="true">
-          {Array.from({ length: 7 }).map((_, index) => (
-            <i className={index < Math.min(7, responseCount) ? 'is-filled' : ''} key={`${responseCount}-${index}`} style={{ '--signal-delay': `${index * 32}ms` } as CSSProperties} />
-          ))}
-        </div>
+        <div className={`student-live-signal ${responseCount > 0 ? 'is-active' : ''}`} aria-hidden="true"><i /><i /><i /></div>
         <strong key={responseCount}>The room is responding</strong>
         <span>{responseCount === 1 ? 'You’re the first response.' : `${responseCount} responses are in.`} Stay here for what comes next.</span>
       </div>
@@ -537,9 +565,14 @@ function StudentCourseHome({
   useEffect(() => {
     if (!enableSocialRewards) onViewChange('home');
   }, [enableSocialRewards, onViewChange]);
-  const learningMomentCount = new Set(rewards.ledger.map((entry) => (
-    entry.eventKey.replace(/:(response|prediction|correct|room-read)$/, '')
-  ))).size;
+  const learningMoments = Array.from(new Map(rewards.ledger.map((entry) => [
+    entry.eventKey.replace(/:(response|prediction|correct|room-read)$/, ''),
+    entry,
+  ])).values());
+  const learningMomentCount = learningMoments.length;
+  const visibleLearningMoments = learningMoments.slice(0, COURSE_PROGRESS_RIPPLE.maxVisibleMoments).reverse();
+  const latestLearningMoment = learningMoments[0];
+  const rippleProgress = Math.min(100, (learningMomentCount / COURSE_PROGRESS_RIPPLE.maxVisibleMoments) * 100);
   const availableRewardCount = courseRewards.filter((reward) => reward.pointsRequired <= rewards.seminarPoints).length;
   const nextReward = courseRewards.find((reward) => reward.pointsRequired > rewards.seminarPoints);
   const allRewardsUnlocked = courseRewards.length > 0 && !nextReward;
@@ -549,7 +582,7 @@ function StudentCourseHome({
   return (
     <div className={`student-course-home ${embedded ? 'is-embedded' : ''}`}>
       {!embedded && <div className={`student-live-ready ${classEnded ? 'is-complete' : ''}`}><i />{classEnded ? <span><strong>Class complete.</strong> Your course record is still here.</span> : <span><strong>You’re in the room.</strong> The next activity will appear here.</span>}</div>}
-      <div className="student-kicker">{lessonState.session.courseCode} · Course home</div>
+      <div className="student-kicker">{lessonState.session.courseCode} · Your course</div>
       {enableSocialRewards && <nav className="student-home-tabs" aria-label="Course home sections">
         <button type="button" className={view === 'home' ? 'is-active' : ''} onClick={() => onViewChange('home')}>Home</button>
         <button type="button" className={view === 'standing' ? 'is-active' : ''} onClick={() => onViewChange('standing')}>Standing</button>
@@ -558,16 +591,38 @@ function StudentCourseHome({
 
       {view === 'home' && (
         <>
-          <h1>{hasProgress ? 'Your semester is taking shape.' : 'Your course record starts here.'}</h1>
-          <p className="student-home-intro">Your points and learning activity appear here as you participate.</p>
+          <h1>{hasProgress ? 'Your semester is taking shape.' : 'Your progress starts here.'}</h1>
+          <p className="student-home-intro">Every response, prediction, and contribution builds this private record.</p>
           <section className="student-constellation-card" aria-labelledby="student-progress-title">
             <div className="student-constellation-heading">
               <div><small>Your points</small><strong id="student-progress-title">{rewards.seminarPoints}</strong></div>
-              <span><Sparkles size={16} /><strong>{learningMomentCount}</strong><small>{learningMomentCount === 1 ? 'learning moment' : 'learning moments'}</small></span>
+              <span><span className="student-ripple-glyph" aria-hidden="true"><i /><i /></span><strong>{learningMomentCount}</strong><small>{learningMomentCount === 1 ? 'learning moment' : 'learning moments'}</small></span>
             </div>
-            <div className="student-constellation-visual">
-              <Image src="/assets/living-seminar/room-forming.png" alt="A soft constellation formed by your classroom participation" width={2079} height={756} priority />
-              <div className="student-constellation-copy"><Sparkles size={16} /><span><strong>{learningMomentCount ? `${learningMomentCount} ${learningMomentCount === 1 ? 'learning moment' : 'learning moments'}` : 'No activity recorded yet'}</strong><small>{learningMomentCount ? 'from your participation' : 'Your first response will begin this record'}</small></span></div>
+            <div className={`student-learning-trail ${hasProgress ? 'has-moments' : 'is-empty'}`}>
+              <div className="student-progress-ripple" aria-hidden="true">
+                <svg viewBox="0 0 360 92" preserveAspectRatio="none">
+                  <path className="student-progress-ripple-echo is-back" d={COURSE_PROGRESS_RIPPLE.path} pathLength="100" />
+                  <path className="student-progress-ripple-echo is-front" d={COURSE_PROGRESS_RIPPLE.path} pathLength="100" />
+                  <path className="student-progress-ripple-current" d={COURSE_PROGRESS_RIPPLE.path} style={{ clipPath: `inset(0 ${100 - rippleProgress}% 0 0)` }} />
+                </svg>
+                <span className="student-progress-ripple-origin"><i /><i /></span>
+                {visibleLearningMoments.map((moment, index) => (
+                  <i
+                    className="student-progress-ripple-moment"
+                    key={moment.id}
+                    style={{
+                      '--moment-x': `${COURSE_PROGRESS_RIPPLE.points[index]?.x || 94}%`,
+                      '--moment-y': `${COURSE_PROGRESS_RIPPLE.points[index]?.y || 45}%`,
+                      '--moment-delay': `${index * COURSE_PROGRESS_RIPPLE.markerStaggerMs}ms`,
+                    } as CSSProperties}
+                  ><b /><em /></i>
+                ))}
+                {learningMomentCount > visibleLearningMoments.length && <strong>+{learningMomentCount - visibleLearningMoments.length}</strong>}
+              </div>
+              <div className="student-learning-copy">
+                <strong>{learningMomentCount ? `${learningMomentCount} ${learningMomentCount === 1 ? 'moment' : 'moments'} recorded` : 'Your first moment begins here'}</strong>
+                <small>{latestLearningMoment ? `Latest: ${latestLearningMoment.label}` : 'Answer an activity to add the first marker to your trail.'}</small>
+              </div>
             </div>
             {enableSocialRewards && rewardsLoading ? <div className="student-pilot-points"><Gift size={14} /><span><strong>Loading course rewards…</strong></span></div> : enableSocialRewards && nextReward ? <div className="student-reward-progress">
               <div><span>Next reward</span><strong>{nextReward.name}</strong></div>
@@ -576,10 +631,10 @@ function StudentCourseHome({
             </div> : enableSocialRewards && allRewardsUnlocked ? <div className="student-pilot-points"><Gift size={14} /><span><strong>Every course reward is unlocked.</strong> Open Rewards to review your options.</span></div> : enableSocialRewards ? <div className="student-pilot-points"><Gift size={14} /><span><strong>No course rewards yet.</strong> Rewards will appear when they are added to this course.</span></div> : <div className="student-pilot-points"><Lock size={14} /><span><strong>Points stay private.</strong> Join with your student number to connect them to this class.</span></div>}
           </section>
           {rewards.ledger.length > 0 && <section className="student-earned-activity" aria-labelledby="student-earned-title">
-            <div className="student-section-title"><div><span>Recorded activity</span><h2 id="student-earned-title">Recent points</h2></div><Sparkles size={19} /></div>
+            <div className="student-section-title"><div><span>Recorded activity</span><h2 id="student-earned-title">Recent points</h2></div><span className="student-ripple-glyph is-large" aria-hidden="true"><i /><i /></span></div>
             <div>{rewards.ledger.slice(0, 4).map((entry) => <article key={entry.id}><span>{entry.label}</span><strong>+{entry.amount} {entry.balance === 'score' ? 'class score' : 'points'}</strong></article>)}</div>
           </section>}
-          {enableSocialRewards && <div className="student-home-shortcuts">
+          {enableSocialRewards && !embedded && <div className="student-home-shortcuts">
             <HapticButton type="button" depth="compact" onClick={() => onViewChange('standing')}><Trophy size={17} /><span><small>Class standing</small><strong>No board published</strong></span><ArrowRight size={15} /></HapticButton>
             <HapticButton type="button" depth="compact" onClick={() => onViewChange('rewards')}><Gift size={17} /><span><small>My Rewards</small><strong>{rewardsLoading ? 'Loading…' : `${availableRewardCount} available now`}</strong></span><ArrowRight size={15} /></HapticButton>
           </div>}
@@ -699,8 +754,8 @@ function StudentCourseSheet({
           }}
         />
         <header>
-          <div className="student-course-sheet-person"><span><UserCircle size={25} /></span><div><small id="student-course-sheet-title">My course</small><strong>{studentName}</strong></div></div>
-          <div className="student-course-sheet-points"><Sparkles size={14} /><strong>{points}</strong><small>points</small></div>
+          <div className="student-course-sheet-person"><span><UserCircle size={25} /></span><div><small id="student-course-sheet-title">Profile and progress</small><strong>{studentName}</strong></div></div>
+          <div className="student-course-sheet-points"><span className="student-ripple-glyph" aria-hidden="true"><i /><i /></span><strong>{points}</strong><small>points</small></div>
           <button ref={closeButtonRef} type="button" aria-label="Close my course" onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
         </header>
         <div className="student-course-sheet-content">{children}</div>
@@ -764,6 +819,8 @@ export default function StudentWelcomePage() {
   const demoVoterIdRef = useRef('');
   const contentRef = useRef<HTMLElement | null>(null);
   const courseTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const courseRunIdRef = useRef<string | null>(null);
+  const responseScopeRef = useRef<string | null>(null);
   const pendingQuestionClaimsRef = useRef(new Set<string>());
   const demoQuestionClaimsRef = useRef(new Set<string>());
   const hasReceivedRemoteStateRef = useRef(false);
@@ -1124,7 +1181,11 @@ export default function StudentWelcomePage() {
   }, []);
 
   useEffect(() => {
-    setCourseSpaceOpen(false);
+    const nextRunId = lessonState.interactionResults?.runId || null;
+    if (courseRunIdRef.current && nextRunId && courseRunIdRef.current !== nextRunId) {
+      setCourseSpaceOpen(false);
+    }
+    courseRunIdRef.current = nextRunId;
   }, [lessonState.interactionResults?.runId]);
 
   const closeCourseSpace = useCallback(() => {
@@ -1259,12 +1320,30 @@ export default function StudentWelcomePage() {
     }
   }, [lessonState.onboardingRunId, remoteSession]);
 
-  useEffect(() => {
-    setSelectedOption(null);
-    setWrittenResponse('');
-    setTeamName('');
-    setTeamDescription('');
-    setSelectedTeamId('');
+  const responseScope = `${remoteSession?.ownerUid || 'demo'}:${remoteSession?.sessionId || 'demo'}:${lessonState.interactionResults?.runId || 'none'}`;
+  const persistResponseDraft = useCallback((draft: Partial<{ selectedOption: number | null; writtenResponse: string; teamName: string; teamDescription: string; selectedTeamId: string }>) => {
+    const key = `classfully-response-draft:${responseScope}`;
+    try {
+      const current = JSON.parse(window.localStorage.getItem(key) || '{}');
+      window.localStorage.setItem(key, JSON.stringify({ ...current, ...draft }));
+    } catch {
+      window.localStorage.setItem(key, JSON.stringify(draft));
+    }
+  }, [responseScope]);
+  useLayoutEffect(() => {
+    if (responseScopeRef.current === responseScope) return;
+    responseScopeRef.current = responseScope;
+    let draft: { selectedOption?: number | null; writtenResponse?: string; teamName?: string; teamDescription?: string; selectedTeamId?: string } = {};
+    try {
+      draft = JSON.parse(window.localStorage.getItem(`classfully-response-draft:${responseScope}`) || '{}');
+    } catch {
+      // Ignore a malformed local draft and show a clean response form.
+    }
+    setSelectedOption(draft.selectedOption ?? null);
+    setWrittenResponse(draft.writtenResponse || '');
+    setTeamName(draft.teamName || '');
+    setTeamDescription(draft.teamDescription || '');
+    setSelectedTeamId(draft.selectedTeamId || '');
     setCreatingNewTeam(false);
     setInteractionSubmitted(false);
     setResponseSubmittedAt(null);
@@ -1303,7 +1382,7 @@ export default function StudentWelcomePage() {
         // A malformed local preview response should not interrupt the live room.
       }
     }
-  }, [lessonState.interactionResults?.runId, remoteSession]);
+  }, [responseScope, lessonState.interactionResults?.runId, remoteSession]);
 
   const availableTeamIds = lessonState.teams.map((team) => team.id).join('|');
   useEffect(() => {
@@ -1418,6 +1497,7 @@ export default function StudentWelcomePage() {
         setResponseSubmittedAt(submittedAt);
       }
       setInteractionSubmitted(true);
+      window.localStorage.removeItem(`classfully-response-draft:${responseScope}`);
       if (response.teamId) window.localStorage.setItem(`classfully-team:${lessonState.session.courseCode}`, response.teamId);
       completeTransport(transportId);
       const participationPoints = getParticipationPoints(interaction.type);
@@ -1606,8 +1686,7 @@ export default function StudentWelcomePage() {
   const courseSpaceEnabled = !remoteSession || Boolean(studentNumber);
   const lobbyGuidance: StudentGuidanceId | null = guidanceReady && lessonState.lobbyOpen && !lessonState.activeInteraction
     ? !learnedGuidance.includes('questions') ? 'questions'
-      : !learnedGuidance.includes('auto-update') ? 'auto-update'
-        : null
+      : null
     : null;
   const waitingGuidance: StudentGuidanceId | null = guidanceReady && interactionSubmitted && lessonState.activeInteraction
     ? lessonState.questions.length > 0 && !learnedGuidance.includes('upvotes') ? 'upvotes'
@@ -1692,12 +1771,16 @@ export default function StudentWelcomePage() {
       <header className="student-welcome-header">
         <div className="student-brand">Classfully<span>.</span></div>
         <div className="student-header-actions">
-          <span className={`student-connection ${connected ? 'is-connected' : connectionRecovery === 'recovering' ? 'is-recovering' : ''}`}><i /> {remoteUnavailable ? remoteEnded ? 'Class ended' : connectionRecovery === 'recovering' ? 'Reconnecting' : 'Needs attention' : connected ? 'Connected' : 'Reconnecting'}</span>
-          {courseSpaceEnabled && !remoteUnavailable && step === 0 && Boolean(lessonState.activeInteraction) && <button
+          {(!connected || remoteUnavailable) && <span
+            className={`student-connection ${connectionRecovery === 'recovering' ? 'is-recovering' : ''}`}
+            role="status"
+            aria-live="polite"
+          ><i /> {remoteUnavailable ? remoteEnded ? 'Class ended' : connectionRecovery === 'recovering' ? 'Reconnecting' : 'Needs attention' : 'Reconnecting'}</span>}
+          {courseSpaceEnabled && !remoteUnavailable && step === 0 && <button
             ref={courseTriggerRef}
             type="button"
             className="student-course-trigger"
-            aria-label={`Open my course, ${rewardState.seminarPoints} points`}
+            aria-label={`Open your profile and progress, ${rewardState.seminarPoints} points`}
             aria-haspopup="dialog"
             aria-expanded={courseSpaceOpen}
             onClick={() => {
@@ -1705,7 +1788,13 @@ export default function StudentWelcomePage() {
               setCourseSpaceOpen(true);
               markGuidanceLearned('points');
             }}
-          ><UserCircle size={18} /><span>My course</span><strong>{rewardState.seminarPoints}</strong></button>}
+          >
+            <span className="student-profile-avatar" aria-hidden="true">
+              {studentDisplayName ? studentDisplayName.trim().charAt(0).toUpperCase() : <UserCircle size={17} />}
+            </span>
+            <span>My course</span>
+            <strong>{rewardState.seminarPoints}</strong>
+          </button>}
         </div>
       </header>
 
@@ -1733,16 +1822,24 @@ export default function StudentWelcomePage() {
 
         {!remoteUnavailable && step === 0 && lessonState.lobbyOpen && !lessonState.activeInteraction && (
           <div className="student-lobby-state">
-            <span className="student-round-icon is-success"><Check size={30} /></span>
-            <div className="student-kicker">You’re in the room</div>
-            <h1>Ready when your instructor is.</h1>
-            <p>Keep this page open. The first activity will appear here automatically.</p>
-            <div className="student-lobby-class-card">
-              <span><Users size={20} /></span>
-              <div><strong>{lessonState.session.courseCode}</strong><small>{lessonState.session.sessionTitle} · {lessonState.session.instructorName || 'Your instructor'}</small></div>
-              <Check size={18} />
-            </div>
-            <div className="student-lobby-waiting"><i /><span><strong>{lessonState.connectedStudents || 0} connected</strong><small>You do not need to refresh</small></span></div>
+            <div className="student-kicker">Class lobby</div>
+            <h1>You’re all set.</h1>
+            <p>The first activity will appear here when your instructor begins.</p>
+            <section className="student-lobby-room-card" aria-label="Current class">
+              <div className="student-lobby-course">
+                <span><Users size={20} /></span>
+                <div>
+                  <small>{lessonState.session.courseCode}</small>
+                  <strong>{lessonState.session.sessionTitle}</strong>
+                  <p>{lessonState.session.instructorName || 'Your instructor'}</p>
+                </div>
+                <Check size={18} aria-hidden="true" />
+              </div>
+              <div className="student-lobby-room-status" role="status" aria-live="polite">
+                <span><i /><strong>{lessonState.connectedStudents || 0} connected</strong></span>
+                <small>Updates automatically</small>
+              </div>
+            </section>
             {lobbyGuidance && !guidanceHiddenForMoment && !questionSheetOpen && (
               <StudentQuietGuide
                 id={lobbyGuidance}
@@ -1823,12 +1920,12 @@ export default function StudentWelcomePage() {
 
                 {lessonState.activeInteraction.type === 'team-formation' ? (
                   <div className="student-team-form">
-                    {lessonState.teams.length > 0 && <fieldset className="student-team-picker"><legend>Which team are you on?</legend><div>{lessonState.teams.map((team) => <HapticButton key={team.id} type="button" role="radio" aria-checked={selectedTeamId === team.id} className={selectedTeamId === team.id ? 'is-selected' : ''} onClick={() => { setSelectedTeamId(team.id); setCreatingNewTeam(false); }}><span><strong>{team.name}</strong>{team.tag && <small>{team.tag}</small>}</span><b>{team.memberCount || 0} joined</b>{selectedTeamId === team.id && <Check size={18} />}</HapticButton>)}</div></fieldset>}
-                    {lessonState.teams.length > 0 && <button type="button" className="student-create-team-toggle" onClick={() => { setCreatingNewTeam((current) => !current); setSelectedTeamId(''); }}>{creatingNewTeam ? 'Choose a team already here' : 'My team is not listed'}</button>}
+                    {lessonState.teams.length > 0 && <fieldset className="student-team-picker"><legend>Which team are you on?</legend><div>{lessonState.teams.map((team) => <HapticButton key={team.id} type="button" role="radio" aria-checked={selectedTeamId === team.id} className={selectedTeamId === team.id ? 'is-selected' : ''} onClick={() => { setSelectedTeamId(team.id); persistResponseDraft({ selectedTeamId: team.id }); setCreatingNewTeam(false); }}><span><strong>{team.name}</strong>{team.tag && <small>{team.tag}</small>}</span><b>{team.memberCount || 0} joined</b>{selectedTeamId === team.id && <Check size={18} />}</HapticButton>)}</div></fieldset>}
+                    {lessonState.teams.length > 0 && <button type="button" className="student-create-team-toggle" onClick={() => { setCreatingNewTeam((current) => !current); setSelectedTeamId(''); persistResponseDraft({ selectedTeamId: '' }); }}>{creatingNewTeam ? 'Choose a team already here' : 'My team is not listed'}</button>}
                     {(lessonState.teams.length === 0 || creatingNewTeam || teamName.trim().length > 0) && <div className="student-new-team-fields">
-                      <label><span>Team name</span><input value={teamName} onChange={(event) => setTeamName(event.target.value.slice(0, 48))} maxLength={48} placeholder="Give your team a name" autoComplete="off" /></label>
-                      <label><span>What are you working on? <small>Optional</small></span><textarea value={teamDescription} onChange={(event) => setTeamDescription(event.target.value.slice(0, 160))} maxLength={160} rows={3} placeholder="Add a short note for the class" /></label>
-                      {Boolean(lessonState.activeInteraction.teamTags?.length) && <fieldset><legend>Choose your focus</legend><div className="student-team-tags">{lessonState.activeInteraction.teamTags?.map((tag, index) => <HapticButton key={tag} type="button" className={selectedOption === index ? 'is-selected' : ''} aria-pressed={selectedOption === index} onClick={() => setSelectedOption(index)}>{tag}{selectedOption === index && <Check size={16} />}</HapticButton>)}</div></fieldset>}
+                      <label><span>Team name</span><input value={teamName} onChange={(event) => { const value = event.target.value.slice(0, 48); setTeamName(value); persistResponseDraft({ teamName: value }); }} maxLength={48} placeholder="Give your team a name" autoComplete="off" /></label>
+                      <label><span>What are you working on? <small>Optional</small></span><textarea value={teamDescription} onChange={(event) => { const value = event.target.value.slice(0, 160); setTeamDescription(value); persistResponseDraft({ teamDescription: value }); }} maxLength={160} rows={3} placeholder="Add a short note for the class" /></label>
+                      {Boolean(lessonState.activeInteraction.teamTags?.length) && <fieldset><legend>Choose your focus</legend><div className="student-team-tags">{lessonState.activeInteraction.teamTags?.map((tag, index) => <HapticButton key={tag} type="button" className={selectedOption === index ? 'is-selected' : ''} aria-pressed={selectedOption === index} onClick={() => { setSelectedOption(index); persistResponseDraft({ selectedOption: index }); }}>{tag}{selectedOption === index && <Check size={16} />}</HapticButton>)}</div></fieldset>}
                     </div>}
                   </div>
                 ) : lessonState.activeInteraction.options?.length ? (
@@ -1843,7 +1940,7 @@ export default function StudentWelcomePage() {
                         tabIndex={selectedOption === index || (selectedOption === null && index === 0) ? 0 : -1}
                         className={selectedOption === index ? 'is-selected' : ''}
                         style={{ '--option-color': OPTION_COLORS[index % OPTION_COLORS.length] } as CSSProperties}
-                        onClick={() => setSelectedOption(index)}
+                        onClick={() => { setSelectedOption(index); persistResponseDraft({ selectedOption: index }); }}
                         onKeyDown={(event) => {
                           if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key)) return;
                           event.preventDefault();
@@ -1851,6 +1948,7 @@ export default function StudentWelcomePage() {
                           const optionCount = lessonState.activeInteraction?.options?.length ?? 1;
                           const nextIndex = (index + direction + optionCount) % optionCount;
                           setSelectedOption(nextIndex);
+                          persistResponseDraft({ selectedOption: nextIndex });
                           const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
                           buttons?.[nextIndex]?.focus();
                         }}
@@ -1862,13 +1960,13 @@ export default function StudentWelcomePage() {
                 ) : lessonState.activeInteraction.type === 'word-cloud' ? (
                   <label className="student-word-answer">
                     <span>One word or short phrase</span>
-                    <input value={writtenResponse} onChange={(event) => setWrittenResponse(event.target.value.slice(0, 48))} disabled={!lessonState.interactionResults?.open} maxLength={48} placeholder="Type your answer" aria-label="Your word or short phrase" autoComplete="off" />
+                    <input value={writtenResponse} onChange={(event) => { const value = event.target.value.slice(0, 48); setWrittenResponse(value); persistResponseDraft({ writtenResponse: value }); }} disabled={!lessonState.interactionResults?.open} maxLength={48} placeholder="Type your answer" aria-label="Your word or short phrase" autoComplete="off" />
                     <small>{writtenResponse.length}/48</small>
                   </label>
                 ) : (
                   <div className="student-group-response">
-                    {lessonState.activeInteraction.type === 'group-work' && lessonState.teams.length > 0 && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{lessonState.teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
-                    <textarea value={writtenResponse} onChange={(event) => setWrittenResponse(event.target.value.slice(0, 280))} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'One response from your team' : 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Your team response' : 'Your group response' : 'Your response'} />
+                    {lessonState.activeInteraction.type === 'group-work' && lessonState.teams.length > 0 && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); persistResponseDraft({ selectedTeamId: event.target.value }); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{lessonState.teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
+                    <textarea value={writtenResponse} onChange={(event) => { const value = event.target.value.slice(0, 280); setWrittenResponse(value); persistResponseDraft({ writtenResponse: value }); }} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'One response from your team' : 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Your team response' : 'Your group response' : 'Your response'} />
                   </div>
                 )}
 
@@ -2007,7 +2105,7 @@ export default function StudentWelcomePage() {
         />
       )}
 
-      {courseSpaceOpen && !remoteUnavailable && lessonState.activeInteraction && (
+      {courseSpaceOpen && !remoteUnavailable && (
         <StudentCourseSheet
           points={rewardState.seminarPoints}
           studentName={studentDisplayName || (studentNumber ? `Student •${studentNumber.slice(-4)}` : 'Your course record')}
@@ -2023,7 +2121,6 @@ export default function StudentWelcomePage() {
 
       <footer className="student-welcome-footer">
         <Link href="/privacy" target="_blank"><Lock size={13} /> Privacy</Link>
-        {studentNumber && <span className="student-footer-identity" title={`Student number ${studentNumber}`}><small>You</small><b>{studentDisplayName || `Student •${studentNumber.slice(-4)}`}</b></span>}
         <span className="student-footer-class"><small>Class</small><strong>{lessonState.session.sessionCode}</strong></span>
       </footer>
     </main>

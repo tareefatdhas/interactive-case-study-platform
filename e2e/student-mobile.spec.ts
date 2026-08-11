@@ -24,6 +24,43 @@ test('student classroom fits a phone viewport', async ({ page }) => {
   await expectNoHorizontalOverflow(page);
 });
 
+test('student lobby keeps one clear room status on a short phone', async ({ browser, isMobile }) => {
+  test.skip(!isMobile, 'The compact lobby is covered by the student mobile project.');
+  const context = await browser.newContext({ viewport: { width: 320, height: 568 } });
+  const seedPage = await context.newPage();
+  await seedPage.goto('/live');
+  const state = await seedPage.evaluate(() => JSON.parse(window.localStorage.getItem('living-seminar-display-state') || '{}'));
+  await seedPage.close();
+
+  state.lobbyOpen = true;
+  state.activeInteraction = null;
+  state.interactionResults = null;
+  state.connectedStudents = 128;
+  state.session = {
+    ...state.session,
+    courseCode: '24STEPS',
+    sessionTitle: 'Session 1 - Welcome and introductions',
+    instructorName: 'Tareef Jafferi',
+    sessionCode: '6QPCSG',
+  };
+
+  const studentPage = await context.newPage();
+  await studentPage.addInitScript((nextState) => {
+    window.localStorage.setItem('living-seminar-display-state', JSON.stringify(nextState));
+  }, state);
+  await studentPage.goto('/live/student');
+
+  await expect(studentPage.getByRole('heading', { name: 'You’re all set.' })).toBeVisible();
+  await expect(studentPage.getByRole('region', { name: 'Current class' })).toContainText('128 connected');
+  await expect(studentPage.getByText('Updates automatically')).toBeVisible();
+  await expect(studentPage.getByText('Connected', { exact: true })).toHaveCount(0);
+  await expect(studentPage.getByRole('button', { name: /Open your profile and progress/ })).toBeVisible();
+  await expect(studentPage.locator('.student-lobby-state > .student-quiet-guide')).toBeHidden();
+  await expect(studentPage.getByRole('button', { name: /^Questions/ })).toBeVisible();
+  await expectNoHorizontalOverflow(studentPage);
+  await context.close();
+});
+
 test('team formation stays usable on a small phone', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Touch layout is covered by the student mobile project.');
   await page.setViewportSize({ width: 320, height: 568 });
@@ -45,9 +82,14 @@ test('course home tabs use real zero states instead of demo progress', async ({ 
   await page.goto('/live/student');
 
   await expect(page.getByRole('navigation', { name: 'Course home sections' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Your course record starts here.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your progress starts here.' })).toBeVisible();
   await expect(page.locator('#student-progress-title')).toHaveText('0');
-  await expect(page.getByText('No activity recorded yet')).toBeVisible();
+  await expect(page.getByText('Your first moment begins here')).toBeVisible();
+  await expect(page.locator('.student-learning-trail.is-empty')).toBeVisible();
+  await expect(page.locator('.student-progress-ripple')).toBeVisible();
+  await expect(page.locator('.student-progress-ripple-moment')).toHaveCount(0);
+  await expect(page.locator('.student-ripple-glyph').first()).toBeVisible();
+  await expect(page.locator('.student-constellation-visual')).toHaveCount(0);
   await expect(page.getByText('6 learning moments')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Standing', exact: true }).click();
@@ -75,15 +117,14 @@ test('my course opens over a live activity and returns focus to class', async ({
   await consolePage.goto('/live');
   await remotePage.goto('/live/remote');
   await studentPage.goto('/live/student');
-  await expect(studentPage.getByText('You’re in the room.')).toBeVisible();
   await remotePage.getByRole('button', { name: /Concept check/ }).click();
 
   await expect(studentPage.getByText('Where do network effects become most fragile?', { exact: true })).toBeVisible();
-  const courseTrigger = studentPage.getByRole('button', { name: /Open my course/ });
+  const courseTrigger = studentPage.getByRole('button', { name: /Open your profile and progress/ });
   await expect(courseTrigger).toBeVisible();
   await courseTrigger.click();
 
-  const courseSheet = studentPage.getByRole('dialog', { name: 'My course' });
+  const courseSheet = studentPage.getByRole('dialog', { name: 'Profile and progress' });
   await expect(courseSheet).toBeVisible();
   await courseSheet.getByRole('button', { name: 'Standing', exact: true }).click();
   await expect(courseSheet.getByRole('heading', { name: 'No board published' })).toBeVisible();

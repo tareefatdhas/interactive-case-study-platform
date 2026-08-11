@@ -88,6 +88,7 @@ export default function SettingsPage() {
   const [notificationsSaving, setNotificationsSaving] = useState(false);
   const [notificationsNotice, setNotificationsNotice] = useState<string | null>(null);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [localTimeZone, setLocalTimeZone] = useState('your local time');
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [profileData, setProfileData] = useState({
     name: '',
@@ -98,6 +99,14 @@ export default function SettingsPage() {
     if (!user) return;
     setProfileData({ name: user.name || '', email: user.email || '' });
   }, [user]);
+
+  useEffect(() => {
+    try {
+      setLocalTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' '));
+    } catch {
+      setLocalTimeZone('your local time');
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -390,8 +399,8 @@ export default function SettingsPage() {
                     onChange={(checked) => changeNotificationPreference('afterClassReport', checked)}
                   />
                   <EmailPreferenceToggle
-                    label="Weekly course digest"
-                    description="One email that connects patterns across the courses you taught that week. Nothing is sent during weeks without a completed class."
+                    label="Weekly summary"
+                    description={`One email that connects the week’s classes. It arrives Monday at 8:00 AM in your local time (${localTimeZone}). Nothing is sent during weeks without a completed class.`}
                     checked={notificationPreferences.weeklyCourseDigest}
                     disabled={notificationsLoading || notificationsSaving}
                     onChange={(checked) => changeNotificationPreference('weeklyCourseDigest', checked)}

@@ -40,6 +40,7 @@ export async function saveTeacherNotificationPreferences(
 
   await updateDoc(doc(db, COLLECTIONS.TEACHERS, user.uid), {
     notificationPreferences: normalizePreferences(preferences),
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     updatedAt: serverTimestamp(),
   });
 }

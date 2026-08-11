@@ -18,6 +18,22 @@ import { getUserFacingError } from '@/lib/user-facing-error';
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+const getBrowserTimeZone = (): string => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+};
+
+const saveMissingTeacherTimeZone = async (
+  teacherRef: ReturnType<typeof doc>,
+  teacher: Teacher,
+): Promise<void> => {
+  if (teacher.timeZone) return;
+  await setDoc(teacherRef, { timeZone: getBrowserTimeZone() }, { merge: true });
+};
+
 const toTeacherAuthUser = (user: User, teacher: Teacher): AuthUser => ({
   uid: user.uid,
   email: user.email!,
@@ -31,7 +47,8 @@ export const signInTeacher = async (email: string, password: string): Promise<Au
   const user = userCredential.user;
   
   // Check if user is a teacher
-  const teacherDoc = await getDoc(doc(db, COLLECTIONS.TEACHERS, user.uid));
+  const teacherRef = doc(db, COLLECTIONS.TEACHERS, user.uid);
+  const teacherDoc = await getDoc(teacherRef);
   
   if (!teacherDoc.exists()) {
     await signOut(auth);
@@ -39,6 +56,7 @@ export const signInTeacher = async (email: string, password: string): Promise<Au
   }
   
   const teacherData = teacherDoc.data() as Teacher;
+  await saveMissingTeacherTimeZone(teacherRef, teacherData);
   
   return toTeacherAuthUser(user, teacherData);
 };
@@ -56,7 +74,9 @@ export const signInTeacherWithGoogle = async (): Promise<AuthUser> => {
   const teacherSnapshot = await getDoc(teacherRef);
 
   if (teacherSnapshot.exists()) {
-    return toTeacherAuthUser(user, teacherSnapshot.data() as Teacher);
+    const teacher = teacherSnapshot.data() as Teacher;
+    await saveMissingTeacherTimeZone(teacherRef, teacher);
+    return toTeacherAuthUser(user, teacher);
   }
 
   const name = user.displayName?.trim() || user.email.split('@')[0];
@@ -64,6 +84,7 @@ export const signInTeacherWithGoogle = async (): Promise<AuthUser> => {
     email: user.email,
     name,
     courseIds: [],
+    timeZone: getBrowserTimeZone(),
     createdAt: new Date(),
     ...(user.photoURL ? { photoURL: user.photoURL } : {}),
   };
@@ -143,6 +164,7 @@ export const signUpTeacher = async (
       email,
       name,
       courseIds: [],
+      timeZone: getBrowserTimeZone(),
       createdAt: new Date()
     });
   } catch (error: unknown) {
@@ -188,6 +210,7 @@ export const onAuthChange = (callback: (user: AuthUser | null) => void): () => v
       
       if (teacherDoc.exists()) {
         const teacherData = teacherDoc.data() as Teacher;
+        await saveMissingTeacherTimeZone(doc(db, COLLECTIONS.TEACHERS, user.uid), teacherData);
         callback({
           uid: user.uid,
           email: user.email!,

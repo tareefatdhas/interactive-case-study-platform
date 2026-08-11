@@ -236,6 +236,7 @@ export interface Teacher {
   email: string;
   name: string;
   photoURL?: string;
+  timeZone?: string;
   notificationPreferences?: TeacherNotificationPreferences;
   courseIds: string[];
   createdAt: Timestamp;

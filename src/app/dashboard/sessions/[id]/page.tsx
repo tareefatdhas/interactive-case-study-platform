@@ -62,6 +62,12 @@ interface SessionPageProps {
   }>;
 }
 
+const getActivityPhase = (type: string, index: number, total: number) => {
+  if (index === 0) return 'Opening';
+  if (type === 'reflection' && index === total - 1) return 'Closing';
+  return 'During class';
+};
+
 export default function SessionPage({ params }: SessionPageProps) {
   const resolvedParams = use(params);
   const { user } = useAuth();
@@ -497,6 +503,14 @@ export default function SessionPage({ params }: SessionPageProps) {
   const currentSessionIndex = session ? courseSessions.findIndex((candidate) => candidate.id === session.id) : -1;
   const previousSession = currentSessionIndex > 0 ? courseSessions[currentSessionIndex - 1] : null;
   const nextSession = currentSessionIndex >= 0 && currentSessionIndex < courseSessions.length - 1 ? courseSessions[currentSessionIndex + 1] : null;
+  const preparedInteractionCount = session?.interactions?.length || 0;
+  const hasSessionActivity = Boolean(
+    session?.active
+    || session?.studentsJoined?.length
+    || standaloneResponseCount
+    || session?.interactionRuns?.length,
+  );
+  const isPreparedStandaloneSession = session?.sessionType === 'standalone' && !hasSessionActivity;
 
   if (loading) {
     return (
@@ -538,8 +552,8 @@ export default function SessionPage({ params }: SessionPageProps) {
           {/* Header */}
           <section className="session-hero mb-8 pb-7 pt-1">
             <Link href={session?.courseId ? `/dashboard/classes/${session.courseId}` : '/dashboard/sessions'} className="seminar-focus mb-6 inline-flex min-h-9 items-center gap-2 rounded-lg text-sm font-semibold text-[#697087] transition-colors hover:text-[#5146e5]"><ArrowLeft className="h-4 w-4" /> {session?.courseName || 'All sessions'}</Link>
-            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-              <div>
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0">
                 <p className="seminar-eyebrow mb-2">{session?.courseCode || 'Class session'}</p>
                 <h1 className="seminar-display max-w-4xl text-4xl leading-[1.04] text-[#101a38] sm:text-[2.8rem]">{session?.title || caseStudy?.title || 'Class session'}</h1>
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[#697087]">
@@ -554,11 +568,13 @@ export default function SessionPage({ params }: SessionPageProps) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                {session?.sessionType === 'standalone' && !session?.active && <Link href={`/dashboard/sessions/new?sessionId=${session?.id}`}>
-                  <Button variant="outline" className="flex items-center">
-                    <ListChecks className="mr-2 h-4 w-4" /> Edit flow
-                  </Button>
-                </Link>}
+                {session?.sessionType === 'standalone' && !session?.active && (
+                  <Link href={`/dashboard/sessions/new?sessionId=${session?.id}`} className="seminar-focus group inline-flex min-h-14 items-center gap-3 rounded-xl border border-[#cfcaff] bg-[#f7f5ff] px-4 py-2.5 text-left shadow-[0_4px_14px_rgba(65,55,199,0.08)] transition-[transform,border-color,background-color,box-shadow] duration-150 hover:-translate-y-0.5 hover:border-[#aaa2ff] hover:bg-[#f0edff] hover:shadow-[0_8px_20px_rgba(65,55,199,0.13)] motion-reduce:transform-none lg:min-w-[220px]">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-[#5146e5] shadow-sm"><ListChecks className="h-4 w-4" /></span>
+                    <span><strong className="block whitespace-nowrap text-sm text-[#3027a9]">Edit activity plan</strong><small className="mt-0.5 block text-[11px] leading-4 text-[#697087]">Questions and teaching order</small></span>
+                    <ChevronRight className="ml-1 h-4 w-4 text-[#7c73dc] transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                )}
                 {(session?.sessionType !== 'standalone' || session?.active) && <Link href={session?.sessionType === 'standalone' ? `/live?sessionId=${session?.id}` : `/dashboard/sessions/${session?.id}/presentation`}>
                   <Button
                     variant="outline"
@@ -568,7 +584,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                     {session?.sessionType === 'standalone' ? 'Open instructor console' : 'Presentation mode'}
                   </Button>
                 </Link>}
-                <Button
+                {!isPreparedStandaloneSession && <Button
                   onClick={handleToggleSession}
                   loading={updating}
                   variant={session?.active ? 'destructive' : 'secondary'}
@@ -585,7 +601,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                       {session?.sessionType === 'standalone' ? 'Start class' : 'Start session'}
                     </>
                   )}
-                </Button>
+                </Button>}
               </div>
             </div>
             {courseSessions.length > 1 && (
@@ -636,11 +652,40 @@ export default function SessionPage({ params }: SessionPageProps) {
             )}
           </section>
 
+          {isPreparedStandaloneSession && (
+            <section className="mb-8 overflow-hidden rounded-[24px] border border-[#d9d5ff] bg-[linear-gradient(120deg,#f4f2ff_0%,#fffefa_62%,#fff6dc_100%)] shadow-[0_18px_50px_rgba(47,39,128,0.08)]" aria-labelledby="class-launch-title">
+              <div className="grid gap-7 p-6 sm:p-8 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+                <div>
+                  <p className="seminar-eyebrow mb-2">Ready for class</p>
+                  <h2 id="class-launch-title" className="seminar-display text-3xl leading-tight text-[#101a38] sm:text-[2.25rem]">Open the classroom, then invite students in.</h2>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5e667b]">The instructor console is where you connect the classroom display, welcome students, and launch each activity.</p>
+                </div>
+                <Button onClick={handleToggleSession} loading={updating} size="lg" className="w-full gap-2 px-6 shadow-[0_3px_0_#342bb3,0_10px_24px_rgba(81,70,229,0.22)] active:translate-y-[2px] active:shadow-[0_1px_0_#342bb3,0_4px_10px_rgba(81,70,229,0.16)] sm:w-auto">
+                  <MonitorUp className="h-5 w-5" /> Open classroom
+                </Button>
+              </div>
+              <ol className="grid border-t border-[#dedaf8] bg-white/70 md:grid-cols-3" aria-label="Steps to begin this class">
+                <li className="flex min-h-[92px] items-start gap-3 border-b border-[#e7e4f3] p-5 md:border-b-0 md:border-r">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#e9f7ed] text-[#2f914b]"><CheckCircle className="h-4 w-4" /></span>
+                  <span><strong className="block text-sm text-[#101a38]">Plan ready</strong><small className="mt-1 block text-xs leading-5 text-[#697087]">{preparedInteractionCount} {preparedInteractionCount === 1 ? 'activity' : 'activities'} prepared</small></span>
+                </li>
+                <li className="flex min-h-[92px] items-start gap-3 border-b border-[#e7e4f3] bg-[#f7f5ff] p-5 md:border-b-0 md:border-r">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#5146e5] text-xs font-bold text-white shadow-sm">2</span>
+                  <span><strong className="block text-sm text-[#101a38]">Open the classroom</strong><small className="mt-1 block text-xs leading-5 text-[#697087]">Connect the display from the console</small></span>
+                </li>
+                <li className="flex min-h-[92px] items-start gap-3 p-5">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#d8dbe6] bg-white text-xs font-bold text-[#697087]">3</span>
+                  <span><strong className="block text-sm text-[#101a38]">Let students join</strong><small className="mt-1 block text-xs leading-5 text-[#697087]">Show the QR code or class code</small></span>
+                </li>
+              </ol>
+            </section>
+          )}
+
           <div className="grid gap-8 2xl:grid-cols-3">
             {/* Main Content */}
             <div className="space-y-6 2xl:col-span-2">
               {/* Stats */}
-              <div className="grid gap-4 md:grid-cols-3">
+              {!isPreparedStandaloneSession && <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                   <CardContent className="p-4 sm:p-5">
                     <div className="flex items-center gap-3">
@@ -684,7 +729,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                     </div>
                   </CardContent>
                 </Card>
-              </div>
+              </div>}
 
               {session?.sessionType === 'standalone' && participationSummary && participationSummary.interactions.length > 0 && (
                 <Card>
@@ -709,11 +754,18 @@ export default function SessionPage({ params }: SessionPageProps) {
 
               {/* Prepared content and interactions */}
               <Card>
-                <CardHeader>
-                  <CardTitle>{session?.sessionType === 'standalone' ? 'Prepared interactions' : 'Section management'}</CardTitle>
-                  <CardDescription>
-                    {session?.sessionType === 'standalone' ? 'Private until you choose to show one on the classroom display' : 'Control which sections students can access'}
-                  </CardDescription>
+                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle>{session?.sessionType === 'standalone' ? 'Prepared interactions' : 'Section management'}</CardTitle>
+                    <CardDescription>
+                      {session?.sessionType === 'standalone' ? 'Review what you plan to launch from the instructor console' : 'Control which sections students can access'}
+                    </CardDescription>
+                  </div>
+                  {session?.sessionType === 'standalone' && !session.active && (
+                    <Link href={`/dashboard/sessions/new?sessionId=${session.id}`} className="seminar-focus inline-flex min-h-9 shrink-0 items-center justify-center gap-2 self-start rounded-lg border border-[#d8d4ff] bg-[#f8f7ff] px-3.5 text-xs font-bold text-[#5146e5] transition-colors hover:border-[#bcb6ff] hover:bg-[#f0eeff]">
+                      <ListChecks className="h-3.5 w-3.5" /> Edit plan
+                    </Link>
+                  )}
                 </CardHeader>
                 <CardContent>
                   {caseStudy ? (
@@ -812,7 +864,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                              <span className="text-xs font-bold uppercase tracking-[0.08em] text-[#697087]">{index + 1} · {interaction.plannedTime || 'During class'}</span>
+                              <span className="text-xs font-bold uppercase tracking-[0.08em] text-[#697087]">{index + 1} · {getActivityPhase(interaction.type, index, session.interactions?.length || 0)}</span>
                               {interaction.durationMinutes && <span className="text-xs text-[#9298a5]">About {interaction.durationMinutes} min</span>}
                             </div>
                             <h3 className="mt-1 font-semibold text-[#101a38]">{interaction.title}</h3>
@@ -836,10 +888,10 @@ export default function SessionPage({ params }: SessionPageProps) {
                       )) : (
                         <div className="py-6 text-center text-sm text-[#697087]">No prepared interactions. You can still ask the class an unplanned question during the session.</div>
                       )}
-                      <div className="flex items-center justify-between border-t border-[#e3e5ed] pt-4">
+                      {!isPreparedStandaloneSession && <div className="flex items-center justify-between border-t border-[#e3e5ed] pt-4">
                         <p className="text-sm text-[#697087]">Your slides remain in their original presentation app.</p>
                         <Link href={`/live?sessionId=${session.id}`}><Button size="sm">Open console</Button></Link>
-                      </div>
+                      </div>}
                     </div>
                   ) : (
                     <div className="text-center py-4 text-gray-500">Case study information is unavailable.</div>
@@ -848,7 +900,7 @@ export default function SessionPage({ params }: SessionPageProps) {
               </Card>
 
               {/* Student Progress */}
-              <Card>
+              {!isPreparedStandaloneSession && <Card>
                 <CardHeader>
                   <CardTitle>{session?.sessionType === 'standalone' ? 'Live participation' : 'Student progress'}</CardTitle>
                   <CardDescription>
@@ -900,7 +952,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                     </div>
                   )}
                 </CardContent>
-              </Card>
+              </Card>}
             </div>
 
             {/* Sidebar */}
@@ -912,7 +964,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                     <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f0efff] text-[#5146e5]"><QrCode className="h-[18px] w-[18px]" /></span>
                     Student access
                   </CardTitle>
-                  <CardDescription>Keep this ready when students need to join.</CardDescription>
+                  <CardDescription>{isPreparedStandaloneSession ? 'Show this after opening the classroom.' : 'Keep this ready when students need to join.'}</CardDescription>
                 </CardHeader>
                 <CardContent className="p-5 sm:p-6">
                   <div className="space-y-5">

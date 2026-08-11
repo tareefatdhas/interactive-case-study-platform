@@ -687,9 +687,9 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
               {workspaceView === 'sessions' ? (
                 <div>
                   <section className="overflow-visible rounded-3xl border border-[#e3e5ed] bg-white" aria-labelledby="class-sessions-title">
-                    <div className="flex flex-col gap-4 border-b border-[#e3e5ed] bg-[linear-gradient(110deg,#fff_0%,#faf9ff_70%,#fff5f0_100%)] p-6 sm:flex-row sm:items-end sm:justify-between sm:p-7">
+                    <div className="flex flex-col gap-5 border-b border-[#e3e5ed] bg-[linear-gradient(110deg,#fff_0%,#faf9ff_70%,#fff5f0_100%)] p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
                       <div><p className="seminar-eyebrow mb-2">Prepare and teach</p><h2 id="class-sessions-title" className="seminar-display text-3xl text-[#101a38]">Plan and run each class</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#697087]">Open a live session when you are teaching, or prepare the interactions for the next one.</p></div>
-                      {!course.archived && <Link href={`/dashboard/sessions/new?courseId=${course.id}`}><Button className="gap-2"><Plus className="h-4 w-4" /> New session</Button></Link>}
+                      {!course.archived && <Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="shrink-0"><Button className="w-full gap-2 sm:w-auto"><Plus className="h-4 w-4" /> Plan a session</Button></Link>}
                     </div>
 
                     {orderedSessions.length === 0 ? (
@@ -704,15 +704,25 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                         {orderedSessions.map((session, index) => {
                           const sessionNumber = Math.max(1, sessions.length - index);
                           return (
-                            <li key={session.id} className="group grid gap-4 p-5 transition-colors hover:bg-[#faf9ff] sm:grid-cols-[54px_minmax(0,1fr)_auto] sm:items-center sm:p-6">
-                              <span className={`flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-bold ${session.active ? 'bg-[#e8f7ed] text-[#28733a]' : 'bg-[#f0efff] text-[#5146e5]'}`}>{session.active ? <Radio className="h-5 w-5" /> : sessionNumber}</span>
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.07em]"><span className={session.active ? 'text-[#28733a]' : 'text-[#5146e5]'}>{session.active ? 'Live now' : `Session ${sessionNumber}`}</span><span className="text-[#9aa0b1]">{readableDate(session.scheduledFor)}</span></div>
-                                <h3 className="mt-1 truncate text-lg font-bold text-[#101a38]">{session.title || 'Untitled session'}</h3>
-                                <p className="mt-1 flex items-center gap-2 text-xs text-[#697087]"><Library className="h-3.5 w-3.5" /> {session.interactions?.length || 0} activities in this flow</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Link className="flex-1" href={session.active ? `/live?sessionId=${session.id}` : `/dashboard/sessions/${session.id}`}><Button variant={session.active ? 'primary' : 'outline'} className="w-full gap-2 sm:w-auto">{session.active ? <Play className="h-4 w-4" /> : null}{session.active ? 'Open live controls' : 'Open session'} <ArrowRight className="h-4 w-4" /></Button></Link>
+                            <li key={session.id} className={`group flex items-stretch transition-colors ${session.active ? 'bg-[#fbfefc]' : 'bg-white'}`}>
+                              <Link
+                                href={session.active ? `/live?sessionId=${session.id}` : `/dashboard/sessions/${session.id}`}
+                                className={`seminar-focus group/session grid min-w-0 flex-1 cursor-pointer gap-4 rounded-2xl p-5 transition-colors sm:grid-cols-[54px_minmax(0,1fr)_auto] sm:items-center sm:p-6 ${session.active ? 'hover:bg-[#f1faf4]' : 'hover:bg-[#faf9ff]'}`}
+                                aria-label={`${session.active ? 'Return to live class' : 'Open session'}: ${session.title || 'Untitled session'}`}
+                              >
+                                <span className={`flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-bold ${session.active ? 'bg-[#e8f7ed] text-[#28733a]' : 'bg-[#f0efff] text-[#5146e5]'}`}>{session.active ? <Radio className="h-5 w-5" /> : sessionNumber}</span>
+                                <span className="min-w-0">
+                                  <span className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.07em]"><span className={session.active ? 'text-[#28733a]' : 'text-[#5146e5]'}>{session.active ? 'Live now' : `Session ${sessionNumber}`}</span><span className="text-[#9aa0b1]">{readableDate(session.scheduledFor)}</span></span>
+                                  <span className="mt-1 block truncate text-lg font-bold text-[#101a38]">{session.title || 'Untitled session'}</span>
+                                  <span className="mt-1 flex items-center gap-2 text-xs text-[#697087]"><Library className="h-3.5 w-3.5" /> {session.interactions?.length || 0} activities in this flow</span>
+                                </span>
+                                <span className={`col-span-2 flex items-center gap-2 text-sm font-bold sm:col-span-1 ${session.active ? 'text-[#28733a]' : 'text-[#5146e5]'}`}>
+                                  {session.active ? <Play className="h-4 w-4" /> : null}
+                                  {session.active ? 'Return to live class' : 'Open session'}
+                                  <ArrowRight className="h-4 w-4 transition-transform group-hover/session:translate-x-1" />
+                                </span>
+                              </Link>
+                              <div className="flex shrink-0 items-center pr-3 sm:pr-5">
                                 <div className="relative" data-overflow-menu>
                                   <Button variant="ghost" aria-label={`More actions for ${session.title || 'untitled session'}`} aria-haspopup="menu" aria-expanded={sessionMenuOpen === session.id} onClick={() => setSessionMenuOpen((open) => open === session.id ? null : session.id)} className="px-2.5"><MoreHorizontal className="h-5 w-5" /></Button>
                                   {sessionMenuOpen === session.id && <div role="menu" className="absolute right-0 z-30 mt-2 w-52 origin-top-right rounded-2xl border border-[#e3e5ed] bg-white p-1.5 shadow-[0_18px_48px_rgba(16,26,56,0.16)] animate-[fadeIn_180ms_ease-out]">

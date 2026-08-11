@@ -8,6 +8,7 @@ const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { renderWelcomeEmail, renderAfterClassReportEmail, renderWeeklyDigestEmail } = require('./email');
 const { collectSessionMetrics, collectWeeklyMetrics } = require('./reporting');
+const { isWeeklyDigestSendTime, localPeriodKey } = require('./scheduling');
 const { RETENTION_DAYS, collectExpiredRooms } = require('./retention');
 
 initializeApp();
@@ -32,12 +33,12 @@ function timestampToDate(value) {
   return Number.isNaN(date.getTime()) ? new Date() : date;
 }
 
-function formatDate(value) {
+function formatDate(value, timeZone = 'UTC') {
   return new Intl.DateTimeFormat('en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-    timeZone: 'Asia/Bangkok',
+    timeZone,
   }).format(timestampToDate(value));
 }
 
@@ -184,7 +185,7 @@ exports.sendAfterClassReport = onDocumentUpdated(
       courseCode: report.courseCode,
       courseName: report.courseName,
       sessionTitle: report.sessionTitle,
-      sessionDate: formatDate(report.endedAt),
+      sessionDate: formatDate(report.endedAt, teacher.timeZone || 'UTC'),
       metrics: report.metrics,
       insightTitle: report.insightTitle,
       insightBody: report.insightBody,
@@ -204,42 +205,42 @@ exports.sendAfterClassReport = onDocumentUpdated(
 
 exports.sendWeeklyInstructorDigests = onSchedule(
   {
-    schedule: 'every monday 08:00',
-    timeZone: 'Asia/Bangkok',
+    schedule: '5 * * * *',
+    timeZone: 'UTC',
     region: FUNCTION_REGION,
     timeoutSeconds: 540,
     memory: '512MiB',
     secrets: [postmarkServerToken],
     retryCount: 2,
   },
-  async () => {
+  async (event) => {
     const firestore = getFirestore();
-    const end = new Date();
-    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const periodKey = start.toISOString().slice(0, 10);
-    const sessionSnapshot = await firestore.collection('sessions')
-      .where('endedAt', '>=', Timestamp.fromDate(start))
-      .where('endedAt', '<', Timestamp.fromDate(end))
-      .get();
-    const byTeacher = new Map();
-    sessionSnapshot.docs.forEach((document) => {
-      const session = document.data();
-      if (!session.teacherId || session.active !== false) return;
-      const sessions = byTeacher.get(session.teacherId) || [];
-      sessions.push({ sessionId: document.id, session });
-      byTeacher.set(session.teacherId, sessions);
-    });
+    const now = event.scheduleTime ? new Date(event.scheduleTime) : new Date();
+    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const teacherSnapshot = await firestore.collection('teachers').get();
 
-    for (const [teacherId, sessions] of byTeacher.entries()) {
-      const teacherSnapshot = await firestore.collection('teachers').doc(teacherId).get();
-      const teacher = teacherSnapshot.data();
-      if (!teacher?.email || !notificationPreferences(teacher).weeklyCourseDigest) continue;
+    for (const teacherDocument of teacherSnapshot.docs) {
+      const teacherId = teacherDocument.id;
+      const teacher = teacherDocument.data();
+      if (!teacher?.email || !teacher.timeZone || !notificationPreferences(teacher).weeklyCourseDigest) continue;
+      if (!isWeeklyDigestSendTime(now, teacher.timeZone)) continue;
+
+      const periodKey = localPeriodKey(now, teacher.timeZone);
+      if (!periodKey) continue;
+      const sessionSnapshot = await firestore.collection('sessions').where('teacherId', '==', teacherId).get();
+      const sessions = sessionSnapshot.docs
+        .map((document) => ({ sessionId: document.id, session: document.data() }))
+        .filter(({ session }) => {
+          const endedAt = timestampToDate(session.endedAt);
+          return session.active === false && session.endedAt && endedAt >= start && endedAt < now;
+        });
+      if (!sessions.length) continue;
+
       const reports = await Promise.all(sessions.map(({ sessionId, session }) => loadSessionReport(sessionId, session)));
-      if (!reports.length) continue;
       const weekly = collectWeeklyMetrics(reports);
       const email = renderWeeklyDigestEmail({
         recipientName: teacher.name || 'there',
-        weekLabel: `Week of ${formatDate(start)}`,
+        weekLabel: `Week of ${formatDate(start, teacher.timeZone)}`,
         ...weekly,
       });
       await deliverEmail({

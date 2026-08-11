@@ -106,6 +106,12 @@ const startingInteractions: SessionInteraction[] = [
   },
 ];
 
+const getActivityPhase = (interaction: SessionInteraction, index: number, total: number) => {
+  if (index === 0) return 'Opening';
+  if (interaction.type === 'reflection' && index === total - 1) return 'Closing';
+  return 'During class';
+};
+
 const defaultPrompt: Record<SessionInteractionType, string> = {
   pulse: 'How is the pace right now?',
   poll: 'Which option best matches your view?',
@@ -464,6 +470,11 @@ function NewSessionContent() {
     setError('');
 
     try {
+      const normalizedInteractions = interactions.map((interaction, index) => ({
+        ...interaction,
+        plannedTime: getActivityPhase(interaction, index, interactions.length),
+      }));
+
       if (editingSessionId) {
         await updateSession(editingSessionId, {
           title: sessionTitle.trim(),
@@ -472,7 +483,7 @@ function NewSessionContent() {
           courseName: courseName.trim(),
           ...(scheduledFor ? { scheduledFor } : {}),
           presentationMode: 'external',
-          interactions,
+          interactions: normalizedInteractions,
           courseSourceIds: selectedCourseSourceIds,
         });
         router.push(`/dashboard/sessions/${editingSessionId}`);
@@ -487,7 +498,7 @@ function NewSessionContent() {
         courseCode: courseCode.trim(),
         courseName: courseName.trim(),
         presentationMode: 'external',
-        interactions,
+        interactions: normalizedInteractions,
         courseSourceIds: selectedCourseSourceIds,
         teacherId: user.uid,
         active: false,
@@ -562,9 +573,9 @@ function NewSessionContent() {
                     <h2 id="interaction-plan-title" className="seminar-display text-3xl text-[#101a38]">Activities in teaching order</h2>
                     <p className="mt-2 text-sm text-[#697087]">Add only what you expect to use. Every activity stays private until you launch it.</p>
                   </div>
-                  <div>
-                    <Button type="button" variant="outline" onClick={() => { setCaseMaterialOpen(false); setAddMenuOpen(true); }} className="gap-2">
-                      <Plus className="h-4 w-4" /> Add activity
+                  <div className="w-full sm:w-auto">
+                    <Button type="button" onClick={() => { setCaseMaterialOpen(false); setAddMenuOpen(true); }} className="w-full gap-2 px-5 py-2.5 shadow-[0_3px_0_#342bb3,0_9px_20px_rgba(81,70,229,0.22)] transition-[transform,box-shadow,background-color] duration-150 hover:-translate-y-0.5 hover:shadow-[0_4px_0_#342bb3,0_12px_24px_rgba(81,70,229,0.25)] active:translate-y-[2px] active:shadow-[0_1px_0_#342bb3,0_4px_10px_rgba(81,70,229,0.18)] motion-reduce:transform-none sm:w-auto">
+                      <Plus className="h-4 w-4" /> Add an activity
                     </Button>
                   </div>
                 </div>
@@ -673,6 +684,8 @@ function NewSessionContent() {
                     const option = interactionOptions.find((item) => item.type === interaction.type);
                     const Icon = option?.icon || ListChecks;
                     const isExpanded = expandedInteractionId === interaction.id;
+                    const phase = getActivityPhase(interaction, index, interactions.length);
+                    const hasSideSettings = interaction.type === 'timer' || interaction.type === 'group-work';
                     return (
                       <article
                         id={`activity-${interaction.id}`}
@@ -709,7 +722,7 @@ function NewSessionContent() {
                           <button type="button" onClick={() => setExpandedInteractionId(isExpanded ? null : interaction.id)} className="seminar-focus min-w-0 flex-1 rounded-lg text-left">
                             <span className="flex items-center gap-2">
                               <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#5146e5]">{index + 1}. {option?.label || 'Class activity'}</span>
-                              {interaction.plannedTime && <span className="hidden truncate text-[11px] text-[#8a90a2] sm:inline">· {interaction.plannedTime}</span>}
+                              <span className="hidden truncate text-[11px] text-[#8a90a2] sm:inline">· {phase}</span>
                             </span>
                             <strong className="mt-1 block truncate text-sm text-[#101a38]">{interaction.title || 'Untitled activity'}</strong>
                             {!isExpanded && <span className="mt-0.5 block truncate text-xs text-[#697087]">{interaction.prompt}</span>}
@@ -721,7 +734,7 @@ function NewSessionContent() {
                             <button type="button" onClick={() => removeInteraction(interaction.id)} className="seminar-focus rounded-lg p-2 text-[#858b9d] hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Remove ${interaction.title}`}><Trash2 className="h-4 w-4" /></button>
                           </div>
                         </div>
-                        {isExpanded && <div className="grid gap-5 border-t border-[#e7e5f0] bg-[#fdfcff] p-4 sm:p-5 md:grid-cols-[minmax(0,1fr)_180px] md:items-start">
+                        {isExpanded && <div className={`grid gap-5 border-t border-[#e7e5f0] bg-[#fdfcff] p-4 sm:p-5 ${hasSideSettings ? 'md:grid-cols-[minmax(0,1fr)_180px] md:items-start' : ''}`}>
                         <div className="space-y-3">
                           <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5]">Edit activity</p>
                           <Input aria-label="Interaction title" value={interaction.title} onChange={(event) => updateInteraction(interaction.id, { title: event.target.value })} />
@@ -789,8 +802,7 @@ function NewSessionContent() {
                             </div>
                           )}
                         </div>
-                        <div className="grid gap-3">
-                          <Input aria-label="Planned moment" value={interaction.plannedTime || ''} onChange={(event) => updateInteraction(interaction.id, { plannedTime: event.target.value })} />
+                        {hasSideSettings && <div className="grid gap-3">
                           {interaction.type === 'timer' && (
                             <label className="grid gap-1.5 text-xs font-semibold text-[#697087]">
                               <span>Duration</span>
@@ -810,7 +822,7 @@ function NewSessionContent() {
                               </span>
                             </label>
                           )}
-                        </div>
+                        </div>}
                         </div>}
                       </article>
                     );
@@ -878,7 +890,7 @@ function NewSessionContent() {
 
                 <div className="grid grid-cols-2 border-t border-[#e5e2fb] bg-[#fbfaff] text-xs">
                   <div className="border-r border-[#e5e2fb] px-4 py-3"><span className="block text-[#7a8194]">Activities</span><strong className="mt-0.5 block text-[#101a38]">{interactions.length}</strong></div>
-                  <div className="px-4 py-3"><span className="block text-[#7a8194]">Planned time</span><strong className="mt-0.5 block text-[#101a38]">About {Math.ceil(estimatedMinutes)} min</strong></div>
+                  <div className="px-4 py-3"><span className="block text-[#7a8194]">Activity time</span><strong className="mt-0.5 block text-[#101a38]">About {Math.ceil(estimatedMinutes)} min</strong></div>
                 </div>
               </section>
 
