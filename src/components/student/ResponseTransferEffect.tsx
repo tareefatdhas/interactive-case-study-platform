@@ -72,6 +72,12 @@ export default function ResponseTransferEffect({ signal, contained = false }: { 
     if (signal.phase !== 'arrived') return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
+    // A full-surface SVG displacement filter is visually effective on desktop,
+    // but it forces mobile WebKit to repaint most of the student interface on
+    // every frame. The mobile effect keeps the same color bloom and expanding
+    // ripples in CSS, which Safari can composite without rerasterizing the page.
+    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return;
+
     const root = contained
       ? effectRef.current?.parentElement
       : effectRef.current?.closest('.student-welcome-shell, .student-effect-preview-phone');

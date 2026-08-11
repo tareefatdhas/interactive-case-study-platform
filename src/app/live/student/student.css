@@ -476,6 +476,8 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   pointer-events: none;
   background: transparent;
   animation: student-transport-veil 220ms ease-out both;
+  contain: layout paint style;
+  isolation: isolate;
 }
 
 .student-ripple-filter-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
@@ -870,12 +872,13 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 18px;
-  height: 18px;
+  width: 120vmax;
+  height: 120vmax;
   border: 1.5px solid color-mix(in srgb, var(--transport-color) 52%, white);
   border-radius: 50%;
   opacity: 0;
-  transform: translate(-50%, -50%);
+  transform: translate3d(-50%, -50%, 0) scale(.0125);
+  will-change: transform, opacity;
 }
 
 .student-transport.is-arrived .student-transport-ripple i {
@@ -944,9 +947,9 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
 }
 
 @keyframes student-room-ripple {
-  0% { width: 18px; height: 18px; opacity: 0; }
+  0% { opacity: 0; transform: translate3d(-50%, -50%, 0) scale(.0125); }
   12% { opacity: 0.58; }
-  100% { width: 160vmax; height: 160vmax; opacity: 0; }
+  100% { opacity: 0; transform: translate3d(-50%, -50%, 0) scale(1.34); }
 }
 
 @keyframes student-progress-core {
@@ -985,6 +988,69 @@ html[data-input-modality="keyboard"] .student-course-trigger:focus-visible { bor
   22% { opacity: .54; }
   64% { opacity: .28; }
   100% { opacity: 0; transform: translate3d(0, 62%, 0) scale(1.55); }
+}
+
+/* Mobile Safari performance tier
+ *
+ * Preserve the full response-arrival story while keeping the animated work on
+ * one composited color layer. Multiple viewport-sized blurs, blend modes, and
+ * full-page SVG displacement are replaced by gradients whose transform and
+ * opacity can stay on the compositor.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .student-surface-spectrum {
+    mix-blend-mode: normal;
+    transform: translateZ(0);
+    will-change: opacity;
+  }
+
+  .student-surface-spectrum::before {
+    top: -12vh;
+    left: -18vw;
+    width: 136vw;
+    height: min(64vh, 520px);
+    border-radius: 0 0 48% 52%;
+    background:
+      radial-gradient(ellipse at 8% 4%, rgba(255, 207, 88, .76) 0 12%, transparent 43%),
+      radial-gradient(ellipse at 35% 0%, color-mix(in srgb, var(--transport-color) 62%, #ff7b68) 0 13%, transparent 46%),
+      radial-gradient(ellipse at 68% 2%, rgba(58, 143, 255, .64) 0 14%, transparent 47%),
+      radial-gradient(ellipse at 94% 0%, rgba(67, 215, 199, .58) 0 12%, transparent 42%);
+    filter: none;
+    opacity: .92;
+    transform: translate3d(0, -46%, 0) scale3d(.82, .54, 1);
+    transform-origin: 50% 0;
+    will-change: transform, opacity;
+  }
+
+  .student-surface-spectrum i { display: none; }
+
+  .student-transport.is-arrived .student-surface-spectrum {
+    animation: student-mobile-spectrum-veil 1020ms cubic-bezier(.16,.76,.22,1) both;
+  }
+
+  .student-transport.is-arrived .student-surface-spectrum::before {
+    animation: student-mobile-spectrum-sweep 1020ms cubic-bezier(.16,.86,.22,1) both;
+  }
+
+  .student-surface-ripple { transform: translate3d(-50%, 0, 0); }
+  .student-surface-ripple i {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--transport-color) 10%, transparent);
+    will-change: transform, opacity;
+  }
+}
+
+@keyframes student-mobile-spectrum-veil {
+  0% { opacity: 0; }
+  14% { opacity: .92; }
+  52% { opacity: .62; }
+  100% { opacity: 0; }
+}
+
+@keyframes student-mobile-spectrum-sweep {
+  0% { opacity: 0; transform: translate3d(0, -48%, 0) scale3d(.78, .44, 1); }
+  18% { opacity: 1; transform: translate3d(0, -22%, 0) scale3d(.92, .72, 1); }
+  58% { opacity: .74; transform: translate3d(0, 9%, 0) scale3d(1.04, 1.08, 1); }
+  100% { opacity: 0; transform: translate3d(0, 48%, 0) scale3d(1.12, 1.34, 1); }
 }
 
 @keyframes student-signal-fail {
