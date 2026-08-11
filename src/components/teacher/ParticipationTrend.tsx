@@ -6,6 +6,12 @@ interface ParticipationTrendProps {
 
 const shorten = (value: string) => value.length > 20 ? `${value.slice(0, 18)}…` : value;
 
+const colorForParticipation = (percent: number) => {
+  if (percent < 75) return '#d25645';
+  if (percent < 90) return '#c47a10';
+  return '#5146e5';
+};
+
 export default function ParticipationTrend({ summary }: ParticipationTrendProps) {
   const items = summary.interactions;
   const width = Math.max(680, 96 + Math.max(0, items.length - 1) * 150);
@@ -64,8 +70,8 @@ export default function ParticipationTrend({ summary }: ParticipationTrendProps)
 
           {points.map((point) => (
             <g key={point.runId}>
-              <circle cx={point.x} cy={point.y} r="7" fill="#fff" stroke="#5146e5" strokeWidth="4" />
-              <text x={point.x} y={point.y - 15} textAnchor="middle" fill="#101a38" fontSize="14" fontWeight="700">
+              <circle cx={point.x} cy={point.y} r="7" fill="#fff" stroke={colorForParticipation(point.participationPercent)} strokeWidth="4" />
+              <text x={point.x} y={point.y - 15} textAnchor="middle" fill={colorForParticipation(point.participationPercent)} fontSize="14" fontWeight="700">
                 {point.participationPercent}%
               </text>
               <text x={point.x} y={190} textAnchor="middle" fill="#101a38" fontSize="12" fontWeight="650">
@@ -84,7 +90,7 @@ export default function ParticipationTrend({ summary }: ParticipationTrendProps)
         </svg>
       </div>
       <figcaption className="mt-3 border-t border-[#eceef3] pt-4 text-xs leading-5 text-[#73798d]">
-        The busiest response activity is set to 100%. Activities with no responses are treated as not run. Timers, wheels, and team submissions are excluded because they use different participation units.
+        The busiest response activity is set to 100%. Amber marks 75% to 89% of peak participation, and coral marks below 75%. Activities with no responses are treated as not run. Timers, wheels, and team submissions are excluded because they use different participation units.
       </figcaption>
     </figure>
   );
