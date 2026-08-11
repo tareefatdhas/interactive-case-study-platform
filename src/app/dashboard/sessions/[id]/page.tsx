@@ -20,6 +20,7 @@ import ParticipationTrend from '@/components/teacher/ParticipationTrend';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
+import { AmbientLoading } from '@/components/motion';
 import type { Session, CaseStudy, Response, Student } from '@/types';
 import { 
   QrCode, 
@@ -501,8 +502,8 @@ export default function SessionPage({ params }: SessionPageProps) {
     return (
       <ProtectedRoute>
         <DashboardLayout>
-          <div className="flex items-center justify-center min-h-96">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900"></div>
+          <div className="grid min-h-96 place-items-center" role="status" aria-label="Opening this session">
+            <AmbientLoading className="w-44 rounded-full" announce="off" />
           </div>
         </DashboardLayout>
       </ProtectedRoute>

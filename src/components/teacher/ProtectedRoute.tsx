@@ -3,6 +3,8 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
+import DashboardLayout from '@/components/teacher/DashboardLayout';
+import { AmbientLoading } from '@/components/motion';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -20,9 +22,11 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900"></div>
-      </div>
+      <DashboardLayout>
+        <div className="grid min-h-96 place-items-center" role="status" aria-label="Opening your Classfully workspace">
+          <AmbientLoading className="w-44 rounded-full" announce="off" />
+        </div>
+      </DashboardLayout>
     );
   }
 

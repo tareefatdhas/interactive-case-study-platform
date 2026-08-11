@@ -51,7 +51,7 @@ export const POINT_RULES = {
   },
   privatePrediction: 1,
   roomRead: 3,
-  correctQuizAnswer: 8,
+  correctQuizAnswer: KNOWLEDGE_CHECK_CORRECT_POINTS,
   strongSecondAnswer: 6,
   questions: {
     asked: { id: 'question-asked', amount: 1, label: 'Asked a question' },
@@ -157,3 +157,4 @@ export function requestCourseReward(
     }, ...state.redemptions],
   };
 }
+import { KNOWLEDGE_CHECK_CORRECT_POINTS } from '@/lib/knowledge-check-scoring';

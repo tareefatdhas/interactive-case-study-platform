@@ -9,7 +9,6 @@ import Button from '@/components/ui/Button';
 import ClassfullyMark from '@/components/brand/ClassfullyMark';
 import InstructorAvatar from '@/components/teacher/InstructorAvatar';
 import { 
-  BookOpen,
   Home, 
   BarChart, 
   Settings, 
@@ -18,8 +17,7 @@ import {
   X,
   UserCheck,
   GraduationCap,
-  Gift,
-  Blocks,
+  Library,
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -34,9 +32,7 @@ const primaryNavigation = [
 ];
 
 const teachingTools = [
-  { name: 'Teaching modules', href: '/dashboard/modules', icon: Blocks },
-  { name: 'Case studies', href: '/dashboard/case-studies', icon: BookOpen },
-  { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
+  { name: 'Library', href: '/dashboard/library', icon: Library },
 ];
 
 const accountNavigation = [
@@ -113,10 +109,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             })}
           </ul>
 
-          <p className="mt-7 px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa0b1]">Build</p>
+          <p className="mt-7 px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9aa0b1]">Prepare</p>
           <ul className="space-y-1">
             {teachingTools.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const isLibraryArea = item.href === '/dashboard/library'
+                && (pathname.startsWith('/dashboard/case-studies') || pathname.startsWith('/dashboard/modules'));
+              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`) || isLibraryArea;
               const Icon = item.icon;
               return (
                 <li key={item.name}>

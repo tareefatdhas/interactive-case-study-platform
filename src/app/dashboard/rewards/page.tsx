@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
 import InlineMessage from '@/components/ui/InlineMessage';
+import { AmbientLoading } from '@/components/motion';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { getCoursesByTeacher } from '@/lib/firebase/firestore';
 import {
@@ -17,7 +19,7 @@ import {
   updateRewardDefinition,
 } from '@/lib/firebase/rewards';
 import type { Course, RewardDefinition, RewardKind, RewardRequest } from '@/types';
-import { Archive, BookOpenCheck, CalendarClock, Check, CircleSlash2, Clock3, FilePenLine, Gift, LoaderCircle, MessageCircleMore, Pencil, Plus, ShieldCheck, Sparkles, Star, TicketCheck, Trash2, X, type LucideIcon } from 'lucide-react';
+import { Archive, ArrowLeft, BookOpenCheck, CalendarClock, Check, CircleSlash2, Clock3, FilePenLine, Gift, MessageCircleMore, Pencil, Plus, ShieldCheck, Sparkles, Star, TicketCheck, Trash2, X, type LucideIcon } from 'lucide-react';
 
 const rewardKinds: Array<{ value: RewardKind; label: string; example: string }> = [
   { value: 'pass', label: 'Pass', example: 'A deadline or participation pass' },
@@ -141,7 +143,9 @@ export default function RewardsPage() {
       setCourses(courseData);
       setRewards(rewardData);
       setRequests(requestData);
-      setSelectedCourseId((current) => current || courseData[0]?.id || '');
+      const requestedCourseId = new URLSearchParams(window.location.search).get('courseId');
+      const requestedCourseExists = courseData.some((course) => course.id === requestedCourseId);
+      setSelectedCourseId((current) => current || (requestedCourseExists ? requestedCourseId! : courseData[0]?.id || ''));
     } catch (loadError) {
       console.error('Could not load rewards:', loadError);
       setError('Rewards could not be loaded. Try refreshing the page.');
@@ -247,6 +251,7 @@ export default function RewardsPage() {
     <ProtectedRoute>
       <DashboardLayout>
         <main className="mx-auto max-w-7xl p-5 sm:p-8 lg:p-10">
+          {selectedCourse && <Link href={`/dashboard/classes/${selectedCourse.id}?view=kit`} className="seminar-focus mb-6 inline-flex items-center gap-2 rounded-lg text-sm font-semibold text-[#697087] hover:text-[#101a38]"><ArrowLeft className="h-4 w-4" /> Back to {selectedCourse.code}</Link>}
           <header className="flex flex-col gap-5 border-b border-[#e3e5ed] pb-7 sm:flex-row sm:items-end sm:justify-between">
             <div className="max-w-2xl"><p className="seminar-eyebrow mb-3">Points and recognition</p><h1 className="seminar-display text-4xl text-[#101a38] sm:text-5xl">Rewards</h1><p className="mt-3 text-base leading-7 text-[#697087]">Set meaningful point milestones, then review student requests before anything is granted.</p></div>
             <Button onClick={openCreate} disabled={!selectedCourse} className="gap-2 self-start"><Plus className="h-4 w-4" /> Add reward</Button>
@@ -259,7 +264,7 @@ export default function RewardsPage() {
             <div className="flex rounded-xl bg-[#f4f3f0] p-1" role="tablist" aria-label="Reward management views"><button type="button" role="tab" aria-selected={view === 'menu'} onClick={() => setView('menu')} className={`rounded-lg px-4 py-2 text-sm font-bold ${view === 'menu' ? 'bg-white text-[#101a38] shadow-sm' : 'text-[#697087]'}`}>Reward menu</button><button type="button" role="tab" aria-selected={view === 'requests'} onClick={() => setView('requests')} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold ${view === 'requests' ? 'bg-white text-[#101a38] shadow-sm' : 'text-[#697087]'}`}>Requests {pendingCount > 0 && <span className="rounded-full bg-[#5146e5] px-2 py-0.5 text-[11px] text-white">{pendingCount}</span>}</button></div>
           </div>
 
-          {loading ? <div className="flex min-h-72 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /></div> : courses.length === 0 ? (
+          {loading ? <div className="grid min-h-72 place-items-center" role="status" aria-label="Loading rewards"><AmbientLoading className="w-44 rounded-full" announce="off" /></div> : courses.length === 0 ? (
             <section className="mt-7 rounded-3xl border border-dashed border-[#cfd2df] bg-white px-6 py-14 text-center"><Archive className="mx-auto h-7 w-7 text-[#697087]" /><h2 className="seminar-display mt-4 text-3xl text-[#101a38]">Add a class first.</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[#697087]">Rewards belong to a specific class so milestones and approvals stay in the right teaching context.</p></section>
           ) : view === 'menu' ? (
             <section className="mt-7" aria-labelledby="reward-menu-title">

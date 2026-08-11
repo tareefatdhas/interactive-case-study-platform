@@ -10,11 +10,12 @@ import {
   UsersThree as Users,
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import ResponseTransferEffect, {
+import {
+  SharedMomentEffect,
   RESPONSE_TRANSFER_DEPART_MS,
   RESPONSE_TRANSFER_LIFETIME_MS,
   type ResponseTransferSignal,
-} from '@/components/student/ResponseTransferEffect';
+} from '@/components/motion';
 
 const results = [
   { label: 'One more example', value: 46, color: 'var(--pulse-steady)', dots: 18 },
@@ -224,7 +225,7 @@ export default function ClassroomStage() {
             </div>
           </div>
         </div>
-        {transferSignal ? <ResponseTransferEffect signal={transferSignal} contained /> : null}
+        {transferSignal ? <SharedMomentEffect signal={transferSignal} contained /> : null}
       </div>
     </div>
   );

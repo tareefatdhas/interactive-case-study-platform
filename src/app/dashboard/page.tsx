@@ -7,6 +7,7 @@ import { checkAndTimeoutInactiveSessions, getCoursesByTeacher, getSessionsByTeac
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
+import { AmbientLoading } from '@/components/motion';
 import type { Course, Session } from '@/types';
 import {
   ArrowRight,
@@ -15,7 +16,6 @@ import {
   Clock3,
   GraduationCap,
   Layers3,
-  LoaderCircle,
   MonitorUp,
   Plus,
   Radio,
@@ -87,7 +87,7 @@ export default function DashboardPage() {
           </header>
 
           {loading ? (
-            <div className="flex min-h-80 items-center justify-center" role="status"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /><span className="sr-only">Loading your classes</span></div>
+            <div className="grid min-h-80 place-items-center" role="status" aria-label="Loading your classes"><AmbientLoading className="w-44 rounded-full" announce="off" /></div>
           ) : courses.length === 0 ? (
             <section className="mt-8 overflow-hidden rounded-3xl border border-[#dcd8ff] bg-white" aria-labelledby="first-class-title">
               <div className="grid gap-8 bg-[linear-gradient(125deg,#f7f6ff_0%,#fffefa_58%,#fff2ed_100%)] p-7 sm:p-10 lg:grid-cols-[1fr_340px] lg:items-center">

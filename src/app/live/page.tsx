@@ -136,7 +136,7 @@ const ACTIVITY_TYPES: Array<{
   { type: 'timer', label: 'Timer', description: 'Full-screen working time', icon: Timer },
   { type: 'pulse', label: 'Class pulse', description: 'Check pace, confidence, or mood', icon: HeartPulse },
   { type: 'poll', label: 'Poll', description: 'See where the room stands', icon: BarChart3 },
-  { type: 'quiz', label: 'Quiz', description: 'Check understanding', icon: CircleHelp },
+  { type: 'quiz', label: 'Knowledge check', description: 'Check understanding', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', description: 'Gather written thinking', icon: MessageCircle },
   { type: 'word-cloud', label: 'Word cloud', description: 'Surface shared themes', icon: Cloud },
   { type: 'peer-learning', label: 'Peer learning', description: 'Answer, discuss, answer again', icon: Repeat2 },
@@ -173,6 +173,9 @@ const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInt
     options: choiceType ? choiceOptions : undefined,
     correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
     explanation: type === 'quiz' || type === 'peer-learning' ? 'Explain why this answer is correct.' : undefined,
+    speedBonusEnabled: type === 'quiz' ? false : undefined,
+    speedBonusSeconds: type === 'quiz' ? 40 : undefined,
+    maxSpeedBonusPoints: type === 'quiz' ? 4 : undefined,
     durationMinutes: type === 'timer' ? 5 : type === 'group-work' ? 8 : undefined,
     discussionMinutes: type === 'peer-learning' ? 2 : undefined,
     groupSize: type === 'group-work' ? 4 : undefined,
@@ -256,6 +259,7 @@ function restoreRunResults(
     ...fresh,
     ...run.resultState,
     runId: run.id,
+    startedAt: run.startedAt,
     responseCount: run.responseCount,
     optionCounts: interaction.options?.map(() => 0) ?? [],
     writtenResponses: [],
@@ -298,6 +302,8 @@ function InteractionComposer({
   const [options, setOptions] = useState(initialDraft.options || []);
   const [correctOptionIndex, setCorrectOptionIndex] = useState(initialDraft.correctOptionIndex || 0);
   const [explanation, setExplanation] = useState(initialDraft.explanation || '');
+  const [speedBonusEnabled, setSpeedBonusEnabled] = useState(Boolean(initialDraft.speedBonusEnabled));
+  const [speedBonusSeconds, setSpeedBonusSeconds] = useState(String(initialDraft.speedBonusSeconds || 40));
   const [discussionMinutes, setDiscussionMinutes] = useState(String(initialDraft.discussionMinutes || 2));
   const [groupSize, setGroupSize] = useState(String(initialDraft.groupSize || 4));
   const [teamTags, setTeamTags] = useState((initialDraft.teamTags || []).join(', '));
@@ -341,6 +347,9 @@ function InteractionComposer({
       options: usesChoices ? options.map((option) => option.trim()).filter(Boolean) : undefined,
       correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? correctOptionIndex : undefined,
       explanation: type === 'quiz' || type === 'peer-learning' ? explanation.trim() || undefined : undefined,
+      speedBonusEnabled: type === 'quiz' ? speedBonusEnabled : undefined,
+      speedBonusSeconds: type === 'quiz' && speedBonusEnabled ? Math.min(120, Math.max(10, Number.parseInt(speedBonusSeconds || '40', 10) || 40)) : undefined,
+      maxSpeedBonusPoints: type === 'quiz' && speedBonusEnabled ? 4 : undefined,
       durationMinutes: usesTimer ? durationSeconds / 60 : initialDraft.durationMinutes,
       discussionMinutes: type === 'peer-learning' ? Math.max(1, Number.parseInt(discussionMinutes || '2', 10) || 2) : undefined,
       groupSize: type === 'group-work' ? Math.max(2, Number.parseInt(groupSize || '4', 10) || 4) : undefined,
@@ -389,6 +398,7 @@ function InteractionComposer({
         </div>
       )}
       {(type === 'quiz' || type === 'peer-learning') && <label><span>Answer explanation</span><textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} maxLength={500} rows={3} placeholder="Explain why the marked answer is correct" /></label>}
+      {type === 'quiz' && <div className="interaction-composer-scoring"><span>Scoring</span><label className="interaction-wheel-checkbox"><input type="checkbox" checked={speedBonusEnabled} onChange={(event) => setSpeedBonusEnabled(event.target.checked)} /> Add a speed bonus</label>{speedBonusEnabled && <div><label><span>Bonus window</span><input inputMode="numeric" value={speedBonusSeconds} onChange={(event) => setSpeedBonusSeconds(event.target.value.replace(/\D/g, '').slice(0, 3))} aria-label="Speed bonus window in seconds" /> sec</label><p>Correct answer: 8 points · Speed: up to 4 more</p></div>}</div>}
       {usesTimer && (
         <div className="interaction-composer-duration">
           <span>Duration</span>
@@ -2193,7 +2203,7 @@ export default function LiveLessonPrototype() {
           <div className="instructor-insight">
             <div className="annotation-arrow" aria-hidden="true">↗</div>
             <p>{insight}</p>
-            <span>Start with a gentle recap before the first quiz.</span>
+            <span>Start with a gentle recap before the first knowledge check.</span>
           </div>
         </section>
         )}

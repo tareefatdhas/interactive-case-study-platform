@@ -4,6 +4,8 @@ import { use, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Check, ChevronRight, LoaderCircle, Lock, Palette, Pencil, Search, UsersRound, X } from 'lucide-react';
 import ClassfullyBrand from '@/components/marketing/ClassfullyBrand';
+import ClassroomStateGate from '@/components/live/ClassroomStateGate';
+import { ConfirmationRipple } from '@/components/motion';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import {
   TEAM_COLORS,
@@ -173,7 +175,7 @@ export default function TeamRegistrationPage({ params }: PageProps) {
     }
   };
 
-  if (loading) return <main className="grid min-h-screen place-items-center bg-[#fffefa]"><LoaderCircle className="h-8 w-8 animate-spin text-[#5146e5]" /></main>;
+  if (loading) return <ClassroomStateGate title="Opening team registration" message="Finding your class and its teams." />;
 
   if (!module?.enabled) return <main className="min-h-screen bg-[#fffefa] px-5 py-8"><div className="mx-auto max-w-xl"><ClassfullyBrand /><section className="mt-16 rounded-3xl border border-[#e3e5ed] bg-white p-7"><h1 className="seminar-display text-4xl text-[#101a38]">Team sign-up is closed.</h1><p className="mt-3 leading-7 text-[#697087]">Ask your instructor where to register for this class.</p></section></div></main>;
 
@@ -186,7 +188,7 @@ export default function TeamRegistrationPage({ params }: PageProps) {
         <p className="mt-3 text-base leading-7 text-[#697087]">{module.courseName}{module.term ? ` · ${module.term}` : ''}</p>
 
         {error && <div className="mt-5 rounded-2xl border border-[#f0b4a8] bg-[#fff4f1] px-4 py-3 text-sm leading-6 text-[#a43e2c]" role="alert">{error}</div>}
-        {notice && !error && <div className="mt-5 flex items-center gap-2 rounded-2xl border border-[#bfe2c8] bg-[#f1faf3] px-4 py-3 text-sm font-semibold text-[#287044]" role="status"><Check className="h-4 w-4" /> {notice}</div>}
+        {notice && !error && <ConfirmationRipple eventKey={notice} label={notice} className="mt-5 rounded-2xl"><div className="flex items-center gap-2 rounded-2xl border border-[#bfe2c8] bg-[#f1faf3] px-4 py-3 text-sm font-semibold text-[#287044]"><Check className="h-4 w-4" /> {notice}</div></ConfirmationRipple>}
 
         {!identityReady ? (
           <section className="mt-7 rounded-3xl border border-[#e3e5ed] bg-white p-5 shadow-[0_18px_60px_rgba(16,26,56,.07)] sm:p-7">

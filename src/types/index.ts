@@ -67,6 +67,9 @@ export interface SessionInteraction {
   options?: string[];
   correctOptionIndex?: number;
   explanation?: string;
+  speedBonusEnabled?: boolean;
+  speedBonusSeconds?: number;
+  maxSpeedBonusPoints?: number;
   discussionMinutes?: number;
   groupSize?: number;
   teamTags?: string[];
@@ -233,8 +236,15 @@ export interface Teacher {
   email: string;
   name: string;
   photoURL?: string;
+  notificationPreferences?: TeacherNotificationPreferences;
   courseIds: string[];
   createdAt: Timestamp;
+}
+
+export interface TeacherNotificationPreferences {
+  afterClassReport: boolean;
+  weeklyCourseDigest: boolean;
+  productNews: boolean;
 }
 
 export interface Course {

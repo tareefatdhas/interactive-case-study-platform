@@ -488,7 +488,7 @@ export default function SessionsPage() {
                   No sessions yet
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Prepare a pulse, poll, quiz, or short response for the class you teach next.
+                  Prepare a pulse, poll, knowledge check, or short response for the class you teach next.
                 </p>
                 <Link href="/dashboard/classes"><Button><Plus className="w-4 h-4 mr-2" /> Choose a class</Button></Link>
               </CardContent>

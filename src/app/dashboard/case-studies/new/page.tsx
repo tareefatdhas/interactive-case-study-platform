@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { createCaseStudy } from '@/lib/firebase/firestore';
@@ -26,7 +26,7 @@ export default function NewCaseStudyPage() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    courseId: 'default', // TODO: Implement course selection
+    courseId: 'default',
     conclusionGuidance: '',
   });
 
@@ -40,6 +40,11 @@ export default function NewCaseStudyPage() {
       order: 0
     }
   ]);
+
+  useEffect(() => {
+    const courseId = new URLSearchParams(window.location.search).get('courseId');
+    if (courseId) setFormData((current) => ({ ...current, courseId }));
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({
@@ -96,11 +101,11 @@ export default function NewCaseStudyPage() {
     ));
   };
 
-  const handleQuestionChange = (
-    sectionId: string, 
-    questionId: string, 
-    field: keyof Question, 
-    value: any
+  const handleQuestionChange = <K extends keyof Question>(
+    sectionId: string,
+    questionId: string,
+    field: K,
+    value: Question[K]
   ) => {
     setSections(prev => prev.map(section =>
       section.id === sectionId
@@ -230,8 +235,8 @@ export default function NewCaseStudyPage() {
       };
 
       await createCaseStudy(caseStudyData);
-      router.push('/dashboard/case-studies');
-    } catch (error: any) {
+      router.push(formData.courseId === 'default' ? '/dashboard/case-studies' : `/dashboard/classes/${formData.courseId}?view=kit`);
+    } catch (error: unknown) {
       setError(getUserFacingError(error, 'The case study could not be saved. Your draft is still here, so you can try again.'));
     } finally {
       setLoading(false);

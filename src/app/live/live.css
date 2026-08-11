@@ -490,6 +490,14 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 .interaction-composer-wheel > label { margin: 0; }
 .interaction-composer-wheel .interaction-wheel-checkbox { display: flex; grid-template-columns: none; flex-direction: row; align-items: center; gap: 9px; font-size: 12px; }
 .interaction-composer-wheel .interaction-wheel-checkbox input { width: 16px; min-height: 16px; accent-color: #5146e5; }
+.interaction-composer-scoring { display: grid; gap: 10px; padding: 14px; border: 1px solid #dedaf8; border-radius: 14px; background: #f8f7ff; }
+.interaction-composer-scoring > span { color: #4f576d; font-size: 12px; font-weight: 800; }
+.interaction-composer-scoring > .interaction-wheel-checkbox { display: flex; grid-template-columns: none; flex-direction: row; align-items: center; gap: 9px; margin: 0; font-size: 13px; }
+.interaction-composer-scoring > .interaction-wheel-checkbox input { width: 16px; min-height: 16px; accent-color: #5146e5; }
+.interaction-composer-scoring > div { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; padding-top: 4px; }
+.interaction-composer-scoring > div label { display: flex; grid-template-columns: none; flex-direction: row; align-items: center; gap: 8px; margin: 0; }
+.interaction-composer-scoring > div input { width: 62px; min-height: 38px; }
+.interaction-composer-scoring > div p { margin: 0; color: #697087; font-size: 11px; }
 .instructor-wheel-stage { display: grid; justify-items: center; gap: 16px; min-height: 380px; align-content: center; border: 1px solid #dedaf8; border-radius: 24px; background: radial-gradient(circle at 50% 42%, #fff 0 22%, #f5f2ff 62%, #fbfaff 100%); }
 .instructor-wheel-result { display: flex; align-items: center; gap: 14px; min-width: min(520px, 80%); padding: 18px 22px; border: 1px solid #e1def4; border-radius: 18px; color: #5146e5; background: rgba(255,255,255,.88); box-shadow: 0 14px 34px rgba(62,50,142,.09); }
 .instructor-wheel-result span { display: grid; gap: 3px; }

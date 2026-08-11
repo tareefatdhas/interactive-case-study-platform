@@ -26,12 +26,11 @@
 
 .brand span { color: #df664e; }
 
-.spinner {
-  width: 30px;
-  height: 30px;
-  margin-bottom: 18px;
-  color: #5146e5;
-  animation: spin 900ms linear infinite;
+.motion {
+  width: min(220px, 72vw);
+  margin-bottom: 24px;
+  border-radius: 999px;
+  box-shadow: 0 8px 28px rgba(81, 70, 229, 0.1);
 }
 
 .content strong {
@@ -48,8 +47,6 @@
   line-height: 1.6;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
-
 @media (prefers-reduced-motion: reduce) {
-  .spinner { animation-duration: 1.8s; }
+  .motion { box-shadow: none; }
 }

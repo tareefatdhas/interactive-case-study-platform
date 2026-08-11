@@ -1,4 +1,4 @@
-import { LoaderCircle } from 'lucide-react';
+import { AmbientLoading } from '@/components/motion';
 import styles from './ClassroomStateGate.module.css';
 
 type ClassroomStateGateProps = {
@@ -16,7 +16,7 @@ export default function ClassroomStateGate({
     <main className={styles.gate} aria-busy={loading} aria-live="polite">
       <div className={styles.content} role="status">
         <div className={styles.brand}>Classfully<span>.</span></div>
-        {loading && <LoaderCircle className={styles.spinner} aria-hidden="true" />}
+        {loading && <AmbientLoading className={styles.motion} label={title} announce="off" />}
         <strong>{title}</strong>
         <p>{message}</p>
       </div>

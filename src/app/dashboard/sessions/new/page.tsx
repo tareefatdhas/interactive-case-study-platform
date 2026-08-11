@@ -12,6 +12,7 @@ import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import InlineMessage from '@/components/ui/InlineMessage';
+import { AmbientLoading } from '@/components/motion';
 import type { CaseStudy, Course, SessionInteraction, SessionInteractionType } from '@/types';
 import {
   ArrowDown,
@@ -28,7 +29,6 @@ import {
   GripVertical,
   HeartPulse,
   ListChecks,
-  LoaderCircle,
   MessageCircle,
   Plus,
   Save,
@@ -52,12 +52,35 @@ const interactionOptions: Array<{
   { type: 'quiz', label: 'Knowledge check', description: 'Reveal a misconception while there is time to reteach it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', description: 'Gather questions or a brief reflection for review.', icon: MessageCircle },
   { type: 'word-cloud', label: 'Word cloud', description: 'Gather one word or a short phrase and show shared themes live.', icon: Cloud },
-  { type: 'team-formation', label: 'Form teams', description: 'Create named teams students can use throughout the course.', icon: UsersRound },
+  { type: 'reflection', label: 'Exit reflection', description: 'Capture what changed and what students will carry forward.', icon: Sparkles },
+  { type: 'team-formation', label: 'Form teams now', description: 'Let students create or join named teams during class.', icon: UsersRound },
   { type: 'peer-learning', label: 'Peer learning', description: 'Let students answer, discuss, then answer again.', icon: Repeat2 },
   { type: 'group-work', label: 'Group work', description: 'Give small groups a shared task, clock, and submission.', icon: UsersRound },
   { type: 'timer', label: 'Clock', description: 'Put focused thinking or working time into the session flow.', icon: Clock3 },
   { type: 'spin-wheel', label: 'Spin the wheel', description: 'Choose a student, team, or custom item with the room.', icon: Dices },
   { type: 'case-study', label: 'Case material', description: 'Open a prepared decision or reading.', icon: BookOpen },
+];
+
+const interactionGroups: Array<{
+  label: string;
+  description: string;
+  types: SessionInteractionType[];
+}> = [
+  {
+    label: 'Quick interactions',
+    description: 'One focused classroom moment',
+    types: ['pulse', 'poll', 'quiz', 'open-response', 'word-cloud', 'reflection'],
+  },
+  {
+    label: 'Teaching flows',
+    description: 'Several coordinated student steps',
+    types: ['peer-learning', 'group-work'],
+  },
+  {
+    label: 'Classroom tools',
+    description: 'Support the room while you teach',
+    types: ['timer', 'spin-wheel', 'team-formation'],
+  },
 ];
 
 const startingInteractions: SessionInteraction[] = [
@@ -131,6 +154,8 @@ function NewSessionContent() {
   const [generationError, setGenerationError] = useState('');
   const [generationNotice, setGenerationNotice] = useState('');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  const [caseMaterialOpen, setCaseMaterialOpen] = useState(false);
   const [expandedInteractionId, setExpandedInteractionId] = useState<string | null>(null);
   const [draggingInteractionId, setDraggingInteractionId] = useState<string | null>(null);
   const [dragOverInteractionId, setDragOverInteractionId] = useState<string | null>(null);
@@ -138,6 +163,20 @@ function NewSessionContent() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const lessonFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAddMenuOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [addMenuOpen]);
 
   useEffect(() => {
     const loadPlanningData = async () => {
@@ -214,6 +253,11 @@ function NewSessionContent() {
     lessonContent,
   ), [lessonContent, selectedCourse?.courseSources, selectedCourseSourceIds]);
 
+  const relevantCaseStudies = useMemo(() => selectedCourse
+    ? caseStudies.filter((caseStudy) => caseStudy.courseId === selectedCourse.id || caseStudy.courseId === 'default')
+    : caseStudies,
+  [caseStudies, selectedCourse]);
+
   const addInteraction = (type: SessionInteractionType, caseStudy?: CaseStudy) => {
     const option = interactionOptions.find((item) => item.type === type);
     const interactionId = `${type}-${Date.now()}`;
@@ -241,7 +285,7 @@ function NewSessionContent() {
         wheelSource: type === 'spin-wheel' ? 'students' : undefined,
         wheelItems: type === 'spin-wheel' ? [] : undefined,
         wheelRemoveSelected: type === 'spin-wheel' ? true : undefined,
-        resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live',
+        resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' || type === 'reflection' ? 'instructor-only' : 'live',
       },
     ]);
     setExpandedInteractionId(interactionId);
@@ -256,6 +300,7 @@ function NewSessionContent() {
       { ...template, id: interactionId },
     ]);
     setExpandedInteractionId(interactionId);
+    setAddMenuOpen(false);
     window.setTimeout(() => document.getElementById(`activity-${interactionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   };
 
@@ -464,8 +509,8 @@ function NewSessionContent() {
     return (
       <ProtectedRoute>
         <DashboardLayout>
-          <div className="flex min-h-96 items-center justify-center" role="status" aria-label="Loading session setup">
-            <LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" />
+          <div className="grid min-h-96 place-items-center" role="status" aria-label="Loading session setup">
+            <AmbientLoading className="w-44 rounded-full" announce="off" />
           </div>
         </DashboardLayout>
       </ProtectedRoute>
@@ -517,63 +562,21 @@ function NewSessionContent() {
                     <h2 id="interaction-plan-title" className="seminar-display text-3xl text-[#101a38]">Activities in teaching order</h2>
                     <p className="mt-2 text-sm text-[#697087]">Add only what you expect to use. Every activity stays private until you launch it.</p>
                   </div>
-                  <div className="relative">
-                    <Button type="button" variant="outline" onClick={() => setAddMenuOpen((open) => !open)} className="gap-2">
+                  <div>
+                    <Button type="button" variant="outline" onClick={() => { setCaseMaterialOpen(false); setAddMenuOpen(true); }} className="gap-2">
                       <Plus className="h-4 w-4" /> Add activity
                     </Button>
-                    {addMenuOpen && (
-                      <div className="absolute right-0 z-20 mt-2 w-80 rounded-2xl border border-[#e3e5ed] bg-white p-2 shadow-[0_18px_50px_rgba(16,26,56,0.14)]">
-                        {interactionOptions.filter((option) => option.type !== 'case-study').map(({ type, label, description, icon: Icon }) => (
-                          <button key={type} type="button" onClick={() => addInteraction(type)} className="flex w-full items-start gap-3 rounded-xl p-3 text-left hover:bg-[#f8f7fb]">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0efff] text-[#5146e5]"><Icon className="h-4 w-4" /></span>
-                            <span><strong className="block text-sm text-[#101a38]">{label}</strong><small className="mt-0.5 block leading-5 text-[#697087]">{description}</small></span>
-                          </button>
-                        ))}
-                        {caseStudies.length > 0 && (
-                          <div className="mt-2 border-t border-[#e3e5ed] pt-2">
-                            <p className="px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[#697087]">Case material</p>
-                            {caseStudies.slice(0, 3).map((caseStudy) => (
-                              <button key={caseStudy.id} type="button" onClick={() => addInteraction('case-study', caseStudy)} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-[#f8f7fb]">
-                                <BookOpen className="h-4 w-4 text-[#5146e5]" /><span className="line-clamp-1 text-sm font-semibold text-[#101a38]">{caseStudy.title}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {selectedCourse && (selectedCourse.interactionTemplates?.length || 0) > 0 && (
-                  <section className="mt-6 rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-5" aria-labelledby="class-library-title">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                      <div><p className="seminar-eyebrow mb-2">From {selectedCourse.code}</p><h3 id="class-library-title" className="seminar-display text-2xl text-[#101a38]">Choose from your activity library</h3><p className="mt-1 text-sm leading-6 text-[#697087]">Add only what this session needs. Each copy can be edited below.</p></div>
-                      <span className="text-xs font-semibold text-[#697087]">{selectedCourse.interactionTemplates?.length} saved</span>
-                    </div>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                      {selectedCourse.interactionTemplates?.map((template) => {
-                        const option = interactionOptions.find((item) => item.type === template.type);
-                        const Icon = option?.icon || Sparkles;
-                        return (
-                          <button key={template.id} type="button" onClick={() => addLibraryInteraction(template)} className="seminar-focus group flex min-h-20 items-center gap-3 rounded-xl border border-[#e0ddff] bg-white p-3 text-left transition duration-150 hover:-translate-y-0.5 hover:border-[#bfb9ff] hover:shadow-sm">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0efff] text-[#5146e5]"><Icon className="h-4 w-4" /></span>
-                            <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#101a38]">{template.title}</strong><small className="mt-0.5 block line-clamp-1 text-[#697087]">{template.prompt}</small></span>
-                            <Plus className="h-4 w-4 shrink-0 text-[#8e94a6] group-hover:text-[#5146e5]" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                )}
-
-                <details className="group mt-6 rounded-2xl border border-[#e3e5ed] bg-[#faf9fc] open:bg-[#f7f6ff]">
-                  <summary className="seminar-focus flex cursor-pointer list-none items-center justify-between gap-4 rounded-2xl p-5 marker:content-none">
+                {aiDraftOpen && <section id="activity-ai-drafts" className="mt-6 rounded-2xl border border-[#e3e5ed] bg-[#f7f6ff]">
+                  <div className="flex items-center justify-between gap-4 rounded-2xl p-5">
                     <div>
                       <p className="text-sm font-semibold text-[#101a38]">Draft activities with AI</p>
                       <p className="mt-1 text-xs leading-5 text-[#697087]">Optional: turn lesson notes into editable question drafts.</p>
                     </div>
-                    <Plus className="h-5 w-5 shrink-0 text-[#5146e5] transition-transform duration-150 group-open:rotate-45" />
-                  </summary>
+                    <button type="button" onClick={() => setAiDraftOpen(false)} className="seminar-focus grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#d7dae5] bg-white text-[#697087] hover:text-[#101a38]" aria-label="Close AI activity drafts"><X className="h-4 w-4" /></button>
+                  </div>
                   <div className="border-t border-[#dcd8ff] p-5">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
@@ -623,13 +626,39 @@ function NewSessionContent() {
                   {generationError && <InlineMessage className="mt-3" title="The question draft needs another try." message={generationError} />}
                   {generationNotice && <p className="mt-3 rounded-lg border border-[#cce8d2] bg-[#f2fbf4] px-3 py-2 text-sm leading-6 text-[#296e3c]" role="status">{generationNotice}</p>}
                   <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-xs leading-5 text-[#5a6278]">Creates one pulse, poll, quiz, and short response. You can edit or remove every draft.</p>
+                    <p className="text-xs leading-5 text-[#5a6278]">Creates one pulse, poll, knowledge check, and short response. You can edit or remove every draft.</p>
                     <Button type="button" onClick={handleGenerateInteractions} loading={generatingInteractions} disabled={lessonMaterial.trim().length < 80} className="shrink-0 gap-2">
                       <Sparkles className="h-4 w-4" /> Draft activities
                     </Button>
                   </div>
                   </div>
-                </details>
+                </section>}
+
+                {addMenuOpen && <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#101a38]/35 p-0 backdrop-blur-[2px] sm:items-center sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAddMenuOpen(false); }}>
+                  <section role="dialog" aria-modal="true" aria-labelledby="activity-chooser-title" className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] border border-[#dedfe8] bg-[#fffefa] shadow-[0_28px_90px_rgba(16,26,56,0.22)] sm:max-w-6xl sm:rounded-[28px]">
+                    <header className="sticky top-0 z-10 flex items-start justify-between gap-5 border-b border-[#e3e5ed] bg-[#fffefa]/95 px-5 py-5 backdrop-blur sm:px-7">
+                      <div><p className="seminar-eyebrow mb-2">Add to this session</p><h3 id="activity-chooser-title" className="seminar-display text-3xl text-[#101a38]">Choose the next classroom moment</h3><p className="mt-1 text-sm text-[#697087]">Compare what you have saved with every available format.</p></div>
+                      <button type="button" onClick={() => setAddMenuOpen(false)} className="seminar-focus grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#d7dae5] bg-white text-[#697087] hover:text-[#101a38]" aria-label="Close activity chooser"><X className="h-4 w-4" /></button>
+                    </header>
+                    <div className="p-5 sm:p-7">
+                      {(selectedCourse?.interactionTemplates?.length || 0) > 0 && <section aria-labelledby="saved-activities-title">
+                        <div className="mb-3 flex items-end justify-between gap-4"><div><h4 id="saved-activities-title" className="text-sm font-bold text-[#101a38]">Saved for {selectedCourse?.code}</h4><p className="mt-0.5 text-xs text-[#697087]">Familiar activities you can reuse and adjust.</p></div><span className="rounded-full bg-[#f0efff] px-2.5 py-1 text-[11px] font-bold text-[#5146e5]">{selectedCourse?.interactionTemplates?.length} saved</span></div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{selectedCourse?.interactionTemplates?.map((template) => { const option = interactionOptions.find((item) => item.type === template.type); const Icon = option?.icon || Sparkles; return <button key={template.id} type="button" onClick={() => addLibraryInteraction(template)} className="seminar-focus group flex min-h-20 items-center gap-3 rounded-xl border border-[#dedaf8] bg-[#f8f7ff] p-3 text-left transition hover:-translate-y-0.5 hover:border-[#bcb5ff] hover:shadow-sm"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-[#5146e5]"><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><small className="font-bold uppercase tracking-[0.06em] text-[#6a61d7]">{option?.label || 'Activity'}</small><strong className="mt-0.5 block truncate text-sm text-[#101a38]">{template.title}</strong><span className="mt-0.5 block truncate text-xs text-[#697087]">{template.prompt}</span></span><Plus className="h-4 w-4 shrink-0 text-[#8e94a6] group-hover:text-[#5146e5]" /></button>; })}</div>
+                      </section>}
+
+                      <section className={(selectedCourse?.interactionTemplates?.length || 0) > 0 ? 'mt-7 border-t border-[#e3e5ed] pt-6' : ''} aria-labelledby="fresh-activities-title">
+                        <div className="mb-3"><h4 id="fresh-activities-title" className="text-sm font-bold text-[#101a38]">Start with a format</h4><p className="mt-0.5 text-xs text-[#697087]">Choose the classroom job first. Edit the wording after it enters the session plan.</p></div>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">{interactionGroups.flatMap((group) => group.types.map((type) => ({ type, group: group.label }))).map(({ type, group }) => { const option = interactionOptions.find((item) => item.type === type); if (!option) return null; const Icon = option.icon; return <button key={type} type="button" onClick={() => addInteraction(type)} className="seminar-focus group flex min-h-24 flex-col items-start rounded-xl border border-[#e3e5ed] bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-[#bdb6ff] hover:shadow-sm"><span className="flex w-full items-start justify-between gap-2"><i className="grid h-9 w-9 place-items-center rounded-lg bg-[#f0efff] text-[#5146e5]"><Icon className="h-4 w-4" /></i><small className="line-clamp-1 pt-1 text-[9px] font-bold uppercase tracking-[0.06em] text-[#8a90a2]">{group}</small></span><strong className="mt-2 block text-sm leading-5 text-[#101a38]">{option.label}</strong><small className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[#697087]">{option.description}</small></button>; })}</div>
+                      </section>
+
+                      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+                        {relevantCaseStudies.length > 0 && <button type="button" aria-expanded={caseMaterialOpen} onClick={() => setCaseMaterialOpen((open) => !open)} className="seminar-focus flex min-h-[72px] items-center gap-3 rounded-xl border border-[#e3e5ed] bg-white p-3 text-left hover:border-[#bdb6ff]"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#f4f3f8] text-[#5146e5]"><BookOpen className="h-4 w-4" /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-[#101a38]">Prepared case material</strong><small className="mt-0.5 block text-xs text-[#697087]">{relevantCaseStudies.length} longer discussions and readings</small></span><ArrowDown className={`h-4 w-4 shrink-0 text-[#697087] transition-transform ${caseMaterialOpen ? 'rotate-180' : ''}`} /></button>}
+                        <button type="button" onClick={() => { setAddMenuOpen(false); setAiDraftOpen(true); window.setTimeout(() => document.getElementById('activity-ai-drafts')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }} className="seminar-focus flex min-h-[72px] items-center gap-3 rounded-xl border border-[#dedaf8] bg-[#f7f6ff] p-3 text-left hover:border-[#bdb6ff]"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#5146e5]"><Sparkles className="h-5 w-5" /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-[#101a38]">Draft activities with AI</strong><small className="mt-0.5 block text-xs text-[#697087]">Use lesson notes or saved course sources</small></span><ArrowDown className="h-4 w-4 shrink-0 -rotate-90 text-[#5146e5]" /></button>
+                      </div>
+                      {caseMaterialOpen && <section className="mt-3 rounded-2xl border border-[#e3e5ed] bg-[#faf9fc] p-3" aria-label="Prepared case material"><div className="grid gap-2 sm:grid-cols-2">{relevantCaseStudies.slice(0, 6).map((caseStudy) => <button key={caseStudy.id} type="button" onClick={() => addInteraction('case-study', caseStudy)} className="seminar-focus flex min-h-16 items-center gap-3 rounded-xl border border-[#e3e5ed] bg-white p-3 text-left hover:border-[#bdb6ff]"><BookOpen className="h-4 w-4 shrink-0 text-[#5146e5]" /><span className="line-clamp-2 text-sm font-semibold text-[#101a38]">{caseStudy.title}</span><Plus className="ml-auto h-4 w-4 shrink-0 text-[#8e94a6]" /></button>)}</div></section>}
+                    </div>
+                  </section>
+                </div>}
 
                 {interactions.length === 0 && (
                   <div className="mt-6 rounded-2xl border border-dashed border-[#cbc7e8] bg-[#faf9fc] px-6 py-10 text-center">
@@ -732,6 +761,7 @@ function NewSessionContent() {
                           {(interaction.type === 'quiz' || interaction.type === 'peer-learning') && (
                             <textarea aria-label="Answer explanation" value={interaction.explanation || ''} onChange={(event) => updateInteraction(interaction.id, { explanation: event.target.value })} rows={2} placeholder="Explain the answer after students respond" className="w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
                           )}
+                          {interaction.type === 'quiz' && <div className="rounded-xl border border-[#dedaf8] bg-[#f7f6ff] p-3.5"><label className="flex min-h-10 items-center gap-3 text-xs font-bold text-[#4f576d]"><input type="checkbox" checked={Boolean(interaction.speedBonusEnabled)} onChange={(event) => updateInteraction(interaction.id, { speedBonusEnabled: event.target.checked, speedBonusSeconds: event.target.checked ? interaction.speedBonusSeconds || 40 : undefined, maxSpeedBonusPoints: event.target.checked ? 4 : undefined })} className="h-4 w-4 accent-[#5146e5]" /> Add a speed bonus</label>{interaction.speedBonusEnabled && <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[#dedaf8] pt-3"><label className="flex items-center gap-2 text-xs font-semibold text-[#555d73]">Bonus window <input type="number" min={10} max={120} step={5} value={interaction.speedBonusSeconds || 40} onChange={(event) => updateInteraction(interaction.id, { speedBonusSeconds: Math.min(120, Math.max(10, Number(event.target.value) || 40)) })} className="w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> sec</label><span className="text-[11px] text-[#697087]">8 points for a correct answer, plus up to 4 for speed.</span></div>}</div>}
                           {interaction.type === 'peer-learning' && <label className="flex items-center gap-3 rounded-xl bg-[#f7f6ff] px-3.5 py-3 text-xs font-semibold text-[#4f576d]"><Repeat2 className="h-4 w-4 text-[#5146e5]" /> Partner discussion <input aria-label="Partner discussion minutes" type="number" min={1} max={10} value={interaction.discussionMinutes || 2} onChange={(event) => updateInteraction(interaction.id, { discussionMinutes: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5 text-[#313950]" /> min</label>}
                           {interaction.type === 'group-work' && <label className="flex items-center gap-3 rounded-xl bg-[#fff7f2] px-3.5 py-3 text-xs font-semibold text-[#4f576d]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested group size <input aria-label="Suggested group size" type="number" min={2} max={10} value={interaction.groupSize || 4} onChange={(event) => updateInteraction(interaction.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5 text-[#313950]" /> students</label>}
                           {interaction.type === 'timer' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">The clock starts when you launch this activity. Students see the prompt and the same countdown on their phones.</p>}
@@ -873,7 +903,7 @@ export default function NewSessionPage() {
     <Suspense fallback={(
       <ProtectedRoute>
         <DashboardLayout>
-          <div className="flex min-h-96 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /></div>
+          <div className="grid min-h-96 place-items-center" role="status" aria-label="Opening session setup"><AmbientLoading className="w-44 rounded-full" announce="off" /></div>
         </DashboardLayout>
       </ProtectedRoute>
     )}>

@@ -3,7 +3,7 @@
 import { ArrowClockwise, Check, PaperPlaneTilt as Send } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import HapticButton from '@/components/student/HapticButton';
-import ResponseTransferEffect, { RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/student/ResponseTransferEffect';
+import { SharedMomentEffect, RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/motion';
 import { triggerStudentHaptic } from '@/lib/student-haptics';
 import '../student.css';
 
@@ -78,7 +78,7 @@ export default function StudentEffectsPreview() {
             <button type="button" onClick={(event) => play(event.currentTarget, 'failed', 900)}>Preview error</button>
           </div>
         </div>
-        {signal && <ResponseTransferEffect signal={signal} />}
+        {signal && <SharedMomentEffect signal={signal} />}
       </section>
       <aside>
         <small>Motion preview</small>

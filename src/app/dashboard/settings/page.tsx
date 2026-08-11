@@ -4,8 +4,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { signOutUser } from '@/lib/firebase/auth';
 import { prepareProfileImage, removeTeacherProfilePhoto, updateTeacherProfile } from '@/lib/firebase/teacher-profile';
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  getTeacherNotificationPreferences,
+  saveTeacherNotificationPreferences,
+} from '@/lib/firebase/notification-preferences';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import type { TeacherNotificationPreferences } from '@/types';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -25,7 +32,46 @@ import {
   ImagePlus,
   CheckCircle2,
   AlertCircle,
+  ArrowRight,
+  Eye,
+  Mail,
 } from 'lucide-react';
+
+type NotificationPreferenceKey = keyof TeacherNotificationPreferences;
+
+function EmailPreferenceToggle({
+  label,
+  description,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-5 rounded-2xl border border-[#e3e5ed] bg-white px-4 py-4 transition-colors hover:border-[#cfcbf8] has-[:focus-visible]:border-[#5146e5] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#5146e5]/15">
+      <span>
+        <span className="block text-sm font-bold text-[#101a38]">{label}</span>
+        <span className="mt-1 block max-w-2xl text-sm leading-6 text-[#697087]">{description}</span>
+      </span>
+      <span className="relative mt-1 inline-flex shrink-0 items-center">
+        <input
+          type="checkbox"
+          className="peer sr-only"
+          checked={checked}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <span className="h-7 w-12 rounded-full bg-[#dfe1e8] transition-colors peer-checked:bg-[#5146e5] peer-disabled:opacity-50" />
+        <span className="absolute left-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
+      </span>
+    </label>
+  );
+}
 
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
@@ -36,6 +82,12 @@ export default function SettingsPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [notificationPreferences, setNotificationPreferences] = useState<TeacherNotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [savedNotificationPreferences, setSavedNotificationPreferences] = useState<TeacherNotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsSaving, setNotificationsSaving] = useState(false);
+  const [notificationsNotice, setNotificationsNotice] = useState<string | null>(null);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [profileData, setProfileData] = useState({
     name: '',
@@ -45,6 +97,30 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user) return;
     setProfileData({ name: user.name || '', email: user.email || '' });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    setNotificationsLoading(true);
+
+    getTeacherNotificationPreferences()
+      .then((preferences) => {
+        if (!active) return;
+        setNotificationPreferences(preferences);
+        setSavedNotificationPreferences(preferences);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setNotificationsError(getUserFacingError(error, 'Your email preferences could not be loaded. Try refreshing this page.'));
+      })
+      .finally(() => {
+        if (active) setNotificationsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [user]);
 
   useEffect(() => () => {
@@ -126,6 +202,31 @@ export default function SettingsPage() {
       ...prev,
       [e.target.name]: e.target.value
     }));
+  };
+
+  const notificationPreferencesChanged = (
+    Object.keys(notificationPreferences) as NotificationPreferenceKey[]
+  ).some((key) => notificationPreferences[key] !== savedNotificationPreferences[key]);
+
+  const changeNotificationPreference = (key: NotificationPreferenceKey, checked: boolean) => {
+    setNotificationsNotice(null);
+    setNotificationsError(null);
+    setNotificationPreferences((current) => ({ ...current, [key]: checked }));
+  };
+
+  const handleNotificationPreferencesSave = async () => {
+    setNotificationsSaving(true);
+    setNotificationsNotice(null);
+    setNotificationsError(null);
+    try {
+      await saveTeacherNotificationPreferences(notificationPreferences);
+      setSavedNotificationPreferences(notificationPreferences);
+      setNotificationsNotice('Email preferences saved.');
+    } catch (error) {
+      setNotificationsError(getUserFacingError(error, 'Your email preferences could not be saved. Try again.'));
+    } finally {
+      setNotificationsSaving(false);
+    }
   };
 
   return (
@@ -248,57 +349,78 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            {/* Notification Settings */}
-            <Card>
+            {/* Email report settings */}
+            <Card id="email-reports" className="scroll-mt-8 overflow-hidden">
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Bell className="w-5 h-5 mr-2" />
-                  Notifications
+                <CardTitle className="flex items-center gap-2">
+                  <Bell className="h-5 w-5 text-[#5146e5]" />
+                  Email reports
                 </CardTitle>
                 <CardDescription>
-                  Choose which notifications you want to receive.
+                  Choose what Classfully sends to {user?.email || 'your account email'}.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+              <CardContent className="space-y-5">
+                <div className="rounded-2xl border border-[#dcd8ff] bg-[#f7f5ff] p-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#5146e5] shadow-sm">
+                      <Mail className="h-5 w-5" />
+                    </span>
                     <div>
-                      <h4 className="font-medium text-gray-900">Session Updates</h4>
-                      <p className="text-sm text-gray-600">
-                        Notifications when students join or complete sessions
-                      </p>
+                      <p className="text-sm font-bold text-[#101a38]">Useful signals, not another stream of alerts.</p>
+                      <p className="mt-1 text-sm leading-6 text-[#697087]">Classfully waits until there is a complete class picture, then sends a concise report you can act on.</p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" defaultChecked />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
                   </div>
+                  <Link
+                    href="/dashboard/settings/email-preview"
+                    className="seminar-focus mt-4 inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-[10px] border border-[#d7d4ef] bg-white px-4 py-2 text-sm font-semibold text-[#313950] transition-colors hover:bg-[#eeecff] sm:mt-0"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Preview reports
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900">Weekly Reports</h4>
-                      <p className="text-sm text-gray-600">
-                        Weekly summary of your case study performance
-                      </p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" defaultChecked />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
+                <div className="space-y-3" aria-busy={notificationsLoading}>
+                  <EmailPreferenceToggle
+                    label="After-class summary"
+                    description="A practical recap after a class ends, including attendance, participation, open questions, and suggested next steps."
+                    checked={notificationPreferences.afterClassReport}
+                    disabled={notificationsLoading || notificationsSaving}
+                    onChange={(checked) => changeNotificationPreference('afterClassReport', checked)}
+                  />
+                  <EmailPreferenceToggle
+                    label="Weekly course digest"
+                    description="One email that connects patterns across the courses you taught that week. Nothing is sent during weeks without a completed class."
+                    checked={notificationPreferences.weeklyCourseDigest}
+                    disabled={notificationsLoading || notificationsSaving}
+                    onChange={(checked) => changeNotificationPreference('weeklyCourseDigest', checked)}
+                  />
+                  <EmailPreferenceToggle
+                    label="Product news"
+                    description="Occasional notes about useful additions to Classfully. This stays off unless you choose it."
+                    checked={notificationPreferences.productNews}
+                    disabled={notificationsLoading || notificationsSaving}
+                    onChange={(checked) => changeNotificationPreference('productNews', checked)}
+                  />
+                </div>
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900">Product Updates</h4>
-                      <p className="text-sm text-gray-600">
-                        News about new features and improvements
-                      </p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
+                <div className="flex flex-col gap-4 border-t border-[#e3e5ed] pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs leading-5 text-[#697087]">Email reports use class-level totals. Student names and individual responses stay inside Classfully.</p>
+                    {notificationsNotice && <p role="status" className="mt-2 flex items-center gap-2 text-sm font-semibold text-[#2f6f43]"><CheckCircle2 className="h-4 w-4" />{notificationsNotice}</p>}
+                    {notificationsError && <p role="alert" className="mt-2 flex items-center gap-2 text-sm font-semibold text-[#a44534]"><AlertCircle className="h-4 w-4" />{notificationsError}</p>}
                   </div>
+                  <Button
+                    type="button"
+                    loading={notificationsSaving}
+                    disabled={notificationsLoading || !notificationPreferencesChanged}
+                    onClick={handleNotificationPreferencesSave}
+                    className="shrink-0"
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    Save email preferences
+                  </Button>
                 </div>
               </CardContent>
             </Card>

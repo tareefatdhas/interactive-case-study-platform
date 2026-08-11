@@ -33,7 +33,8 @@ export default function DataPolicyPage() {
 
       <section>
         <h2>3. How information is used</h2>
-        <p>Information is used to authenticate users, run live activities, record attendance, preserve course progress, show class-level results, calculate instructor-approved points or rewards, provide support, maintain security, improve reliability, and meet legal obligations.</p>
+        <p>Information is used to authenticate users, run live activities, record attendance, preserve course progress, show class-level results, calculate instructor-approved points or rewards, deliver instructor-selected class reports, provide support, maintain security, improve reliability, and meet legal obligations.</p>
+        <p>Email reports use class-level totals and links back to the authenticated instructor workspace. Student names, student numbers, and individual responses should remain inside Classfully rather than being included in email.</p>
         <p>Classfully does not sell student personal data. Individual student numbers and personal pulse responses are not shown on the classroom projector. Instructors choose when an anonymous written response is shared with the room.</p>
       </section>
 

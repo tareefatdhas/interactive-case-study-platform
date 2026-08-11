@@ -16,6 +16,9 @@ export type LiveInteraction = {
   options?: string[];
   correctOptionIndex?: number;
   explanation?: string;
+  speedBonusEnabled?: boolean;
+  speedBonusSeconds?: number;
+  maxSpeedBonusPoints?: number;
   durationMinutes?: number;
   discussionMinutes?: number;
   groupSize?: number;
@@ -58,6 +61,7 @@ export type LiveTeam = {
 
 export type InteractionResults = {
   runId: string;
+  startedAt: number;
   open: boolean;
   responseCount: number;
   optionCounts: number[];
@@ -163,7 +167,7 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
   {
     id: 'network-effects-quiz',
     type: 'quiz',
-    label: 'Quiz',
+    label: 'Knowledge check',
     title: 'Knowledge check',
     prompt: 'Which condition makes a network most vulnerable to collapse?',
     options: ['Low acquisition cost', 'Dependence on one critical provider', 'Rapid category growth', 'Many compatible providers'],
@@ -334,8 +338,10 @@ export function percent(value: number, counts: Counts) {
 }
 
 export function createInteractionResults(interaction: LiveInteraction): InteractionResults {
+  const startedAt = Date.now();
   return {
-    runId: `${interaction.id}-${Date.now()}`,
+    runId: `${interaction.id}-${startedAt}`,
+    startedAt,
     open: interaction.type !== 'timer' && interaction.type !== 'spin-wheel',
     responseCount: 0,
     optionCounts: interaction.options?.map(() => 0) ?? [],
@@ -401,7 +407,7 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       : type === 'poll'
         ? 'Poll'
         : type === 'quiz'
-          ? 'Quiz'
+          ? 'Knowledge check'
           : type === 'word-cloud'
             ? 'Word cloud'
             : type === 'peer-learning'
@@ -425,6 +431,9 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       options: interaction.options,
       correctOptionIndex: interaction.correctOptionIndex,
       explanation: interaction.explanation,
+      speedBonusEnabled: interaction.speedBonusEnabled,
+      speedBonusSeconds: interaction.speedBonusSeconds,
+      maxSpeedBonusPoints: interaction.maxSpeedBonusPoints,
       durationMinutes: interaction.durationMinutes,
       discussionMinutes: interaction.discussionMinutes,
       groupSize: interaction.groupSize,

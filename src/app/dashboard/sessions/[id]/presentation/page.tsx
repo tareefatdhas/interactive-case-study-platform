@@ -16,6 +16,7 @@ import {
 } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import Dialog from '@/components/ui/Dialog';
+import { AmbientLoading } from '@/components/motion';
 import PopularHighlightsPanel from '@/components/teacher/PopularHighlightsPanel';
 import HighlightedContent from '@/components/teacher/HighlightedContent';
 import type { Session, CaseStudy, Response, Student, Highlight } from '@/types';
@@ -690,8 +691,8 @@ export default function PresentationPage({ params }: PresentationPageProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-400 mx-auto mb-4"></div>
+        <div className="w-full max-w-md px-8 text-center" role="status">
+          <AmbientLoading className="mx-auto mb-7 w-56 rounded-full" tone="blue" announce="off" />
           <p className="text-gray-300 text-xl">Loading presentation...</p>
         </div>
         {toast && <div className="fixed bottom-6 right-6 z-[90] rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#101a38] shadow-2xl" role="status">{toast}</div>}

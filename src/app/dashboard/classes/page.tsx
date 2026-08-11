@@ -9,6 +9,7 @@ import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import InlineMessage from '@/components/ui/InlineMessage';
+import { AmbientLoading } from '@/components/motion';
 import type { Course, Session, SessionInteraction } from '@/types';
 import {
   ArrowRight,
@@ -17,7 +18,6 @@ import {
   CheckCircle2,
   GraduationCap,
   Layers3,
-  LoaderCircle,
   Plus,
   Sparkles,
   X,
@@ -154,7 +154,7 @@ export default function ClassesPage() {
             {[
               [GraduationCap, 'Set up the class', 'Add the course once, including its name and term.'],
               [CalendarPlus, 'Plan each session', 'Create the meetings you expect to teach this term.'],
-              [Layers3, 'Build the activity flow', 'Add polls, quizzes, check-ins, or modules in teaching order.'],
+              [Layers3, 'Build the session flow', 'Add interactions, teaching flows, and classroom tools in teaching order.'],
             ].map(([Icon, title, copy], index) => {
               const StepIcon = Icon as typeof GraduationCap;
               return (
@@ -174,7 +174,7 @@ export default function ClassesPage() {
           {error && <InlineMessage className="mb-6" title="Your classes are still here." message={error} />}
 
           {loading ? (
-            <div className="flex min-h-64 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /></div>
+            <div className="grid min-h-64 place-items-center" role="status" aria-label="Loading your classes"><AmbientLoading className="w-44 rounded-full" announce="off" /></div>
           ) : classSummaries.length === 0 && showArchived ? (
             <section className="rounded-3xl border border-dashed border-[#cfd2df] bg-white px-6 py-14 text-center">
               <Archive className="mx-auto h-7 w-7 text-[#697087]" />

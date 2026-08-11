@@ -66,6 +66,10 @@ export type StoredAttendanceClaim = {
 export type InstructorClassroomRecords = {
   attendance: Record<string, StoredAttendanceClaim>;
   responses: Record<string, Record<string, StoredLiveResponse>>;
+  studentQuestions: Record<string, Record<string, StoredStudentQuestion>>;
+  questionVotes: Record<string, Record<string, true>>;
+  dismissedQuestions: Record<string, true>;
+  recognizedQuestions: Record<string, true>;
 };
 
 type InstructorClassroomArchive = {
@@ -408,6 +412,7 @@ export async function resetInstructorClassroom(
 export async function getInstructorClassroomRecords(
   ownerUid: string,
   sessionId: string,
+  options: { includeDiscussion?: boolean } = {},
 ): Promise<InstructorClassroomRecords> {
   const instructor = auth.currentUser;
   if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) {
@@ -416,25 +421,48 @@ export async function getInstructorClassroomRecords(
   // Read the protected branches directly. Realtime Database rules are not
   // filters, so reading their parent room is denied even when the instructor
   // is allowed to read each branch.
-  const attendanceSnapshot = await get(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/attendanceClaims`));
-  const responsesSnapshot = await get(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/responses`)).catch((error) => {
-    console.error('Live responses could not be loaded for progress:', error);
-    return null;
-  });
-  const archivesSnapshot = await get(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/archives`)).catch((error) => {
-    console.warn('Archived live responses could not be loaded for progress:', error);
-    return null;
-  });
+  const basePath = roomPath(ownerUid, sessionId);
+  const [attendanceSnapshot, responsesSnapshot, archivesSnapshot, questionsSnapshot, votesSnapshot, dismissedSnapshot, recognizedSnapshot] = await Promise.all([
+    get(ref(realtimeDb, `${basePath}/attendanceClaims`)),
+    get(ref(realtimeDb, `${basePath}/responses`)).catch((error) => {
+      console.error('Live responses could not be loaded for review:', error);
+      return null;
+    }),
+    get(ref(realtimeDb, `${basePath}/archives`)).catch((error) => {
+      console.warn('Archived classroom records could not be loaded for review:', error);
+      return null;
+    }),
+    options.includeDiscussion ? get(ref(realtimeDb, `${basePath}/studentQuestions`)).catch(() => null) : Promise.resolve(null),
+    options.includeDiscussion ? get(ref(realtimeDb, `${basePath}/questionVotes`)).catch(() => null) : Promise.resolve(null),
+    options.includeDiscussion ? get(ref(realtimeDb, `${basePath}/dismissedQuestions`)).catch(() => null) : Promise.resolve(null),
+    options.includeDiscussion ? get(ref(realtimeDb, `${basePath}/recognizedQuestions`)).catch(() => null) : Promise.resolve(null),
+  ]);
   const responses = (responsesSnapshot?.val() || {}) as Record<string, Record<string, StoredLiveResponse>>;
   const archives = (archivesSnapshot?.val() || {}) as Record<string, InstructorClassroomArchive>;
+  const studentQuestions = (questionsSnapshot?.val() || {}) as Record<string, Record<string, StoredStudentQuestion>>;
+  const questionVotes = (votesSnapshot?.val() || {}) as Record<string, Record<string, true>>;
+  const dismissedQuestions = (dismissedSnapshot?.val() || {}) as Record<string, true>;
+  const recognizedQuestions = (recognizedSnapshot?.val() || {}) as Record<string, true>;
   Object.values(archives).forEach((archive) => {
     Object.entries(archive.responses || {}).forEach(([runId, runResponses]) => {
       responses[runId] = { ...(responses[runId] || {}), ...runResponses };
     });
+    Object.entries(archive.studentQuestions || {}).forEach(([studentUid, questions]) => {
+      studentQuestions[studentUid] = { ...(studentQuestions[studentUid] || {}), ...questions };
+    });
+    Object.entries(archive.questionVotes || {}).forEach(([questionId, voters]) => {
+      questionVotes[questionId] = { ...(questionVotes[questionId] || {}), ...voters };
+    });
+    Object.assign(dismissedQuestions, archive.dismissedQuestions || {});
+    Object.assign(recognizedQuestions, archive.recognizedQuestions || {});
   });
   return {
     attendance: (attendanceSnapshot.val() || {}) as Record<string, StoredAttendanceClaim>,
     responses,
+    studentQuestions,
+    questionVotes,
+    dismissedQuestions,
+    recognizedQuestions,
   };
 }
 
@@ -523,12 +551,13 @@ export async function submitStudentInteractionResponse(
     teamTag: response.teamTag?.trim().slice(0, 48),
     submittedAt: Date.now(),
   } as StoredLiveResponse);
-  await set(
-    ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/responses/${response.runId}/${student.uid}`),
-    { ...storedResponse, submittedAt: serverTimestamp() },
-  );
+  const responseRef = ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/responses/${response.runId}/${student.uid}`);
+  const result = await runTransaction(responseRef, (current) => current || {
+    ...storedResponse,
+    submittedAt: serverTimestamp(),
+  });
   await markCurrentStudentParticipated(ownerUid, sessionId).catch(() => undefined);
-  return storedResponse;
+  return (result.snapshot.val() || storedResponse) as StoredLiveResponse;
 }
 
 export async function submitStudentWelcomeResponse(

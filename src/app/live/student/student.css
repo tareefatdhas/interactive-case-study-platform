@@ -2748,3 +2748,7 @@ html[data-input-modality="keyboard"] .student-course-sheet > header > button:foc
 @keyframes student-wheel-float { 0%,100% { transform: rotate(-3deg) translateY(0); } 50% { transform: rotate(5deg) translateY(-5px); } }
 @keyframes student-wheel-result { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .student-clock-note { display: flex; align-items: center; gap: 9px; margin-top: 18px; padding: 12px 13px; border-radius: 12px; color: #596177; background: #f6f5fa; font-size: 11px; line-height: 1.5; }
+.student-speed-score { display: flex; align-items: flex-start; gap: 11px; margin: 16px 0 18px; padding: 13px 14px; border: 1px solid #ddd8ff; border-radius: 15px; background: #f7f5ff; color: #5146e5; }
+.student-speed-score svg { flex: 0 0 auto; margin-top: 2px; }
+.student-speed-score strong { display: block; color: #17203d; font-size: 13px; line-height: 1.35; }
+.student-speed-score span { display: block; margin-top: 3px; color: #666e84; font-size: 12px; line-height: 1.45; }

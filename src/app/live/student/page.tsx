@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UserCircle, UsersThree as Users, X } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
-import ResponseTransferEffect, { RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/student/ResponseTransferEffect';
+import { SharedMomentEffect, RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/motion';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import {
@@ -35,6 +35,7 @@ import type { RewardDefinition, RewardRequest, RewardRequestStatus } from '@/typ
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { triggerStudentHaptic } from '@/lib/student-haptics';
+import { calculateSpeedBonus } from '@/lib/knowledge-check-scoring';
 import {
   EMPTY_ONBOARDING_COUNTS,
   DEFAULT_LIVE_QUESTIONS,
@@ -725,6 +726,7 @@ export default function StudentWelcomePage() {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [creatingNewTeam, setCreatingNewTeam] = useState(false);
   const [interactionSubmitted, setInteractionSubmitted] = useState(false);
+  const [responseSubmittedAt, setResponseSubmittedAt] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedQuestionVotes, setSelectedQuestionVotes] = useState<number[]>([]);
   const [confidence, setConfidence] = useState<string | null>(null);
@@ -1265,6 +1267,7 @@ export default function StudentWelcomePage() {
     setSelectedTeamId('');
     setCreatingNewTeam(false);
     setInteractionSubmitted(false);
+    setResponseSubmittedAt(null);
     setIsSubmitting(false);
     setConfidence(null);
     setPrediction(null);
@@ -1280,6 +1283,7 @@ export default function StudentWelcomePage() {
           setTeamName(response.teamName || '');
           setTeamDescription(response.teamDescription || '');
           setSelectedTeamId(response.teamId || '');
+          setResponseSubmittedAt(response.submittedAt || null);
           setInteractionSubmitted(true);
         })
         .catch(() => undefined);
@@ -1287,12 +1291,13 @@ export default function StudentWelcomePage() {
       try {
         const storedResponse = window.localStorage.getItem(`classfully-demo-response:${demoVoterIdRef.current}:${runId}`);
         if (!storedResponse) return;
-        const response = JSON.parse(storedResponse) as InteractionResponse;
+        const response = JSON.parse(storedResponse) as InteractionResponse & { submittedAt?: number };
         setSelectedOption(response.optionIndex ?? null);
         setWrittenResponse(response.text || '');
         setTeamName(response.teamName || '');
         setTeamDescription(response.teamDescription || '');
         setSelectedTeamId(response.teamId || '');
+        setResponseSubmittedAt(response.submittedAt || null);
         setInteractionSubmitted(true);
       } catch {
         // A malformed local preview response should not interrupt the live room.
@@ -1404,10 +1409,13 @@ export default function StudentWelcomePage() {
     setIsSubmitting(true);
     try {
       if (remoteSession) {
-        await submitStudentInteractionResponse(remoteSession.ownerUid, remoteSession.sessionId, response);
+        const savedResponse = await submitStudentInteractionResponse(remoteSession.ownerUid, remoteSession.sessionId, response);
+        setResponseSubmittedAt(savedResponse.submittedAt || Date.now());
       } else {
+        const submittedAt = Date.now();
         channelRef.current?.postMessage({ type: 'student-interaction-response', response });
-        window.localStorage.setItem(`classfully-demo-response:${demoVoterIdRef.current}:${results.runId}`, JSON.stringify(response));
+        window.localStorage.setItem(`classfully-demo-response:${demoVoterIdRef.current}:${results.runId}`, JSON.stringify({ ...response, submittedAt }));
+        setResponseSubmittedAt(submittedAt);
       }
       setInteractionSubmitted(true);
       if (response.teamId) window.localStorage.setItem(`classfully-team:${lessonState.session.courseCode}`, response.teamId);
@@ -1426,6 +1434,7 @@ export default function StudentWelcomePage() {
         setTeamName(saved.teamName || '');
         setTeamDescription(saved.teamDescription || '');
         setSelectedTeamId(saved.teamId || '');
+        setResponseSubmittedAt(saved.submittedAt || null);
         setInteractionSubmitted(true);
         completeTransport(transportId);
       } else {
@@ -1450,7 +1459,16 @@ export default function StudentWelcomePage() {
     if (!interactionSubmitted || !interaction || !results?.revealed) return;
 
     if ((interaction.type === 'quiz' || interaction.type === 'peer-learning') && selectedOption === interaction.correctOptionIndex) {
-      awardReward(`${results.runId}:correct`, 'score', interaction.type === 'peer-learning' ? POINT_RULES.strongSecondAnswer : POINT_RULES.correctQuizAnswer, interaction.type === 'peer-learning' ? 'Strong second answer' : 'Correct quiz answer');
+      awardReward(`${results.runId}:correct`, 'score', interaction.type === 'peer-learning' ? POINT_RULES.strongSecondAnswer : POINT_RULES.correctQuizAnswer, interaction.type === 'peer-learning' ? 'Strong second answer' : 'Correct knowledge check');
+      if (interaction.type === 'quiz' && interaction.speedBonusEnabled && responseSubmittedAt) {
+        const speedBonus = calculateSpeedBonus(
+          results.startedAt,
+          responseSubmittedAt,
+          interaction.speedBonusSeconds,
+          interaction.maxSpeedBonusPoints,
+        );
+        if (speedBonus > 0) awardReward(`${results.runId}:speed`, 'score', speedBonus, 'Speed bonus');
+      }
     }
 
     if (interaction.type === 'poll' && prediction !== null && results.optionCounts.length) {
@@ -1459,7 +1477,7 @@ export default function StudentWelcomePage() {
         awardReward(`${results.runId}:room-read`, 'seminar', POINT_RULES.roomRead, 'Room read');
       }
     }
-  }, [awardReward, interactionSubmitted, lessonState.activeInteraction, lessonState.interactionResults, prediction, selectedOption]);
+  }, [awardReward, interactionSubmitted, lessonState.activeInteraction, lessonState.interactionResults, prediction, responseSubmittedAt, selectedOption]);
 
   const requestReward = async (reward: CourseReward) => {
     setRewardRequestError('');
@@ -1801,6 +1819,7 @@ export default function StudentWelcomePage() {
                 </div>
                 <MarkdownContent heading className={`student-interaction-question ${promptDensityClass}`} markdown={lessonState.activeInteraction.prompt} />
                 <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Choose your team, then have one person send the response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
+                {lessonState.activeInteraction.type === 'quiz' && lessonState.activeInteraction.speedBonusEnabled && <div className="student-speed-score"><Timer size={17} /><div><strong>Correct answer: {POINT_RULES.correctQuizAnswer} points</strong><span>Answer within {lessonState.activeInteraction.speedBonusSeconds || 40} seconds for up to {lessonState.activeInteraction.maxSpeedBonusPoints || 4} more.</span></div></div>}
 
                 {lessonState.activeInteraction.type === 'team-formation' ? (
                   <div className="student-team-form">
@@ -1998,7 +2017,7 @@ export default function StudentWelcomePage() {
         </StudentCourseSheet>
       )}
 
-      {transportSignal && <ResponseTransferEffect key={transportSignal.id} signal={transportSignal} />}
+      {transportSignal && <SharedMomentEffect key={transportSignal.id} signal={transportSignal} />}
 
       {questionRewardNotice && <div className="student-question-reward-toast" role="status"><Sparkles size={18} /><span><strong>+{questionRewardNotice.amount} points</strong>{questionRewardNotice.label}</span></div>}
 

@@ -16,6 +16,7 @@ import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
 import InlineMessage from '@/components/ui/InlineMessage';
+import { AmbientLoading } from '@/components/motion';
 import type { Course, CourseSource, CourseSourceKind, Session, SessionInteraction, SessionInteractionType } from '@/types';
 import {
   ArrowLeft,
@@ -51,6 +52,7 @@ import {
   Users,
   UsersRound,
   ExternalLink,
+  Gift,
   Link2,
   X,
 } from 'lucide-react';
@@ -70,11 +72,18 @@ const interactionTypes: Array<{
   { type: 'quiz', label: 'Knowledge check', use: 'Catch a misconception while you can address it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', use: 'Collect questions, reasoning, or reflection.', icon: MessageCircle },
   { type: 'word-cloud', label: 'Word cloud', use: 'Turn one-word responses into a live view of shared themes.', icon: Cloud },
-  { type: 'team-formation', label: 'Form teams', use: 'Create named teams students can use throughout the course.', icon: UsersRound },
+  { type: 'reflection', label: 'Exit reflection', use: 'Capture what changed and what students will carry forward.', icon: Sparkles },
+  { type: 'team-formation', label: 'Form teams now', use: 'Let students create or join named teams during class.', icon: UsersRound },
   { type: 'peer-learning', label: 'Peer learning', use: 'Answer, discuss with a partner, then answer again.', icon: Repeat2 },
   { type: 'group-work', label: 'Group work', use: 'Give groups a shared task and one submission.', icon: UsersRound },
   { type: 'timer', label: 'Clock', use: 'Save a timed thinking or working block.', icon: Clock3 },
   { type: 'spin-wheel', label: 'Spin the wheel', use: 'Choose a student, team, topic, or custom item live.', icon: Dices },
+];
+
+const interactionTypeGroups: Array<{ label: string; types: SessionInteractionType[] }> = [
+  { label: 'Quick interactions', types: ['pulse', 'poll', 'quiz', 'open-response', 'word-cloud', 'reflection'] },
+  { label: 'Teaching flows', types: ['peer-learning', 'group-work'] },
+  { label: 'Classroom tools', types: ['timer', 'spin-wheel', 'team-formation'] },
 ];
 
 const createTemplate = (type: SessionInteractionType): SessionInteraction => ({
@@ -91,6 +100,8 @@ const createTemplate = (type: SessionInteractionType): SessionInteraction => ({
         ? 'Choose your team. If it is not listed yet, create it and add a short note.'
       : type === 'word-cloud'
         ? 'What one word best captures this idea?'
+      : type === 'reflection'
+        ? 'What changed in your thinking today?'
       : type === 'peer-learning'
           ? 'Choose the best answer. Discuss it with a partner, then answer again.'
           : type === 'group-work'
@@ -115,7 +126,7 @@ const createTemplate = (type: SessionInteractionType): SessionInteraction => ({
   wheelSource: type === 'spin-wheel' ? 'students' : undefined,
   wheelItems: type === 'spin-wheel' ? [] : undefined,
   wheelRemoveSelected: type === 'spin-wheel' ? true : undefined,
-  resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live',
+  resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' || type === 'reflection' ? 'instructor-only' : 'live',
 });
 
 const readableDate = (value?: string) => {
@@ -137,7 +148,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [workspaceView, setWorkspaceView] = useState<'sessions' | 'teams' | 'library'>('sessions');
+  const [workspaceView, setWorkspaceView] = useState<'sessions' | 'teams' | 'kit'>('sessions');
   const [teamRoster, setTeamRoster] = useState<CourseTeamWithMembers[]>([]);
   const [teamError, setTeamError] = useState('');
   const [teamErrorTitle, setTeamErrorTitle] = useState('Teams need another try.');
@@ -180,6 +191,13 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [nextCode, setNextCode] = useState('');
   const [archiveAfterRollover, setArchiveAfterRollover] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const requestedView = new URLSearchParams(window.location.search).get('view');
+    if (requestedView === 'sessions' || requestedView === 'teams' || requestedView === 'kit') {
+      setWorkspaceView(requestedView);
+    }
+  }, []);
 
   useEffect(() => {
     const closeMenus = (event: PointerEvent) => {
@@ -623,7 +641,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   };
 
   if (loading) {
-    return <ProtectedRoute><DashboardLayout><div className="flex min-h-96 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-[#5146e5]" /></div></DashboardLayout></ProtectedRoute>;
+    return <ProtectedRoute><DashboardLayout><div className="grid min-h-96 place-items-center" role="status" aria-label="Opening this class"><AmbientLoading className="w-44 rounded-full" announce="off" /></div></DashboardLayout></ProtectedRoute>;
   }
 
   return (
@@ -662,7 +680,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
               <nav className="mb-7 flex gap-1 overflow-x-auto rounded-2xl bg-[#f1f0f5] p-1.5" aria-label="Class workspace">
                 <button type="button" aria-current={workspaceView === 'sessions' ? 'page' : undefined} onClick={() => setWorkspaceView('sessions')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'sessions' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><CalendarDays className="h-4 w-4" /> Sessions <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{sessions.length}</span></button>
                 <button type="button" aria-current={workspaceView === 'teams' ? 'page' : undefined} onClick={() => setWorkspaceView('teams')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'teams' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><UsersRound className="h-4 w-4" /> Teams <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{teamRoster.length}</span></button>
-                <button type="button" aria-current={workspaceView === 'library' ? 'page' : undefined} onClick={() => setWorkspaceView('library')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'library' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><Library className="h-4 w-4" /> Interactions <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{templates.length}</span></button>
+                <button type="button" aria-current={workspaceView === 'kit' ? 'page' : undefined} onClick={() => setWorkspaceView('kit')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'kit' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><Library className="h-4 w-4" /> Course kit <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{templates.length}</span></button>
                 <Link href={`/dashboard/progress?courseId=${course.id}`} className="seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold text-[#697087] transition hover:bg-white hover:text-[#101a38] sm:px-4"><BarChart3 className="h-4 w-4" /> Progress</Link>
               </nav>
 
@@ -678,7 +696,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                       <div className="px-6 py-14 text-center sm:px-10">
                         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f0efff] text-[#5146e5]"><CalendarPlus className="h-7 w-7" /></span>
                         <h3 className="seminar-display mt-5 text-3xl text-[#101a38]">Plan the first meeting.</h3>
-                        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#697087]">Give it a title, then add only the polls, quizzes, check-ins, or modules you expect to use.</p>
+                        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#697087]">Give it a title, then add only the interactions, teaching flows, or classroom tools you expect to use.</p>
                         {!course.archived && <Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="mt-6 inline-block"><Button className="gap-2">Plan session 1 <ArrowRight className="h-4 w-4" /></Button></Link>}
                       </div>
                     ) : (
@@ -766,17 +784,17 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                       <p className="seminar-eyebrow mb-2 mt-5">Let students choose</p><h2 className="seminar-display text-3xl text-[#101a38]">Share team sign-up</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Students can create a team, join one that already exists, or change teams later.</p>
                       <div className="mt-5 grid gap-2"><button type="button" onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}/teams/${course.id}`); setTeamLinkCopied(true); window.setTimeout(() => setTeamLinkCopied(false), 2200); }} className="seminar-focus flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#5146e5] px-4 text-sm font-bold text-white"><Copy className="h-4 w-4" /> {teamLinkCopied ? 'Link copied' : 'Copy sign-up link'}</button><Link href={`/teams/${course.id}`} target="_blank" className="seminar-focus flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-bold text-[#5146e5]">Preview student sign-up <ExternalLink className="h-4 w-4" /></Link></div>
                     </section>
-                    <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6"><p className="seminar-eyebrow mb-2">Team tags</p><h2 className="seminar-display text-2xl text-[#101a38]">Name the focus</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Use tags for project topics, tracks, or any choice teams should make when they register.</p><div className="mt-4 flex flex-wrap gap-2">{course.teamTags?.length ? course.teamTags.map((teamTag) => <span key={teamTag} className="rounded-full bg-[#f0efff] px-3 py-1.5 text-xs font-bold text-[#5146e5]">{teamTag}</span>) : <span className="text-sm text-[#697087]">Add tags under Class settings in Interactions.</span>}</div></section>
+                    <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6"><p className="seminar-eyebrow mb-2">Team tags</p><h2 className="seminar-display text-2xl text-[#101a38]">Name the focus</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Use tags for project topics, tracks, or any choice teams should make when they register.</p><div className="mt-4 flex flex-wrap gap-2">{course.teamTags?.length ? course.teamTags.map((teamTag) => <span key={teamTag} className="rounded-full bg-[#f0efff] px-3 py-1.5 text-xs font-bold text-[#5146e5]">{teamTag}</span>) : <span className="text-sm text-[#697087]">Add tags when you include team formation in the Course kit.</span>}</div></section>
                   </aside>
                 </div>
               ) : (
               <fieldset disabled={course.archived} className="m-0 grid min-w-0 items-start gap-8 border-0 p-0 xl:grid-cols-[minmax(0,1fr)_340px]">
                 <section className="rounded-3xl border border-[#e3e5ed] bg-white p-5 sm:p-7" aria-labelledby="library-title">
                   <div className="flex flex-col gap-4 border-b border-[#e3e5ed] pb-6 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="max-w-2xl"><p className="seminar-eyebrow mb-2">Reuse what works</p><h2 id="library-title" className="seminar-display text-3xl text-[#101a38]">Build your interaction kit</h2><p className="mt-2 text-sm leading-6 text-[#697087]">Keep the questions and activities you use often. Add a copy to any session, then adjust it for that day.</p></div>
+                    <div className="max-w-2xl"><p className="seminar-eyebrow mb-2">Reuse what works</p><h2 id="library-title" className="seminar-display text-3xl text-[#101a38]">Build your course kit</h2><p className="mt-2 text-sm leading-6 text-[#697087]">Keep the interactions and teaching flows you use often. Add a copy to any session, then adjust it for that day.</p></div>
                     <div className="relative shrink-0">
-                      <Button variant="outline" onClick={() => setAddOpen((open) => !open)} className="gap-2"><Plus className="h-4 w-4" /> New interaction</Button>
-                      {addOpen && <div className="absolute right-0 z-20 mt-2 w-80 rounded-2xl border border-[#e3e5ed] bg-white p-2 shadow-[0_18px_50px_rgba(16,26,56,0.14)]">{interactionTypes.map(({ type, label, use: useCase, icon: Icon }) => <button key={type} type="button" onClick={() => { const template = createTemplate(type); const courseTags = courseTagsInput.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8); setTemplates((current) => [...current, type === 'team-formation' && courseTags.length ? { ...template, teamTags: courseTags } : template]); setAddOpen(false); setSaved(false); }} className="flex w-full items-start gap-3 rounded-xl p-3 text-left transition-colors hover:bg-[#f8f7fb]"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0efff] text-[#5146e5]"><Icon className="h-4 w-4" /></span><span><strong className="block text-sm text-[#101a38]">{label}</strong><small className="mt-0.5 block leading-5 text-[#697087]">{useCase}</small></span></button>)}</div>}
+                      <Button variant="outline" onClick={() => setAddOpen((open) => !open)} className="gap-2"><Plus className="h-4 w-4" /> Add to course kit</Button>
+                      {addOpen && <div className="absolute right-0 z-20 mt-2 max-h-[min(70vh,650px)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-[#e3e5ed] bg-white p-2 shadow-[0_18px_50px_rgba(16,26,56,0.14)]">{interactionTypeGroups.map((group, groupIndex) => <section key={group.label} className={groupIndex ? 'mt-2 border-t border-[#e3e5ed] pt-2' : ''}><p className="px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5]">{group.label}</p>{group.types.map((type) => { const option = interactionTypes.find((item) => item.type === type); if (!option) return null; const Icon = option.icon; return <button key={type} type="button" onClick={() => { const template = createTemplate(type); const courseTags = courseTagsInput.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8); setTemplates((current) => [...current, type === 'team-formation' && courseTags.length ? { ...template, teamTags: courseTags } : template]); setAddOpen(false); setSaved(false); }} className="flex w-full items-start gap-3 rounded-xl p-3 text-left transition-colors hover:bg-[#f8f7fb]"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0efff] text-[#5146e5]"><Icon className="h-4 w-4" /></span><span><strong className="block text-sm text-[#101a38]">{option.label}</strong><small className="mt-0.5 block leading-5 text-[#697087]">{option.use}</small></span></button>; })}</section>)}</div>}
                     </div>
                   </div>
 
@@ -799,6 +817,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                 <textarea aria-label={`${template.title} prompt`} value={template.prompt} onChange={(event) => updateTemplate(template.id, { prompt: event.target.value })} rows={2} className="mt-3 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
                                 {template.options && <div className="mt-4 space-y-2"><p className="text-[11px] font-bold uppercase tracking-[0.07em] text-[#697087]">{template.type === 'quiz' || template.type === 'peer-learning' ? 'Choices and correct answer' : 'Response choices'}</p>{template.options.map((option, optionIndex) => { const hasCorrectAnswer = template.type === 'quiz' || template.type === 'peer-learning'; return <div key={`${template.id}-${optionIndex}`} className="flex items-center gap-2"><input type="radio" name={`correct-${template.id}`} checked={hasCorrectAnswer && template.correctOptionIndex === optionIndex} onChange={() => hasCorrectAnswer && updateTemplate(template.id, { correctOptionIndex: optionIndex })} disabled={!hasCorrectAnswer} className={hasCorrectAnswer ? 'accent-[#5146e5]' : 'invisible'} aria-label={hasCorrectAnswer ? `Mark choice ${optionIndex + 1} correct` : undefined} /><input aria-label={`Choice ${optionIndex + 1}`} value={option} onChange={(event) => updateTemplateOption(template.id, optionIndex, event.target.value)} className="min-h-10 flex-1 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /><button type="button" onClick={() => removeTemplateOption(template.id, optionIndex)} disabled={template.options!.length <= 2} className="seminar-focus rounded-lg p-2 text-[#8b91a3] hover:bg-[#fff1ee] hover:text-[#b64936] disabled:opacity-25" aria-label={`Remove choice ${optionIndex + 1}`}><X className="h-3.5 w-3.5" /></button></div>; })}{template.options.length < 6 && <button type="button" onClick={() => updateTemplate(template.id, { options: [...template.options!, `Option ${template.options!.length + 1}`] })} className="seminar-focus ml-6 rounded-lg px-2 py-1 text-xs font-bold text-[#5146e5] hover:bg-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Add choice</button>}</div>}
                                 {(template.type === 'quiz' || template.type === 'peer-learning') && <textarea aria-label={`${template.title} answer explanation`} value={template.explanation || ''} onChange={(event) => updateTemplate(template.id, { explanation: event.target.value })} rows={2} placeholder="Explain why the correct answer is right" className="mt-4 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />}
+                                {template.type === 'quiz' && <div className="mt-4 rounded-xl border border-[#dedaf8] bg-[#f7f6ff] p-3"><label className="flex min-h-10 items-center gap-3 text-xs font-bold text-[#4f576d]"><input type="checkbox" checked={Boolean(template.speedBonusEnabled)} onChange={(event) => updateTemplate(template.id, { speedBonusEnabled: event.target.checked, speedBonusSeconds: event.target.checked ? template.speedBonusSeconds || 40 : undefined, maxSpeedBonusPoints: event.target.checked ? 4 : undefined })} className="h-4 w-4 accent-[#5146e5]" /> Add a speed bonus</label>{template.speedBonusEnabled && <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[#dedaf8] pt-3"><label className="flex items-center gap-2 text-xs font-semibold text-[#555d73]">Bonus window <input type="number" min={10} max={120} step={5} value={template.speedBonusSeconds || 40} onChange={(event) => updateTemplate(template.id, { speedBonusSeconds: Math.min(120, Math.max(10, Number(event.target.value) || 40)) })} className="w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> sec</label><span className="text-[11px] font-normal text-[#697087]">8 points for a correct answer, plus up to 4 for speed.</span></div>}</div>}
                                 {template.type === 'peer-learning' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#555d73]"><Repeat2 className="h-4 w-4 text-[#5146e5]" /> Partner discussion <input type="number" aria-label={`${template.title} discussion minutes`} min={1} max={10} value={template.discussionMinutes || 2} onChange={(event) => updateTemplate(template.id, { discussionMinutes: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> min</label>}
                                 {template.type === 'group-work' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#fff5f0] p-3 text-xs font-bold text-[#654f48]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested size <input type="number" aria-label={`${template.title} group size`} min={2} max={10} value={template.groupSize || 4} onChange={(event) => updateTemplate(template.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5" /> students</label>}
                                 {template.type === 'team-formation' && <label className="mt-4 grid gap-2 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#565078]"><span>Course tags <small className="font-normal">Separate with commas</small></span><input defaultValue={(template.teamTags || []).join(', ')} onBlur={(event) => { const teamTags = event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8); updateTemplate(template.id, { teamTags, requireTeamTag: teamTags.length > 0 }); }} placeholder="Theme 1, Theme 2, Theme 3" className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal" /></label>}
@@ -834,6 +853,13 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                       <div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#f0efff] text-[#5146e5]"><FileText className="h-4 w-4" /></span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-[#101a38]">{source.title}</strong><small className="mt-0.5 block text-[#697087]">{COURSE_SOURCE_KINDS.find((kind) => kind.value === source.kind)?.label || 'Course source'} · {courseSourceWordCount(source.content).toLocaleString()} words</small></span><button type="button" onClick={() => openSourceEditor(source)} className="seminar-focus rounded-lg p-2 text-[#697087] hover:bg-[#f7f6ff] hover:text-[#5146e5]" aria-label={`Edit ${source.title}`}><Pencil className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setSourceToDelete(source)} className="seminar-focus rounded-lg p-2 text-[#9b6b62] hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Delete ${source.title}`}><Trash2 className="h-3.5 w-3.5" /></button></div>
                     </li>)}</ul> : <div className="mt-5 rounded-xl border border-dashed border-[#cfcaf3] bg-white/65 p-4 text-sm leading-6 text-[#697087]">Add a syllabus, reading, slide export, case, or teaching note.</div>}
                     {!course.archived && <Button variant="outline" onClick={() => openSourceEditor()} disabled={(course.courseSources?.length || 0) >= MAX_COURSE_SOURCES} className="mt-5 w-full gap-2"><Plus className="h-4 w-4" /> Add course source</Button>}
+                  </section>
+                  <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6" aria-labelledby="student-experience-title">
+                    <p className="seminar-eyebrow mb-2">Student experience</p><h2 id="student-experience-title" className="seminar-display text-2xl text-[#101a38]">What carries across sessions</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Manage the material and incentives students return to throughout this class.</p>
+                    <div className="mt-5 grid gap-2">
+                      <Link href={`/dashboard/case-studies/new?courseId=${course.id}`} className="seminar-focus group flex min-h-14 items-center gap-3 rounded-xl border border-[#e3e5ed] px-3.5 text-sm font-bold text-[#313950] hover:border-[#cbc7ff] hover:bg-[#faf9ff]"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#fff7e8] text-[#9a5b1f]"><Library className="h-4 w-4" /></span><span className="min-w-0 flex-1">Create case material<small className="mt-0.5 block font-normal text-[#697087]">Use it in a case discussion</small></span><ArrowRight className="h-4 w-4 text-[#8d93a4] transition-transform group-hover:translate-x-0.5" /></Link>
+                      <Link href={`/dashboard/rewards?courseId=${course.id}`} className="seminar-focus group flex min-h-14 items-center gap-3 rounded-xl border border-[#e3e5ed] px-3.5 text-sm font-bold text-[#313950] hover:border-[#cbc7ff] hover:bg-[#faf9ff]"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#fff2ed] text-[#c85540]"><Gift className="h-4 w-4" /></span><span className="min-w-0 flex-1">Manage rewards<small className="mt-0.5 block font-normal text-[#697087]">Set point milestones and review requests</small></span><ArrowRight className="h-4 w-4 text-[#8d93a4] transition-transform group-hover:translate-x-0.5" /></Link>
+                    </div>
                   </section>
                   <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6">
                     <p className="seminar-eyebrow mb-2">Class settings</p><h2 className="seminar-display text-2xl text-[#101a38]">Details used across the course</h2>
