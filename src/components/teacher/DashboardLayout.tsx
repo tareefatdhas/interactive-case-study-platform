@@ -97,7 +97,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <Link
                     href={item.href}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`instructor-nav-link flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
+                    className={`instructor-nav-link seminar-focus flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
                       isActive
                         ? 'is-active bg-[#f0efff] text-[#4137c7]'
                         : 'text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38]'
@@ -123,7 +123,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <Link
                     href={item.href}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`instructor-nav-link flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
+                    className={`instructor-nav-link seminar-focus flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
                       isActive
                         ? 'is-active bg-[#f0efff] text-[#4137c7]'
                         : 'text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38]'
@@ -145,7 +145,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               const Icon = item.icon;
               return (
                 <li key={item.name}>
-                  <Link href={item.href} aria-current={isActive ? 'page' : undefined} className={`instructor-nav-link flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-semibold transition-all ${isActive ? 'is-active bg-[#f0efff] text-[#4137c7]' : 'text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38]'}`}>
+                  <Link href={item.href} aria-current={isActive ? 'page' : undefined} className={`instructor-nav-link seminar-focus flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${isActive ? 'is-active bg-[#f0efff] text-[#4137c7]' : 'text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38]'}`}>
                     <span className="instructor-nav-icon mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]">
                       <Icon className="h-[18px] w-[18px]" />
                     </span>

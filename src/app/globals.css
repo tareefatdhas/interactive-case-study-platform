@@ -150,6 +150,109 @@ html[data-input-modality="pointer"] :focus {
   border-bottom: 1px solid rgba(227, 229, 237, 0.78);
 }
 
+/* ---------------------------------------------------------
+ * ACTIVE NAVIGATION TOKEN
+ *
+ *   0ms   token is pressed into the navigation surface
+ *  90ms   token lifts and turns toward the instructor
+ * 240ms   glyph gains weight and the coral registration dot appears
+ * 420ms   token settles into its raised resting position
+ * --------------------------------------------------------- */
+.instructor-nav-link {
+  perspective: 180px;
+}
+
+.instructor-nav-icon {
+  --nav-token-duration: 420ms;
+  --nav-token-easing: cubic-bezier(0.2, 0.82, 0.24, 1.12);
+  position: relative;
+  border: 1px solid transparent;
+  background: transparent;
+  transform: translateY(0) rotateY(0) scale(1);
+  transform-style: preserve-3d;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    transform 180ms ease;
+}
+
+.instructor-nav-icon::after {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--seminar-brand-coral);
+  content: "";
+  opacity: 0;
+  transform: scale(0.4);
+}
+
+.instructor-nav-icon svg {
+  transition: stroke-width 180ms ease, transform 180ms ease;
+}
+
+.instructor-nav-link.is-active .instructor-nav-icon {
+  border-color: #dcd8ff;
+  background: white;
+  box-shadow: 0 3px 0 #c9c3ff, 0 7px 12px -9px rgba(65, 55, 199, 0.72);
+  animation: classfully-nav-token-settle var(--nav-token-duration) var(--nav-token-easing) both;
+}
+
+.instructor-nav-link.is-active .instructor-nav-icon::after {
+  animation: classfully-nav-dot-register var(--nav-token-duration) ease-out both;
+}
+
+.instructor-nav-link.is-active .instructor-nav-icon svg {
+  stroke-width: 2.35;
+  animation: classfully-nav-glyph-settle var(--nav-token-duration) var(--nav-token-easing) both;
+}
+
+.instructor-nav-link:not(.is-active):hover .instructor-nav-icon {
+  background: white;
+  transform: translateY(-1px);
+}
+
+.instructor-nav-link.is-active:active .instructor-nav-icon {
+  animation: none;
+  box-shadow: 0 1px 0 #c9c3ff;
+  transform: translateY(1px) rotateY(0) scale(0.98);
+}
+
+@keyframes classfully-nav-token-settle {
+  0% { box-shadow: 0 0 0 #c9c3ff; transform: translateY(1px) rotateY(0) scale(0.96); }
+  24% { box-shadow: 0 4px 0 #c9c3ff, 0 9px 14px -10px rgba(65, 55, 199, 0.76); transform: translateY(-2px) rotateY(-11deg) scale(1.04); }
+  58% { transform: translateY(-1px) rotateY(3deg) scale(0.995); }
+  100% { box-shadow: 0 3px 0 #c9c3ff, 0 7px 12px -9px rgba(65, 55, 199, 0.72); transform: translateY(-1px) rotateY(0) scale(1); }
+}
+
+@keyframes classfully-nav-glyph-settle {
+  0% { transform: scale(0.92); }
+  40% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes classfully-nav-dot-register {
+  0%, 36% { opacity: 0; transform: scale(0.4); }
+  58% { opacity: 1; transform: scale(1.25); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .instructor-nav-icon,
+  .instructor-nav-icon::after,
+  .instructor-nav-icon svg,
+  .instructor-nav-link.is-active .instructor-nav-icon,
+  .instructor-nav-link.is-active .instructor-nav-icon::after,
+  .instructor-nav-link.is-active .instructor-nav-icon svg {
+    animation: none;
+    transition: none;
+  }
+}
+
 .instructor-page {
   width: 100%;
   max-width: 1560px;
