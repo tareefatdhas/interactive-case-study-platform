@@ -598,7 +598,9 @@ test('a student can ask at any time and a classmate can upvote the question', as
   const classmateVote = classmateQuestion.getByRole('button', { name: 'Upvote question. 0 votes.' });
   await expect(classmateVote).toHaveAttribute('aria-pressed', 'false');
   await classmateVote.click();
-  await expect(classmateQuestion.getByRole('button', { name: 'Remove upvote from question. 1 vote.' })).toHaveAttribute('aria-pressed', 'true');
+  const selectedClassmateVote = classmateQuestion.getByRole('button', { name: 'Remove upvote from question. 1 vote.' });
+  await expect(selectedClassmateVote).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => selectedClassmateVote.evaluate((element) => window.getComputedStyle(element).boxShadow)).not.toBe('none');
   await expect(consolePage.locator('.question-card').filter({ hasText: question }).getByLabel('1 student upvotes')).toBeVisible();
 
   await secondClassmatePage.getByRole('button', { name: /^Questions/ }).click();

@@ -168,6 +168,15 @@ test('tapping an answer uses selection styling without a second focus ring', asy
   });
   expect(selectedStyle).toEqual({ outlineStyle: 'none', selected: true, userSelect: 'none' });
 
+  const selectionDepth = await answer.evaluate((element) => ({
+    cardShadow: window.getComputedStyle(element).boxShadow,
+    tokenShadow: window.getComputedStyle(element.querySelector('span') as HTMLElement).boxShadow,
+    unselectedShadow: window.getComputedStyle(element.parentElement?.querySelector('[role="radio"]:not(.is-selected)') as HTMLElement).boxShadow,
+  }));
+  expect(selectionDepth.cardShadow).not.toBe(selectionDepth.unselectedShadow);
+  expect(selectionDepth.tokenShadow).not.toBe('none');
+  expect(selectionDepth.unselectedShadow).not.toBe('none');
+
   const nextAnswer = page.getByRole('radio').nth(2);
   await nextAnswer.tap();
   await expect(nextAnswer).toHaveAttribute('aria-checked', 'true');
@@ -184,6 +193,9 @@ test('tapping an answer uses selection styling without a second focus ring', asy
   await submitResponse.tap();
   await expect(page.getByText('Response sent')).toBeVisible();
 
+  await page.goto('/live/remote');
+  await page.getByRole('button', { name: 'Choose interaction' }).click();
+  await page.getByRole('button', { name: /Knowledge check/ }).click();
   await page.goto('/live/student');
   const keyboardFocusedAnswer = page.getByRole('radio').first();
   for (let step = 0; step < 8; step += 1) {

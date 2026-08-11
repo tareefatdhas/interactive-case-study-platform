@@ -268,7 +268,7 @@ function StudentPostSubmit({
     <div className="student-after-response">
       <div className="student-response-confirmation" role="status"><Check size={19} /><strong>Response sent</strong></div>
 
-      <div className={`student-reward-arrival ${latestReward ? 'is-arriving' : ''}`} aria-live="polite">
+      <div className={`student-reward-arrival ${latestReward ? 'is-arriving' : ''}`} data-reward={latestReward ? `+${latestReward.amount}` : undefined} aria-live="polite">
         <ParticipationSignal active={Boolean(latestReward)} />
         <span><Sparkles size={17} /></span>
         <div>

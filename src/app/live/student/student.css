@@ -8,6 +8,8 @@
   --student-press-ease: cubic-bezier(0.2, 0.9, 0.25, 1);
   --student-press-depth: 5px;
   --student-press-depth-compact: 3px;
+  --student-token-duration: 440ms;
+  --student-token-ease: cubic-bezier(0.2, 0.82, 0.24, 1.12);
 }
 
 * { box-sizing: border-box; }
@@ -1073,6 +1075,10 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
   position: relative;
 }
 
+.student-reward-arrival .participation-signal {
+  display: none;
+}
+
 .participation-signal {
   width: 58px;
   height: 58px;
@@ -1086,16 +1092,6 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
 
 .participation-signal svg { width: 100% !important; height: 100% !important; }
 
-.student-reward-arrival::after {
-  content: '';
-  position: absolute;
-  width: 120px;
-  height: 120px;
-  right: -84px;
-  border-radius: 50%;
-  background: rgba(81, 70, 229, 0.08);
-}
-
 .student-reward-arrival > span {
   width: 36px;
   height: 36px;
@@ -1104,30 +1100,35 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
   border-radius: 10px;
   color: var(--student-violet);
   background: white;
-  box-shadow: 0 5px 14px rgba(81, 70, 229, 0.11);
+  border: 1px solid #d8d3ff;
+  box-shadow: 0 3px 0 #c9c3ff;
 }
 
 .student-reward-arrival > div { display: flex; flex-direction: column; gap: 3px; }
 .student-reward-arrival small { color: var(--student-muted); font-size: 9px; }
 .student-reward-arrival strong { font-size: 11px; }
 .student-reward-arrival > b { z-index: 1; color: var(--student-violet); font-family: var(--seminar-font-display); font-size: 22px; font-weight: 500; }
-.student-reward-arrival.is-arriving > span { animation: student-reward-pop 620ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.student-reward-arrival.is-arriving > b { animation: student-balance-settle 680ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.student-reward-arrival.is-arriving > span { animation: student-reward-register var(--student-token-duration) 60ms var(--student-token-ease) both; }
+.student-reward-arrival.is-arriving > b { animation: student-balance-settle var(--student-token-duration) 430ms var(--student-token-ease) both; }
 
 .student-reward-arrival.is-arriving::before {
   position: absolute;
   z-index: 3;
-  top: -8px;
-  right: -8px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+  top: 13px;
+  left: 14px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #aaa3ee;
+  border-radius: 9px;
+  color: white;
   background: var(--student-violet);
-  box-shadow:
-    14px -8px 0 -2px rgba(81, 70, 229, 0.34),
-    28px -14px 0 -3px rgba(81, 70, 229, 0.18);
-  content: '';
-  animation: student-points-return 720ms cubic-bezier(0.18, 0.82, 0.22, 1) both;
+  box-shadow: 0 3px 0 #aaa3ee;
+  content: attr(data-reward);
+  font-size: 9px;
+  font-weight: 800;
+  animation: student-points-travel 720ms cubic-bezier(0.18, 0.82, 0.22, 1) both;
 }
 
 .student-course-home { padding-bottom: 10px; }
@@ -1375,23 +1376,23 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
 .student-earned-activity article span { color: #434b62; }
 .student-earned-activity article strong { color: var(--student-violet); font-size: 9px; }
 
-@keyframes student-reward-pop {
-  0% { opacity: 0; transform: scale(0.6) rotate(-14deg); }
-  60% { opacity: 1; transform: scale(1.12) rotate(4deg); }
-  100% { opacity: 1; transform: scale(1) rotate(0); }
+@keyframes student-reward-register {
+  0% { transform: translateY(0) rotate(0); }
+  45% { transform: translateY(-2px) rotate(-4deg); }
+  100% { transform: translateY(0) rotate(0); }
 }
 
 @keyframes student-balance-settle {
-  0% { opacity: 0.35; transform: translateY(7px); }
-  55% { opacity: 1; transform: translateY(-2px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% { color: var(--student-violet); transform: scale(0.92); }
+  55% { color: #df664e; transform: scale(1.12); }
+  100% { color: var(--student-violet); transform: scale(1); }
 }
 
-@keyframes student-points-return {
-  0% { opacity: 0; transform: translate(0, 0) scale(0.5); }
-  16% { opacity: 1; }
-  78% { opacity: 1; transform: translate(-310px, 34px) scale(1.12); }
-  100% { opacity: 0; transform: translate(-326px, 37px) scale(0.65); }
+@keyframes student-points-travel {
+  0% { left: 14px; opacity: 0; transform: translateY(10px) rotate(-8deg) scale(0.8); }
+  18% { left: 26px; opacity: 1; transform: translateY(-7px) rotate(4deg) scale(1); }
+  78% { left: calc(100% - 58px); opacity: 1; transform: translateY(-7px) rotate(18deg) scale(0.78); }
+  100% { left: calc(100% - 49px); opacity: 0; transform: translateY(0) rotate(22deg) scale(0.45); }
 }
 
 @keyframes student-live-breathe {
@@ -1477,7 +1478,7 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--option-color) 12%, white), color-mix(in srgb, var(--option-color) 3%, white));
+  background: color-mix(in srgb, var(--option-color) 5%, white);
   transform: scaleX(0);
   transform-origin: left center;
   transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -1505,21 +1506,24 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
 }
 
 .student-interaction-options button.is-selected {
-  border-color: var(--option-color);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--option-color) 13%, transparent);
-  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--option-color) 28%, var(--student-line));
+  animation: student-answer-card-commit var(--student-token-duration) ease-out both;
 }
 .student-interaction-options .student-tactile.is-selected:not(:active) {
-  transform: translateY(-1px);
-  box-shadow:
-    0 calc(var(--tactile-depth) + 1px) 0 color-mix(in srgb, var(--option-color) 62%, #bfc2d2),
-    0 13px 24px -14px color-mix(in srgb, var(--option-color) 42%, transparent);
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 .student-interaction-options button.is-selected::before { transform: scaleX(1); }
-.student-interaction-options button.is-selected > span { color: white; background: var(--option-color); transform: scale(1.06); }
-.student-interaction-options button.is-selected > svg { color: var(--option-color); animation: student-check-arrival 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
-.student-interaction-options:has(button.is-selected) button:not(.is-selected) { opacity: 0.7; }
+.student-interaction-options button.is-selected > span {
+  border: 1px solid color-mix(in srgb, var(--option-color) 28%, white);
+  color: var(--option-color);
+  background: white;
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--option-color) 48%, #d9dbe5), 0 9px 14px -11px color-mix(in srgb, var(--option-color) 58%, transparent);
+  animation: student-selection-token-settle var(--student-token-duration) var(--student-token-ease) both;
+}
+.student-interaction-options button.is-selected > svg { color: var(--option-color); animation: student-check-arrival 260ms 230ms ease-out both; }
+.student-interaction-options:has(button.is-selected) button:not(.is-selected) { opacity: 0.82; }
 .student-interaction-options button:disabled:not(.is-selected) { opacity: 0.5; }
 
 .student-interaction-state > textarea {
@@ -1898,6 +1902,7 @@ html[data-input-modality="keyboard"] .student-answer-summary summary:focus-visib
   --tactile-base: #d7d3fb;
   --tactile-glow: rgba(81,70,229,0.18);
   margin-bottom: 3px;
+  box-shadow: none;
 }
 
 .student-question-commons article > button svg {
@@ -1905,13 +1910,16 @@ html[data-input-modality="keyboard"] .student-answer-summary summary:focus-visib
   height: 36px;
   padding: 7px;
   border: 1px solid #8f87ee;
-  border-radius: 50%;
-  transition: color 160ms ease, background 160ms ease, transform 160ms ease;
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 3px 0 #d7d3fb, 0 8px 12px -10px rgba(81,70,229,0.28);
+  transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
-.student-question-commons article > button:active svg { transform: scale(0.93); }
-.student-question-commons article > button.is-voted svg { color: white; background: var(--student-violet); }
-.student-question-commons article > button.is-voted svg { animation: student-upvote-arrival 360ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.student-question-commons article > button:active svg { box-shadow: 0 0 0 #d7d3fb; transform: translateY(3px) scale(0.98); }
+.student-question-commons article > button.is-voted svg { color: white; background: var(--student-violet); box-shadow: 0 4px 0 #aaa3ee, 0 9px 14px -11px rgba(65,55,199,.82); }
+.student-question-commons article > button.is-voted svg { animation: student-upvote-arrival var(--student-token-duration) var(--student-token-ease) both; }
+.student-question-commons article > button.is-voted strong { animation: student-vote-count-roll 460ms 120ms var(--student-token-ease) both; }
 .student-question-commons article > button strong { font-size: 12px; }
 .student-question-commons article > div > p { margin: 0; color: var(--student-ink); font-family: var(--seminar-font-display); font-size: 16px; line-height: 1.3; }
 .student-question-commons article > div > small { display: block; margin-top: 6px; color: var(--student-muted); font-size: 9px; }
@@ -2382,7 +2390,13 @@ html[data-input-modality="keyboard"] .student-answer-summary summary:focus-visib
 .student-question-feed article { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 11px; padding: 11px; border: 1px solid var(--student-line); border-radius: 14px; background: white; }
 .student-question-feed article > .student-tactile { --tactile-base: #d2cef4; width: 42px; min-height: 42px; display: grid; grid-template-columns: 1fr; place-items: center; gap: 0; border: 1px solid #d8d4f7; border-radius: 11px; color: #5146e5; background: #faf9ff; }
 .student-question-feed article > .student-tactile strong { font-size: 8px; }
-.student-question-feed article > .student-tactile.is-voted { color: white; background: var(--student-violet); }
+.student-question-feed article > .student-tactile.is-voted {
+  color: white;
+  background: var(--student-violet);
+  box-shadow: 0 4px 0 #aaa3ee, 0 9px 14px -11px rgba(65,55,199,.82);
+  animation: student-upvote-arrival var(--student-token-duration) var(--student-token-ease) both;
+}
+.student-question-feed article > .student-tactile.is-voted strong { animation: student-vote-count-roll 460ms 120ms var(--student-token-ease) both; }
 .student-question-feed article > .student-tactile:disabled { opacity: 0.78; cursor: wait; }
 .student-question-feed article p { margin: 0; color: #242c49; font: 550 11px/1.45 var(--seminar-font-ui); }
 .student-question-feed article:has(.student-own-question) { grid-template-columns: 78px 1fr; }
@@ -2602,7 +2616,23 @@ html[data-input-modality="keyboard"] .student-course-sheet > header > button:foc
 @keyframes student-send-trace { from { transform: translateX(-105%); } to { transform: translateX(105%); } }
 @keyframes student-send-icon { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
 @keyframes student-action-dock-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes student-upvote-arrival { 0% { transform: scale(0.8); } 65% { transform: scale(1.1); } 100% { transform: scale(1); } }
+@keyframes student-answer-card-commit {
+  0% { box-shadow: 0 var(--tactile-depth) 0 var(--tactile-base); transform: translateY(0); }
+  28% { box-shadow: 0 0 0 var(--tactile-base); transform: translateY(var(--tactile-depth)); }
+  100% { box-shadow: none; transform: translateY(0); }
+}
+@keyframes student-selection-token-settle {
+  0% { box-shadow: 0 0 0 color-mix(in srgb, var(--option-color) 48%, #d9dbe5); transform: translateY(2px) rotateY(0) scale(0.96); }
+  25% { box-shadow: 0 5px 0 color-mix(in srgb, var(--option-color) 48%, #d9dbe5), 0 10px 15px -11px color-mix(in srgb, var(--option-color) 58%, transparent); transform: translateY(-2px) rotateY(-11deg) scale(1.04); }
+  60% { transform: translateY(-1px) rotateY(3deg) scale(0.995); }
+  100% { box-shadow: 0 4px 0 color-mix(in srgb, var(--option-color) 48%, #d9dbe5), 0 9px 14px -11px color-mix(in srgb, var(--option-color) 58%, transparent); transform: translateY(-1px) rotateY(0) scale(1); }
+}
+@keyframes student-upvote-arrival {
+  0% { box-shadow: 0 0 0 #aaa3ee; transform: translateY(2px) rotateY(0) scale(0.96); }
+  28% { box-shadow: 0 5px 0 #aaa3ee, 0 10px 15px -11px rgba(65,55,199,.82); transform: translateY(-2px) rotateY(-10deg) scale(1.04); }
+  100% { box-shadow: 0 4px 0 #aaa3ee, 0 9px 14px -11px rgba(65,55,199,.82); transform: translateY(-1px) rotateY(0) scale(1); }
+}
+@keyframes student-vote-count-roll { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes student-signal-arrival { from { opacity: 0; transform: translate(10px, -7px) scale(0.4); } to { opacity: 1; transform: translate(0, 0) scale(1); } }
 @keyframes student-count-tick { from { opacity: 0.4; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes student-prediction-letter { from { transform: scale(0.7) rotate(-8deg); } to { transform: scale(1) rotate(0); } }
@@ -2631,7 +2661,6 @@ html[data-input-modality="keyboard"] .student-course-sheet > header > button:foc
 .student-mood-list .student-tactile:not(:disabled):active,
 .student-interaction-options .student-tactile:not(:disabled):active,
 .student-send-response.student-tactile:not(:disabled):active,
-.student-question-commons article > .student-tactile:not(:disabled):active,
 .student-reflection-options .student-tactile:not(:disabled):active,
 .student-confidence-options .student-tactile:not(:disabled):active,
 .student-reward-shelf .student-tactile:not(:disabled):active,
