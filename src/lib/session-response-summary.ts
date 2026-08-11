@@ -101,7 +101,7 @@ export function getSessionParticipationSummary(
   const eligibleRuns = runs
     .filter((run) => {
       const interaction = interactionsById.get(run.interactionId);
-      return !interaction || !NON_STUDENT_BENCHMARK_TYPES.has(interaction.type);
+      return run.responseCount > 0 && (!interaction || !NON_STUDENT_BENCHMARK_TYPES.has(interaction.type));
     })
     .sort((a, b) => a.startedAt - b.startedAt);
   const benchmarkResponseCount = Math.max(0, ...eligibleRuns.map((run) => run.responseCount));

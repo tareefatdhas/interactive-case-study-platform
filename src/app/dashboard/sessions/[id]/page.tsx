@@ -16,6 +16,7 @@ import {
 } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
+import ParticipationTrend from '@/components/teacher/ParticipationTrend';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
@@ -693,45 +694,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      {participationSummary.interactions.map((item) => {
-                        const roundsForInteraction = participationSummary.interactions.filter(
-                          (candidate) => candidate.interactionId === item.interactionId,
-                        ).length;
-                        return (
-                          <div key={item.runId}>
-                            <div className="mb-2 flex min-w-0 items-end justify-between gap-4">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-[#101a38]">{item.title}</p>
-                                <p className="text-xs text-[#73798d]">
-                                  {roundsForInteraction > 1 ? `Round ${item.round} · ` : ''}{item.responseCount} {item.responseCount === 1 ? 'response' : 'responses'}
-                                </p>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                <span className="text-lg font-semibold text-[#101a38]">{item.participationPercent}%</span>
-                                {item.isBenchmark && <span className="ml-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[#5146e5]">Peak</span>}
-                              </div>
-                            </div>
-                            <div
-                              className="h-2.5 overflow-hidden rounded-full bg-[#ececf4]"
-                              role="progressbar"
-                              aria-label={`${item.title}: ${item.participationPercent}% of peak participation`}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={item.participationPercent}
-                            >
-                              <div
-                                className={`h-full rounded-full transition-[width] duration-500 ${item.isBenchmark ? 'bg-[#5146e5]' : 'bg-[#8b82ee]'}`}
-                                style={{ width: `${item.participationPercent}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <p className="mt-5 border-t border-[#eceef3] pt-4 text-xs leading-5 text-[#73798d]">
-                      The busiest response activity is set to 100%. Timers, wheels, and team submissions are not included because they use different participation units.
-                    </p>
+                    <ParticipationTrend summary={participationSummary} />
                   </CardContent>
                 </Card>
               )}

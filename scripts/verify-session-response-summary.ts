@@ -57,15 +57,17 @@ const participation = getSessionParticipationSummary([
   { ...savedRuns[0], id: 'pulse-run', interactionId: 'pulse-1', responseCount: 89 },
   { ...savedRuns[0], id: 'cloud-run', interactionId: 'cloud-1', responseCount: 96, startedAt: 200 },
   { ...savedRuns[0], id: 'poll-run', interactionId: 'poll-1', responseCount: 74, startedAt: 300 },
+  { ...savedRuns[0], id: 'unreached-run', interactionId: 'unreached-1', responseCount: 0, startedAt: 350 },
   { ...savedRuns[0], id: 'timer-run', interactionId: 'timer-1', responseCount: 0, startedAt: 400 },
 ], [
   { id: 'pulse-1', type: 'pulse', title: 'Arrival check-in', prompt: 'How are you arriving?' },
   { id: 'cloud-1', type: 'word-cloud', title: 'Word cloud', prompt: 'One word' },
   interactions[0],
+  { id: 'unreached-1', type: 'quiz', title: 'Unreached quiz', prompt: 'Choose one' },
   { id: 'timer-1', type: 'timer', title: 'Break timer', prompt: 'Take five' },
 ]);
 assert.equal(participation.benchmarkResponseCount, 96, 'the busiest response activity should set the benchmark');
-assert.equal(participation.interactions.length, 3, 'non-response modules should not affect participation');
+assert.equal(participation.interactions.length, 3, 'non-response and zero-response activities should not affect participation');
 assert.equal(participation.interactions[0].participationPercent, 93, 'each interaction should be compared with the peak');
 assert.equal(participation.averageParticipationPercent, 90, 'the headline should average interaction participation rates');
 
