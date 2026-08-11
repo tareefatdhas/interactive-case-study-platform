@@ -43,6 +43,7 @@ import {
   type StoredAttendanceClaim,
 } from '@/lib/firebase/live-classroom';
 import { Timestamp } from 'firebase/firestore';
+import type { SessionInteractionRun } from '@/types';
 import {
   Activity,
   ArrowRight,
@@ -55,6 +56,7 @@ import {
   ClipboardCheck,
   Cloud,
   Copy,
+  Dices,
   GraduationCap,
   GripVertical,
   HeartPulse,
@@ -136,7 +138,9 @@ const ACTIVITY_TYPES: Array<{
   { type: 'open-response', label: 'Short response', description: 'Gather written thinking', icon: MessageCircle },
   { type: 'word-cloud', label: 'Word cloud', description: 'Surface shared themes', icon: Cloud },
   { type: 'peer-learning', label: 'Peer learning', description: 'Answer, discuss, answer again', icon: Repeat2 },
+  { type: 'team-formation', label: 'Form teams', description: 'Create named teams for this course', icon: Users },
   { type: 'group-work', label: 'Group work', description: 'Give teams a shared task', icon: Users },
+  { type: 'spin-wheel', label: 'Spin the wheel', description: 'Select students, teams, or custom items', icon: Dices },
 ];
 
 const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInteraction): LiveInteraction => {
@@ -157,8 +161,12 @@ const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInt
         ? 'What one word best captures this idea?'
         : type === 'open-response'
           ? 'What is still unclear?'
+          : type === 'team-formation'
+            ? 'Choose your team. If it is not listed yet, create it and add a short note.'
           : type === 'group-work'
             ? 'Work together on the task on screen.'
+            : type === 'spin-wheel'
+              ? 'Who or what should go next?'
             : 'What do you think?',
     options: choiceType ? choiceOptions : undefined,
     correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
@@ -166,10 +174,92 @@ const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInt
     durationMinutes: type === 'timer' ? 5 : type === 'group-work' ? 8 : undefined,
     discussionMinutes: type === 'peer-learning' ? 2 : undefined,
     groupSize: type === 'group-work' ? 4 : undefined,
+    teamTags: type === 'team-formation' ? ['Theme 1', 'Theme 2', 'Theme 3'] : undefined,
+    requireTeamTag: type === 'team-formation' ? true : undefined,
+    wheelSource: type === 'spin-wheel' ? 'students' : undefined,
+    wheelItems: type === 'spin-wheel' ? [] : undefined,
+    wheelRemoveSelected: type === 'spin-wheel' ? true : undefined,
     resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live',
     plannedTime: 'Added during class',
   };
 };
+
+function resolveWheelItems(
+  interaction: LiveInteraction,
+  attendance: StoredAttendanceClaim[],
+  teams: import('./live-data').LiveTeam[],
+) {
+  const source = interaction.wheelSource || 'students';
+  const labels = source === 'teams'
+    ? teams.map((team) => team.name)
+    : source === 'custom'
+      ? interaction.wheelItems || []
+      : attendance.map((claim) => claim.studentDisplayName?.trim() || `Student •${claim.studentNumber.slice(-4)}`);
+  const seen = new Set<string>();
+  return labels.map((label) => label.trim()).filter((label) => {
+    const key = label.toLocaleLowerCase();
+    if (!label || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 40);
+}
+
+const TEAM_COLOR_VALUES: Record<string, string> = {
+  violet: '#5b4ce6', blue: '#2f73df', teal: '#238b78', green: '#3d9456',
+  gold: '#d99f18', coral: '#df664e', pink: '#c85f92', navy: '#24366f',
+};
+
+function resolveWheelItemColors(interaction: LiveInteraction, teams: import('./live-data').LiveTeam[]) {
+  if (interaction.wheelSource !== 'teams') return undefined;
+  const uniqueTeams = teams.filter((team, index, all) => team.name.trim() && all.findIndex((candidate) => candidate.name.trim().toLocaleLowerCase() === team.name.trim().toLocaleLowerCase()) === index).slice(0, 40);
+  return uniqueTeams.map((team) => TEAM_COLOR_VALUES[team.color || ''] || '#5146e5');
+}
+
+function createRuntimeResults(
+  interaction: LiveInteraction,
+  attendance: StoredAttendanceClaim[],
+  teams: import('./live-data').LiveTeam[],
+) {
+  const results = createInteractionResults(interaction);
+  return interaction.type === 'spin-wheel'
+    ? { ...results, wheelItems: resolveWheelItems(interaction, attendance, teams), wheelItemColors: resolveWheelItemColors(interaction, teams) }
+    : results;
+}
+
+function runResultState(results: InteractionResults): NonNullable<SessionInteractionRun['resultState']> {
+  return {
+    open: results.open,
+    revealed: results.revealed,
+    phase: results.phase,
+    firstResponseCount: results.firstResponseCount,
+    firstOptionCounts: results.firstOptionCounts,
+    wheelItems: results.wheelItems,
+    wheelItemColors: results.wheelItemColors,
+    wheelSelectedIndex: results.wheelSelectedIndex,
+    wheelSelectedLabel: results.wheelSelectedLabel,
+    wheelSpinCount: results.wheelSpinCount,
+    wheelRotation: results.wheelRotation,
+    wheelHistory: results.wheelHistory,
+  };
+}
+
+function restoreRunResults(
+  interaction: LiveInteraction,
+  run: SessionInteractionRun,
+  attendance: StoredAttendanceClaim[],
+  teams: import('./live-data').LiveTeam[],
+): InteractionResults {
+  const fresh = createRuntimeResults(interaction, attendance, teams);
+  return {
+    ...fresh,
+    ...run.resultState,
+    runId: run.id,
+    responseCount: run.responseCount,
+    optionCounts: interaction.options?.map(() => 0) ?? [],
+    writtenResponses: [],
+    sharedResponseId: null,
+  };
+}
 
 function ActivityTypePicker({ onSelect }: { onSelect: (type: LiveInteraction['type']) => void }) {
   return (
@@ -208,6 +298,10 @@ function InteractionComposer({
   const [explanation, setExplanation] = useState(initialDraft.explanation || '');
   const [discussionMinutes, setDiscussionMinutes] = useState(String(initialDraft.discussionMinutes || 2));
   const [groupSize, setGroupSize] = useState(String(initialDraft.groupSize || 4));
+  const [teamTags, setTeamTags] = useState((initialDraft.teamTags || []).join(', '));
+  const [wheelSource, setWheelSource] = useState<NonNullable<LiveInteraction['wheelSource']>>(initialDraft.wheelSource || 'students');
+  const [wheelItems, setWheelItems] = useState((initialDraft.wheelItems || []).join('\n'));
+  const [wheelRemoveSelected, setWheelRemoveSelected] = useState(initialDraft.wheelRemoveSelected !== false);
   const [resultVisibility, setResultVisibility] = useState(initialDraft.resultVisibility || 'live');
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const initialDurationSeconds = Math.max(1, Math.round((initialDraft.durationMinutes || 5) * 60));
@@ -248,7 +342,12 @@ function InteractionComposer({
       durationMinutes: usesTimer ? durationSeconds / 60 : initialDraft.durationMinutes,
       discussionMinutes: type === 'peer-learning' ? Math.max(1, Number.parseInt(discussionMinutes || '2', 10) || 2) : undefined,
       groupSize: type === 'group-work' ? Math.max(2, Number.parseInt(groupSize || '4', 10) || 4) : undefined,
-      resultVisibility: type === 'timer' ? 'instructor-only' : resultVisibility,
+      teamTags: type === 'team-formation' ? teamTags.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8) : undefined,
+      requireTeamTag: type === 'team-formation' ? teamTags.split(',').some((tag) => tag.trim()) : undefined,
+      wheelSource: type === 'spin-wheel' ? wheelSource : undefined,
+      wheelItems: type === 'spin-wheel' && wheelSource === 'custom' ? wheelItems.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 40) : undefined,
+      wheelRemoveSelected: type === 'spin-wheel' ? wheelRemoveSelected : undefined,
+      resultVisibility: type === 'timer' || type === 'team-formation' || type === 'spin-wheel' ? 'instructor-only' : resultVisibility,
     });
   };
 
@@ -297,7 +396,9 @@ function InteractionComposer({
       )}
       {type === 'peer-learning' && <label><span>Discussion time in minutes</span><input inputMode="numeric" value={discussionMinutes} onChange={(event) => setDiscussionMinutes(event.target.value.replace(/\D/g, '').slice(0, 2))} /></label>}
       {type === 'group-work' && <label><span>Students per group</span><input inputMode="numeric" value={groupSize} onChange={(event) => setGroupSize(event.target.value.replace(/\D/g, '').slice(0, 2))} /></label>}
-      {type !== 'timer' && <label><span>When students see results</span><select value={resultVisibility} onChange={(event) => setResultVisibility(event.target.value as NonNullable<LiveInteraction['resultVisibility']>)}><option value="live">As responses arrive</option><option value="after-reveal">When I reveal them</option><option value="instructor-only">Instructor only</option></select></label>}
+      {type === 'team-formation' && <label><span>Course tags <small>Separate with commas</small></span><input value={teamTags} onChange={(event) => setTeamTags(event.target.value)} placeholder="Theme 1, Theme 2, Theme 3" /></label>}
+      {type === 'spin-wheel' && <div className="interaction-composer-wheel"><label><span>Choose from</span><select value={wheelSource} onChange={(event) => setWheelSource(event.target.value as NonNullable<LiveInteraction['wheelSource']>)}><option value="students">Students who joined</option><option value="teams">Teams created in class</option><option value="custom">A custom list</option></select></label>{wheelSource === 'custom' && <label><span>Items · one per line</span><textarea value={wheelItems} onChange={(event) => setWheelItems(event.target.value)} rows={6} maxLength={1000} placeholder={'Topic A\nTopic B\nTopic C'} /></label>}<label className="interaction-wheel-checkbox"><input type="checkbox" checked={wheelRemoveSelected} onChange={(event) => setWheelRemoveSelected(event.target.checked)} /> Remove each selection before the next spin</label></div>}
+      {type !== 'timer' && type !== 'team-formation' && type !== 'spin-wheel' && <label><span>When students see results</span><select value={resultVisibility} onChange={(event) => setResultVisibility(event.target.value as NonNullable<LiveInteraction['resultVisibility']>)}><option value="live">As responses arrive</option><option value="after-reveal">When I reveal them</option><option value="instructor-only">Instructor only</option></select></label>}
       <button className="interaction-composer-submit" type="button" onClick={submit} disabled={busy || !title.trim() || (type !== 'timer' && !prompt.trim())}>{busy ? 'Saving…' : submitLabel} <ArrowRight size={15} /></button>
     </div>
   );
@@ -307,23 +408,31 @@ function SortableSessionPlanItem({
   interaction,
   index,
   isActive,
+  runs,
   disabled,
   onEdit,
   onMove,
   onRemove,
   onShow,
+  onResume,
+  onNewRound,
 }: {
   interaction: LiveInteraction;
   index: number;
   isActive: boolean;
+  runs: SessionInteractionRun[];
   disabled: boolean;
   onEdit: () => void;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
   onShow: () => void;
+  onResume: (run: SessionInteractionRun) => void;
+  onNewRound: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: interaction.id, disabled });
   const style: CSSProperties = { transform: CSS.Transform.toString(transform), transition };
+  const latestRun = runs.find((run) => run.status !== 'archived');
+  const archivedCount = runs.filter((run) => run.status === 'archived').length;
 
   return (
     <article ref={setNodeRef} style={style} className={`${isActive ? 'is-live' : ''} ${isDragging ? 'is-dragging' : ''}`}>
@@ -346,9 +455,14 @@ function SortableSessionPlanItem({
         <span><CalendarDays size={13} /> {interaction.plannedTime} · {interaction.label}</span>
         <strong>{interaction.title}</strong>
         <MarkdownContent markdown={interaction.prompt} compact />
+        {runs.length > 0 && <div className="session-plan-run-summary">
+          <Repeat2 size={13} />
+          <span><strong>{runs.length} {runs.length === 1 ? 'round' : 'rounds'} saved</strong><small>{latestRun ? `Latest has ${latestRun.responseCount} ${latestRun.responseCount === 1 ? 'response' : 'responses'}` : `${archivedCount} archived after reset`}</small></span>
+        </div>}
       </div>
       <div className="session-plan-item-actions">
-        <button className="session-plan-show" type="button" onClick={onShow}>{isActive ? 'Showing' : 'Show'} <ArrowRight size={14} /></button>
+        <button className="session-plan-show" type="button" onClick={() => isActive ? onShow() : latestRun ? onResume(latestRun) : onShow()}>{isActive ? 'Showing' : latestRun ? 'Resume latest' : 'Show'} <ArrowRight size={14} /></button>
+        {!isActive && runs.length > 0 && <button className="session-plan-new-round" type="button" onClick={onNewRound}><Plus size={12} /> New round</button>}
         <div>
           <button type="button" aria-label={`Edit ${interaction.title}`} onClick={onEdit} disabled={disabled}>Edit</button>
           <button type="button" aria-label={`Remove ${interaction.title}`} onClick={onRemove} disabled={disabled || isActive}><Trash2 size={13} /></button>
@@ -361,22 +475,28 @@ function SortableSessionPlanItem({
 function InstructorInteractionStage({
   interaction,
   results,
+  teams,
   timer,
   onReveal,
   onAdvanceModule,
+  onSpinWheel,
   onShareResponse,
 }: {
   interaction: LiveInteraction;
   results: InteractionResults;
+  teams: import('./live-data').LiveTeam[];
   timer: LiveTimer | null;
   onReveal: () => void;
   onAdvanceModule: () => void;
+  onSpinWheel: () => void;
   onShareResponse: (responseId: string) => void;
 }) {
   const hasChoices = Boolean(interaction.options?.length);
   const isPeerLearning = interaction.type === 'peer-learning';
   const isClock = interaction.type === 'timer';
   const isWordCloud = interaction.type === 'word-cloud';
+  const isTeamFormation = interaction.type === 'team-formation';
+  const isWheel = interaction.type === 'spin-wheel';
   const wordCloudItems = buildWordCloudItems(results.writtenResponses);
   const wordCloudDensity = wordCloudItems.length <= 1 ? 'is-solo' : wordCloudItems.length <= 5 ? 'is-sparse' : 'is-growing';
   const [timerNow, setTimerNow] = useState(Date.now());
@@ -400,15 +520,19 @@ function InstructorInteractionStage({
           {isClock && <MarkdownContent className="live-clock-instructions" markdown={interaction.prompt} />}
           <p>{isClock
             ? 'The full-screen countdown is running on the projector and student phones.'
+            : isWheel
+              ? results.wheelItems?.length ? 'The same wheel is ready on the projector. Spin when the room is looking up.' : `No ${interaction.wheelSource === 'teams' ? 'teams' : interaction.wheelSource === 'custom' ? 'custom items' : 'students'} are available yet.`
             : interaction.resultVisibility === 'after-reveal' && !results.revealed
             ? `Students answer privately. Reveal the ${interaction.type === 'quiz' ? 'answer' : 'class result'} when you are ready to discuss it.`
             : interaction.type === 'open-response'
               ? 'Written responses stay on your screen until you choose one to share.'
+              : isTeamFormation
+                ? 'Teams appear here as coordinators register them.'
               : isWordCloud
                 ? 'Repeated answers grow as the class cloud forms on the projector.'
               : 'The class distribution updates as responses arrive.'}</p>
         </div>
-        {!isClock && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{interaction.type === 'group-work' ? 'groups' : 'responses'}</span></div>}
+        {!isClock && !isWheel && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{isTeamFormation ? 'students joined' : interaction.type === 'group-work' ? 'teams' : 'responses'}</span></div>}
       </header>
 
       {isClock ? (
@@ -416,6 +540,14 @@ function InstructorInteractionStage({
           <Timer size={24} />
           <div><small>{timerRemaining === 0 ? 'Time is up' : 'Time remaining'}</small><strong>{timerText}</strong></div>
         </div>
+      ) : isWheel ? (
+        <div className="instructor-wheel-stage">
+          <div className={`instructor-wheel-result ${results.wheelSelectedLabel ? 'has-result' : ''}`}><Dices size={28} /><span><small>{results.wheelSelectedLabel ? 'Selected' : `${results.wheelItems?.length || 0} items ready`}</small><strong>{results.wheelSelectedLabel || 'Ready to spin'}</strong></span></div>
+          <button type="button" onClick={onSpinWheel} disabled={!results.wheelItems?.length} className="instructor-wheel-spin"><Dices size={19} /> {results.wheelSpinCount ? 'Spin again' : 'Spin the wheel'}</button>
+          {interaction.wheelRemoveSelected !== false && <p>Each result leaves the wheel before the next spin.</p>}
+        </div>
+      ) : isTeamFormation ? (
+        <div className="instructor-team-list">{teams.length ? teams.map((team) => <article key={team.id}><span><strong>{team.name}</strong>{team.description && <small>{team.description}</small>}<em>{team.members?.length ?? team.memberCount ?? 0} students joined</em>{Boolean(team.members?.length) && <span className="instructor-team-members">{team.members?.slice(0, 4).map((member) => member.displayName || member.studentNumber || 'Student').join(', ')}{(team.members?.length || 0) > 4 ? ` +${(team.members?.length || 0) - 4} more` : ''}</span>}</span>{team.tag && <b>{team.tag}</b>}</article>) : <div className="live-word-cloud-empty"><Users size={26} /><strong>Waiting for the first team</strong></div>}</div>
       ) : isWordCloud ? (
         <div className={`live-word-cloud ${wordCloudDensity}`} aria-label={`${results.responseCount} word cloud responses`}>
           {wordCloudItems.length ? wordCloudItems.map((item, index) => (
@@ -516,6 +648,8 @@ export default function LiveLessonPrototype() {
   const [lobbyOpen, setLobbyOpen] = useState(false);
   const [activeInteraction, setActiveInteraction] = useState<LiveInteraction | null>(null);
   const [interactionResults, setInteractionResults] = useState<InteractionResults | null>(null);
+  const [interactionRuns, setInteractionRuns] = useState<SessionInteractionRun[]>([]);
+  const [formedTeams, setFormedTeams] = useState<import('./live-data').LiveTeam[]>([]);
   const [liveTimer, setLiveTimer] = useState<LiveTimer | null>(null);
   const [toast, setToast] = useState('');
   const [incomingMood, setIncomingMood] = useState<MoodKey | null>(null);
@@ -536,9 +670,18 @@ export default function LiveLessonPrototype() {
   const demoQuestionVotersRef = useRef(new Map<number, Set<string>>());
   const activeInteractionRef = useRef<LiveInteraction | null>(null);
   const interactionResultsRef = useRef<InteractionResults | null>(null);
+  const attendanceClaimsRef = useRef<StoredAttendanceClaim[]>([]);
+  const formedTeamsRef = useRef<import('./live-data').LiveTeam[]>([]);
   const sessionPlanRef = useRef(sessionPlan);
+  const interactionRunsRef = useRef<SessionInteractionRun[]>([]);
+  const interactionRunsSaveRef = useRef<Promise<void>>(Promise.resolve());
   const localPublishedTimestampsRef = useRef(new Set<number>());
+  const courseIdRef = useRef('');
+  const persistedTeamsKeyRef = useRef('');
   const lastSyncedRosterRef = useRef('');
+  const launchInteractionCommandRef = useRef<(interaction: LiveInteraction) => void>(() => undefined);
+  const advanceModuleCommandRef = useRef<() => void>(() => undefined);
+  const returnToSlidesCommandRef = useRef<() => void>(() => undefined);
   const planDragSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -604,8 +747,17 @@ export default function LiveLessonPrototype() {
   }, [activeInteraction, interactionResults]);
 
   useEffect(() => {
+    attendanceClaimsRef.current = attendanceClaims;
+    formedTeamsRef.current = formedTeams;
+  }, [attendanceClaims, formedTeams]);
+
+  useEffect(() => {
     sessionPlanRef.current = sessionPlan;
   }, [sessionPlan]);
+
+  useEffect(() => {
+    interactionRunsRef.current = interactionRuns;
+  }, [interactionRuns]);
 
   const displayState = useMemo<LessonDisplayState>(() => {
     let publicInteraction = activeInteraction;
@@ -654,10 +806,18 @@ export default function LiveLessonPrototype() {
       interactionResults: publicResults,
       featuredQuestionId: activeQuestion,
       questions: classQuestions,
+      teams: formedTeams.map(({ id, name, description, tag, color, members, memberCount }) => ({
+        id,
+        name,
+        description,
+        tag,
+        color,
+        memberCount: members?.length ?? memberCount ?? 0,
+      })),
       timer: liveTimer,
       updatedAt: Date.now(),
     };
-  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, connectedStudents, incomingMood, interactionResults, liveTimer, lobbyOpen, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
+  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, connectedStudents, formedTeams, incomingMood, interactionResults, liveTimer, lobbyOpen, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
   const displayStateRef = useRef(displayState);
 
   useEffect(() => {
@@ -679,7 +839,7 @@ export default function LiveLessonPrototype() {
 
     let cancelled = false;
     const loadPreparedSession = async () => {
-      const { getSession, updateSession } = await import('@/lib/firebase/firestore');
+      const { getCourse, getSession, updateSession } = await import('@/lib/firebase/firestore');
       const session = await getSession(sessionId);
       if (cancelled) return;
       if (!session) {
@@ -693,6 +853,22 @@ export default function LiveLessonPrototype() {
         setClassroomStateReady(true);
         return;
       }
+
+      const course = session.courseId ? await getCourse(session.courseId) : null;
+      let courseTeams = course?.teams || [];
+      if (course) {
+        try {
+          const { ensureTeamModule, getInstructorTeamRoster } = await import('@/lib/firebase/course-teams');
+          await ensureTeamModule(course);
+          const moduleTeams = await getInstructorTeamRoster(course.id, user.uid);
+          if (moduleTeams.length) courseTeams = moduleTeams;
+        } catch (teamError) {
+          console.error('Could not load the course team roster:', teamError);
+        }
+      }
+      courseIdRef.current = course?.id || '';
+      persistedTeamsKeyRef.current = JSON.stringify(courseTeams);
+      setFormedTeams(courseTeams);
 
       const context: LiveSessionContext = {
         sessionId,
@@ -709,6 +885,7 @@ export default function LiveLessonPrototype() {
       setShowComparison(false);
       setPlayingHistory(false);
       setLiveQuestions([]);
+      setFormedTeams([]);
       setQuestionVoteCounts({});
       setDiscussedQuestions([]);
       setActiveQuestion(null);
@@ -717,6 +894,7 @@ export default function LiveLessonPrototype() {
 
       const prepared = prepareLiveInteractions(session.interactions);
       if (prepared.length) setSessionPlan(prepared);
+      const savedRuns = [...(session.interactionRuns || [])].sort((a, b) => a.startedAt - b.startedAt);
 
       const remoteState = await initializeInstructorClassroom(sessionId, context, {
         ...displayStateRef.current,
@@ -734,12 +912,30 @@ export default function LiveLessonPrototype() {
         interactionResults: null,
         featuredQuestionId: null,
         questions: [],
+        teams: courseTeams,
         timer: null,
         updatedAt: Date.now(),
       });
       const privateActiveInteraction = remoteState.activeInteraction
         ? prepared.find((interaction) => interaction.id === remoteState.activeInteraction?.id) || remoteState.activeInteraction
         : null;
+      const activeRunId = remoteState.interactionResults?.runId;
+      const restoredRuns = activeRunId && privateActiveInteraction
+        ? [
+          ...savedRuns.filter((run) => run.id !== activeRunId).map((run) => run.status === 'active' ? { ...run, status: 'paused' as const } : run),
+          savedRuns.find((run) => run.id === activeRunId) || {
+            id: activeRunId,
+            interactionId: privateActiveInteraction.id,
+            startedAt: Date.now(),
+            updatedAt: Date.now(),
+            status: 'active' as const,
+            responseCount: remoteState.interactionResults?.responseCount || 0,
+            resultState: remoteState.interactionResults ? runResultState(remoteState.interactionResults) : undefined,
+          },
+        ].map((run) => run.id === activeRunId ? { ...run, status: 'active' as const, endedAt: undefined } : run)
+        : savedRuns;
+      interactionRunsRef.current = restoredRuns;
+      setInteractionRuns(restoredRuns);
       setLiveCounts(remoteState.counts || { ...EMPTY_ONBOARDING_COUNTS });
       setSelectedWeek(remoteState.selectedWeek || 0);
       setShowComparison(Boolean(remoteState.showComparison));
@@ -752,6 +948,7 @@ export default function LiveLessonPrototype() {
       setActiveInteraction(privateActiveInteraction);
       setInteractionResults(remoteState.interactionResults || null);
       setLiveQuestions((remoteState.questions || []).map((question) => ({ ...question, votes: 0 })));
+      setFormedTeams(remoteState.teams || []);
       setActiveQuestion(remoteState.featuredQuestionId || null);
       setLiveTimer(remoteState.timer || null);
       if (!session.active) {
@@ -772,6 +969,22 @@ export default function LiveLessonPrototype() {
     });
     return () => { cancelled = true; };
   }, [authLoading, user]);
+
+  useEffect(() => {
+    if (!courseIdRef.current || !formedTeams.length) return;
+    const teamsKey = JSON.stringify(formedTeams);
+    if (teamsKey === persistedTeamsKeyRef.current) return;
+    persistedTeamsKeyRef.current = teamsKey;
+    Promise.all([import('@/lib/firebase/firestore'), import('@/lib/firebase/course-teams')])
+      .then(([{ updateCourse }, { syncInstructorTeamsToModule }]) => Promise.all([
+        updateCourse(courseIdRef.current, { teams: formedTeams }),
+        sessionContext.ownerUid ? syncInstructorTeamsToModule(courseIdRef.current, sessionContext.ownerUid, formedTeams) : Promise.resolve(),
+      ]))
+      .catch((error) => {
+        persistedTeamsKeyRef.current = '';
+        console.error('Could not save course teams:', error);
+      });
+  }, [formedTeams, sessionContext.ownerUid]);
 
   useEffect(() => {
     const channel = new BroadcastChannel(LESSON_CHANNEL);
@@ -814,6 +1027,20 @@ export default function LiveLessonPrototype() {
         ) return;
 
         receivedResponseIdsRef.current.add(response.id);
+        if (currentInteraction.type === 'team-formation' && response.teamId && response.teamName) {
+          const teamId = response.teamId;
+          const teamName = response.teamName;
+          setFormedTeams((current) => {
+            const withoutStudent = current.map((team) => ({ ...team, members: (team.members || []).filter((member) => member.studentUid !== response.id) }));
+            const existing = withoutStudent.find((team) => team.id === teamId);
+            if (existing) {
+              existing.members = [...(existing.members || []), { studentUid: response.id }];
+              existing.memberCount = existing.members.length;
+              return [...withoutStudent];
+            }
+            return [...withoutStudent, { id: teamId, name: teamName, description: response.teamDescription, tag: response.teamTag, color: 'violet', creatorUid: response.id, memberCount: 1, members: [{ studentUid: response.id }] }];
+          });
+        }
         setInteractionResults((current) => {
           if (!current || current.runId !== response.runId) return current;
           const nextOptionCounts = [...current.optionCounts];
@@ -871,17 +1098,7 @@ export default function LiveLessonPrototype() {
       if (event.data?.type === 'instructor-remote-command' && event.data.command) {
         if (event.data.command === 'launch' && event.data.interactionId) {
           const interaction = sessionPlanRef.current.find((item) => item.id === event.data.interactionId);
-          if (interaction) {
-            setLobbyOpen(false);
-            setActiveInteraction(interaction);
-            receivedResponseIdsRef.current.clear();
-            setInteractionResults(createInteractionResults(interaction));
-            setActiveNav(interaction.label);
-            if (interaction.type === 'timer' || interaction.type === 'group-work') {
-              const durationSeconds = (interaction.durationMinutes || 5) * 60;
-              setLiveTimer({ id: `timer-${Date.now()}`, label: interaction.type === 'group-work' ? 'Group work' : interaction.title, durationSeconds, endsAt: Date.now() + durationSeconds * 1000 });
-            }
-          }
+          if (interaction) launchInteractionCommandRef.current(interaction);
         }
         if (event.data.command === 'toggle-responses') {
           setInteractionResults((current) => current ? { ...current, open: !current.open } : current);
@@ -890,28 +1107,10 @@ export default function LiveLessonPrototype() {
           setInteractionResults((current) => current ? { ...current, open: false, revealed: true } : current);
         }
         if (event.data.command === 'advance-module') {
-          const interaction = activeInteractionRef.current;
-          if (interaction?.type === 'peer-learning') {
-            setInteractionResults((current) => {
-              if (!current) return current;
-              if (current.phase === 'respond') {
-                const durationSeconds = (interaction.discussionMinutes || 2) * 60;
-                setLiveTimer({ id: `peer-discussion-${Date.now()}`, label: 'Partner discussion', durationSeconds, endsAt: Date.now() + durationSeconds * 1000 });
-                return { ...current, open: false, phase: 'discuss', firstResponseCount: current.responseCount, firstOptionCounts: current.optionCounts };
-              }
-              if (current.phase === 'discuss') {
-                receivedResponseIdsRef.current.clear();
-                setLiveTimer(null);
-                return { ...current, runId: `${interaction.id}-${Date.now()}-again`, open: true, responseCount: 0, optionCounts: interaction.options?.map(() => 0) || [], writtenResponses: [], phase: 'respond-again' };
-              }
-              setLiveTimer(null);
-              return { ...current, open: false, revealed: true, phase: 'complete' };
-            });
-          }
+          advanceModuleCommandRef.current();
         }
         if (event.data.command === 'finish') {
-          setActiveInteraction(null);
-          setInteractionResults(null);
+          returnToSlidesCommandRef.current();
         }
       }
     };
@@ -958,6 +1157,10 @@ export default function LiveLessonPrototype() {
           : null;
         setActiveInteraction(privateInteraction);
         setInteractionResults(remoteState.interactionResults);
+        setFormedTeams((current) => (remoteState.teams || []).map((team) => {
+          const privateTeam = current.find((item) => item.id === team.id);
+          return { ...team, members: privateTeam?.members, memberCount: privateTeam?.members?.length ?? team.memberCount };
+        }));
         setLobbyOpen(Boolean(remoteState.lobbyOpen));
         setPaused(Boolean(remoteState.paused));
         setActiveQuestion(remoteState.featuredQuestionId || null);
@@ -984,9 +1187,32 @@ export default function LiveLessonPrototype() {
           }
           if (response.text) writtenResponses.push({ id: response.id, text: response.text });
         });
+        if (activeInteraction.type === 'team-formation') {
+          const teams = formedTeamsRef.current.map((team) => ({ ...team, members: [...(team.members || [])] }));
+          responses.forEach((response) => {
+            if (!response.teamId || !response.teamName) return;
+            teams.forEach((team) => { team.members = (team.members || []).filter((member) => member.studentUid !== response.studentUid); });
+            let team = teams.find((item) => item.id === response.teamId);
+            if (!team) {
+              team = { id: response.teamId, name: response.teamName, description: response.teamDescription, tag: response.teamTag, color: 'violet', creatorUid: response.studentUid, members: [] };
+              teams.push(team);
+            }
+            const attendance = attendanceClaimsRef.current.find((claim) => claim.studentUid === response.studentUid);
+            team.members = [...(team.members || []), {
+              studentUid: response.studentUid,
+              studentNumber: attendance?.studentNumber,
+              displayName: attendance?.studentDisplayName,
+            }];
+            team.memberCount = team.members.length;
+          });
+          setFormedTeams(teams);
+        }
+        const responseCount = activeInteraction.type === 'group-work'
+          ? new Set(responses.map((response) => response.teamId || response.studentUid)).size
+          : responses.length;
         setInteractionResults((current) => current && current.runId === interactionResults.runId ? {
           ...current,
-          responseCount: responses.length,
+          responseCount,
           optionCounts,
           writtenResponses: writtenResponses.slice(0, 60),
         } : current);
@@ -1221,26 +1447,131 @@ export default function LiveLessonPrototype() {
     }
   };
 
-  const launchInteraction = (interaction: LiveInteraction) => {
+  const saveInteractionRuns = (nextRuns: SessionInteractionRun[]) => {
+    interactionRunsRef.current = nextRuns;
+    setInteractionRuns(nextRuns);
+    if (!sessionContext.sessionId || !user) return Promise.resolve();
+    const sessionId = sessionContext.sessionId;
+    const nextSave = interactionRunsSaveRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const { updateSession } = await import('@/lib/firebase/firestore');
+        await updateSession(sessionId, { interactionRuns: nextRuns });
+      });
+    interactionRunsSaveRef.current = nextSave;
+    return nextSave;
+  };
+
+  const closeCurrentRun = (
+    runs: SessionInteractionRun[],
+    status: 'paused' | 'completed' | 'archived',
+    endedAt = Date.now(),
+  ) => {
+    const currentResults = interactionResultsRef.current;
+    return runs.map((run) => {
+      if (run.id !== currentResults?.runId) {
+        return run.status === 'active' ? { ...run, status: 'paused' as const, updatedAt: endedAt } : run;
+      }
+      return {
+        ...run,
+        status,
+        updatedAt: endedAt,
+        endedAt,
+        responseCount: currentResults.responseCount,
+        resultState: runResultState(currentResults),
+        timerState: liveTimer ? {
+          label: liveTimer.label,
+          durationSeconds: liveTimer.durationSeconds,
+          endsAt: liveTimer.endsAt,
+        } : undefined,
+      };
+    });
+  };
+
+  const launchInteraction = (interaction: LiveInteraction, resumeRun?: SessionInteractionRun) => {
+    const now = Date.now();
+    const closedRuns = closeCurrentRun(interactionRunsRef.current, 'paused', now);
+    const results = resumeRun
+      ? restoreRunResults(interaction, resumeRun, attendanceClaimsRef.current, formedTeamsRef.current)
+      : createRuntimeResults(interaction, attendanceClaimsRef.current, formedTeamsRef.current);
+    const nextRun: SessionInteractionRun = resumeRun
+      ? {
+        ...resumeRun,
+        status: 'active',
+        updatedAt: now,
+        endedAt: undefined,
+      }
+      : {
+        id: results.runId,
+        interactionId: interaction.id,
+        startedAt: now,
+        updatedAt: now,
+        status: 'active',
+        responseCount: 0,
+        resultState: runResultState(results),
+      };
+    const nextRuns = [...closedRuns.filter((run) => run.id !== nextRun.id), nextRun]
+      .sort((a, b) => a.startedAt - b.startedAt);
+
     setNextMenuOpen(false);
     setSessionPlanOpen(false);
     setLobbyOpen(false);
     setActiveInteraction(interaction);
+    activeInteractionRef.current = interaction;
     receivedResponseIdsRef.current.clear();
-    setInteractionResults(createInteractionResults(interaction));
+    setInteractionResults(results);
+    interactionResultsRef.current = results;
+    void saveInteractionRuns(nextRuns).catch(() => setToast('The activity is live, but its round history has not saved yet.'));
     if (interaction.type === 'timer' || interaction.type === 'group-work') {
-      const durationSeconds = (interaction.durationMinutes || 5) * 60;
+      const durationSeconds = resumeRun?.timerState?.durationSeconds || (interaction.durationMinutes || 5) * 60;
       setLiveTimer({
         id: `timer-${Date.now()}`,
-        label: interaction.type === 'group-work' ? 'Group work' : interaction.title,
+        label: resumeRun?.timerState?.label || (interaction.type === 'group-work' ? 'Group work' : interaction.title),
         durationSeconds,
-        endsAt: Date.now() + durationSeconds * 1000,
+        endsAt: resumeRun?.timerState && resumeRun.timerState.endsAt > now
+          ? resumeRun.timerState.endsAt
+          : now + durationSeconds * 1000,
       });
     } else setLiveTimer(null);
     setActiveNav(interaction.label);
     if (!displayConnected) openClassroomDisplay();
-    setToast(`${interaction.title} is ready on the classroom display`);
+    setToast(resumeRun ? `${interaction.title} resumed with its saved responses.` : `${interaction.title} is ready on the classroom display`);
     window.setTimeout(() => document.querySelector('.live-interaction-stage')?.scrollTo({ top: 0 }), 0);
+  };
+
+  const spinWheel = () => {
+    const interaction = activeInteractionRef.current;
+    const current = interactionResultsRef.current;
+    if (interaction?.type !== 'spin-wheel' || !current) return;
+    const items = interaction.wheelRemoveSelected !== false && current.wheelSelectedLabel
+      ? (current.wheelItems || []).filter((item) => item !== current.wheelSelectedLabel)
+      : current.wheelItems || [];
+    const itemColors = interaction.wheelRemoveSelected !== false && current.wheelSelectedLabel
+      ? (current.wheelItemColors || []).filter((_, index) => (current.wheelItems || [])[index] !== current.wheelSelectedLabel)
+      : current.wheelItemColors;
+    if (!items.length) {
+      setToast('There are no items left on this wheel. Edit the activity or start it again.');
+      return;
+    }
+    const random = new Uint32Array(1);
+    window.crypto.getRandomValues(random);
+    const selectedIndex = random[0] % items.length;
+    const sector = 360 / items.length;
+    const currentRotation = current.wheelRotation || 0;
+    const target = 360 - (selectedIndex * sector + sector / 2);
+    const delta = (target - (currentRotation % 360) + 360) % 360;
+    const next: InteractionResults = {
+      ...current,
+      wheelItems: items,
+      wheelItemColors: itemColors,
+      wheelSelectedIndex: selectedIndex,
+      wheelSelectedLabel: items[selectedIndex],
+      wheelSpinCount: (current.wheelSpinCount || 0) + 1,
+      wheelRotation: currentRotation + 5 * 360 + delta,
+      wheelHistory: [...(current.wheelHistory || []), items[selectedIndex]].slice(-40),
+    };
+    interactionResultsRef.current = next;
+    setInteractionResults(next);
   };
 
   const showClassLobby = () => {
@@ -1334,9 +1665,13 @@ export default function LiveLessonPrototype() {
   };
 
   const returnToSlides = () => {
+    const pausedRuns = closeCurrentRun(interactionRunsRef.current, 'paused');
+    void saveInteractionRuns(pausedRuns).catch(() => setToast('The interaction is closed, but its round history has not saved yet.'));
     if (activeInteraction?.type === 'timer' || activeInteraction?.type === 'group-work' || activeInteraction?.type === 'peer-learning') setLiveTimer(null);
     setActiveInteraction(null);
+    activeInteractionRef.current = null;
     setInteractionResults(null);
+    interactionResultsRef.current = null;
     setLobbyOpen(false);
     setToast('Interaction closed. Return to your presentation when ready.');
   };
@@ -1348,22 +1683,45 @@ export default function LiveLessonPrototype() {
 
   const advanceModule = () => {
     if (activeInteraction?.type !== 'peer-learning') return;
-    setInteractionResults((current) => {
-      if (!current) return current;
-      if (current.phase === 'respond') {
-        const durationSeconds = (activeInteraction.discussionMinutes || 2) * 60;
-        setLiveTimer({ id: `peer-discussion-${Date.now()}`, label: 'Partner discussion', durationSeconds, endsAt: Date.now() + durationSeconds * 1000 });
-        return { ...current, open: false, phase: 'discuss', firstResponseCount: current.responseCount, firstOptionCounts: current.optionCounts };
-      }
-      if (current.phase === 'discuss') {
-        receivedResponseIdsRef.current.clear();
-        setLiveTimer(null);
-        return { ...current, runId: `${activeInteraction.id}-${Date.now()}-again`, open: true, responseCount: 0, optionCounts: activeInteraction.options?.map(() => 0) || [], writtenResponses: [], phase: 'respond-again' };
-      }
+    const current = interactionResultsRef.current;
+    if (!current) return;
+    if (current.phase === 'respond') {
+      const durationSeconds = (activeInteraction.discussionMinutes || 2) * 60;
+      setLiveTimer({ id: `peer-discussion-${Date.now()}`, label: 'Partner discussion', durationSeconds, endsAt: Date.now() + durationSeconds * 1000 });
+      const next = { ...current, open: false, phase: 'discuss' as const, firstResponseCount: current.responseCount, firstOptionCounts: current.optionCounts };
+      interactionResultsRef.current = next;
+      setInteractionResults(next);
+      return;
+    }
+    if (current.phase === 'discuss') {
+      const now = Date.now();
+      const next = { ...current, runId: `${activeInteraction.id}-${now}-again`, open: true, responseCount: 0, optionCounts: activeInteraction.options?.map(() => 0) || [], writtenResponses: [], phase: 'respond-again' as const };
+      const completedRuns = closeCurrentRun(interactionRunsRef.current, 'completed', now);
+      const nextRuns = [...completedRuns, {
+        id: next.runId,
+        interactionId: activeInteraction.id,
+        startedAt: now,
+        updatedAt: now,
+        status: 'active' as const,
+        responseCount: 0,
+        resultState: runResultState(next),
+      }];
+      receivedResponseIdsRef.current.clear();
       setLiveTimer(null);
-      return { ...current, open: false, revealed: true, phase: 'complete' };
-    });
+      interactionResultsRef.current = next;
+      setInteractionResults(next);
+      void saveInteractionRuns(nextRuns).catch(() => setToast('The second response round is live, but its history has not saved yet.'));
+      return;
+    }
+    setLiveTimer(null);
+    const next = { ...current, open: false, revealed: true, phase: 'complete' as const };
+    interactionResultsRef.current = next;
+    setInteractionResults(next);
   };
+
+  launchInteractionCommandRef.current = (interaction) => launchInteraction(interaction);
+  advanceModuleCommandRef.current = advanceModule;
+  returnToSlidesCommandRef.current = returnToSlides;
 
   const toggleInteractionResponses = () => {
     setInteractionResults((current) => current ? { ...current, open: !current.open } : current);
@@ -1427,6 +1785,12 @@ export default function LiveLessonPrototype() {
     if (!sessionContext.sessionId || !sessionContext.ownerUid) return;
     setEndingClass(true);
     try {
+      const completedAt = Date.now();
+      const completedRuns = closeCurrentRun(interactionRunsRef.current, 'completed', completedAt)
+        .map((run) => run.status === 'paused' ? { ...run, status: 'completed' as const, endedAt: run.endedAt || completedAt, updatedAt: completedAt } : run);
+      await saveInteractionRuns(completedRuns).catch((runError) => {
+        console.warn('Activity round history could not be finalized before ending:', runError);
+      });
       await endInstructorClassroom(sessionContext.ownerUid, sessionContext.sessionId);
       const { updateSession } = await import('@/lib/firebase/firestore');
       await updateSession(sessionContext.sessionId, { active: false, endedAt: Timestamp.now() });
@@ -1465,14 +1829,19 @@ export default function LiveLessonPrototype() {
       interactionResults: null,
       featuredQuestionId: null,
       questions: [],
+      teams: [],
       timer: null,
       updatedAt: Date.now(),
     };
 
     try {
+      const archivedAt = Date.now();
+      const archivedRuns = closeCurrentRun(interactionRunsRef.current, 'archived', archivedAt)
+        .map((run) => run.status === 'archived' ? run : { ...run, status: 'archived' as const, endedAt: run.endedAt || archivedAt, updatedAt: archivedAt });
       if (sessionContext.sessionId && sessionContext.ownerUid) {
         await resetInstructorClassroom(sessionContext.ownerUid, sessionContext.sessionId, resetState);
       }
+      await saveInteractionRuns(archivedRuns);
       displayStateRef.current = resetState;
       receivedResponseIdsRef.current.clear();
       demoQuestionVotersRef.current.clear();
@@ -1494,7 +1863,7 @@ export default function LiveLessonPrototype() {
       setDiscussedQuestions([]);
       setActiveQuestion(null);
       setResetSessionOpen(false);
-      setToast('Session reset. Attendance is still in place and the first interaction is ready to launch.');
+      setToast('Previous rounds archived. Attendance is still in place and the session is ready to restart.');
     } catch (resetError) {
       console.error('Could not reset session:', resetError);
       setToast('The session could not be reset. Your current data is unchanged.');
@@ -1689,9 +2058,11 @@ export default function LiveLessonPrototype() {
           <InstructorInteractionStage
             interaction={activeInteraction}
             results={interactionResults}
+            teams={formedTeams}
             timer={liveTimer}
             onReveal={revealInteractionResults}
             onAdvanceModule={advanceModule}
+            onSpinWheel={spinWheel}
             onShareResponse={shareWrittenResponse}
           />
         ) : (
@@ -1797,7 +2168,7 @@ export default function LiveLessonPrototype() {
         </section>
         )}
 
-        <footer className="lesson-controls">
+        <footer className={`lesson-controls ${activeInteraction?.type === 'spin-wheel' && !lobbyOpen ? 'is-wheel' : ''}`}>
           {lobbyOpen ? (
             <>
               <button className="control-secondary lobby-copy-control" type="button" onClick={copyJoinDetails}>
@@ -1822,7 +2193,7 @@ export default function LiveLessonPrototype() {
             </>
           ) : (
           <>
-          <button
+          {activeInteraction?.type !== 'spin-wheel' && <button
             className="control-secondary"
             type="button"
             aria-pressed={activeInteraction?.type === 'timer' ? false : activeInteraction && interactionResults ? !interactionResults.open : paused}
@@ -1844,7 +2215,7 @@ export default function LiveLessonPrototype() {
               <strong>{activeInteraction?.type === 'timer' ? 'End timer' : activeInteraction && interactionResults ? (interactionResults.open ? 'Lock responses' : 'Reopen responses') : (paused ? 'Resume responses' : 'Pause responses')}</strong>
               <small>{activeInteraction?.type === 'timer' ? 'Return the projector to the class view' : activeInteraction && interactionResults ? (interactionResults.open ? 'Students can still answer' : 'No new answers are accepted') : (paused ? 'The chart is frozen' : 'Responses are live')}</small>
             </span>
-          </button>
+          </button>}
           <div className="next-activity-wrap">
             {nextMenuOpen && (
               <div className="activity-menu">
@@ -2096,11 +2467,17 @@ export default function LiveLessonPrototype() {
                         interaction={interaction}
                         index={index}
                         isActive={activeInteraction?.id === interaction.id}
+                        runs={interactionRuns
+                          .filter((run) => run.interactionId === interaction.id)
+                          .map((run) => run.id === interactionResults?.runId ? { ...run, responseCount: interactionResults.responseCount } : run)
+                          .sort((a, b) => b.startedAt - a.startedAt)}
                         disabled={planSaving}
                         onEdit={() => setPlanEditingInteraction(interaction)}
                         onMove={(direction) => movePlannedInteraction(index, direction)}
                         onRemove={() => removePlannedInteraction(interaction)}
-                        onShow={() => launchInteraction(interaction)}
+                        onShow={() => activeInteraction?.id === interaction.id ? setSessionPlanOpen(false) : launchInteraction(interaction)}
+                        onResume={(run) => launchInteraction(interaction, run)}
+                        onNewRound={() => launchInteraction(interaction)}
                       />
                     ))}
                     {!sessionPlan.length && <div className="session-plan-empty"><ListChecks size={22} /><strong>No interactions planned yet</strong><span>Add one above when you are ready.</span></div>}
@@ -2224,8 +2601,8 @@ export default function LiveLessonPrototype() {
             <span className="end-class-icon"><RotateCcw size={19} /></span>
             <p className="seminar-eyebrow">Start this session again</p>
             <h2 id="reset-session-title" className="seminar-display">Reset this session?</h2>
-            <p>This clears live answers, pulse results, student questions, votes, and interaction progress. Attendance and connected students stay in place. This cannot be undone.</p>
-            <div><button type="button" onClick={() => setResetSessionOpen(false)} disabled={resettingSession}>Keep current data</button><button type="button" className="is-primary" onClick={resetLiveSession} disabled={resettingSession}>{resettingSession ? 'Resetting…' : 'Reset and start over'}</button></div>
+            <p>The current rounds, answers, questions, and votes will be archived before the live room starts again. Attendance and connected students stay in place.</p>
+            <div><button type="button" onClick={() => setResetSessionOpen(false)} disabled={resettingSession}>Keep teaching</button><button type="button" className="is-primary" onClick={resetLiveSession} disabled={resettingSession}>{resettingSession ? 'Archiving…' : 'Archive and restart'}</button></div>
           </section>
         </div>
       )}
@@ -2245,6 +2622,7 @@ export default function LiveLessonPrototype() {
           onToggleResponses={toggleInteractionResponses}
           onReveal={revealInteractionResults}
           onAdvanceModule={advanceModule}
+          onSpinWheel={spinWheel}
           onFinish={returnToSlides}
           onOpenDisplay={openClassroomDisplay}
           onOpenConsole={() => window.focus()}

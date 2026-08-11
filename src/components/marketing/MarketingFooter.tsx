@@ -15,6 +15,7 @@ export default function MarketingFooter() {
           <Link href="/instructors">For instructors</Link>
           <Link href="/students">For students</Link>
           <Link href="/pricing">Pricing</Link>
+          <Link href="/blog">Field Notes</Link>
           <Link href="/resources">Resources</Link>
         </nav>
         <nav className="grid gap-2 text-sm" aria-label="Account and policy links">

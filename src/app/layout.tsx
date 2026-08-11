@@ -3,6 +3,7 @@ import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
 import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/metadata";
+import InputModality from "@/components/ui/InputModality";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -95,6 +96,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${fraunces.variable} antialiased`}>
+        <InputModality />
         <AuthProvider>
           {children}
         </AuthProvider>

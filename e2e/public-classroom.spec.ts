@@ -1,5 +1,37 @@
 import { expect, test } from '@playwright/test';
 import { buildWordCloudItems } from '../src/app/live/live-data';
+import { MAX_COMBINED_SOURCE_CHARS, MAX_COURSE_SOURCES, buildLessonMaterial, upsertCourseSource } from '../src/lib/course-sources';
+import type { CourseSource } from '../src/types';
+
+const sourceFixture = (id: string, content = `Teaching material for ${id} `.repeat(8)): CourseSource => ({
+  id,
+  title: `Source ${id}`,
+  kind: 'reading',
+  content,
+  createdAt: '2026-08-11T00:00:00.000Z',
+  updatedAt: '2026-08-11T00:00:00.000Z',
+});
+
+test('course sources stay bounded and can be updated without creating duplicates', () => {
+  let sources: CourseSource[] = [];
+  for (let index = 0; index < MAX_COURSE_SOURCES; index += 1) {
+    sources = upsertCourseSource(sources, sourceFixture(String(index)));
+  }
+  expect(sources).toHaveLength(MAX_COURSE_SOURCES);
+  sources = upsertCourseSource(sources, { ...sources[0], title: 'Updated source' });
+  expect(sources).toHaveLength(MAX_COURSE_SOURCES);
+  expect(sources[0].title).toBe('Updated source');
+  expect(() => upsertCourseSource(sources, sourceFixture('one-too-many'))).toThrow(/up to 10/i);
+});
+
+test('session drafting uses only selected course sources and respects the request limit', () => {
+  const sources = [sourceFixture('selected', 'Selected material '.repeat(4_000)), sourceFixture('not-selected', 'Private unrelated material')];
+  const material = buildLessonMaterial(sources, ['selected'], 'Session-specific note');
+  expect(material).toContain('Source selected');
+  expect(material).toContain('Session-specific note');
+  expect(material).not.toContain('Private unrelated material');
+  expect(material.length).toBeLessThanOrEqual(MAX_COMBINED_SOURCE_CHARS);
+});
 
 test('one-off word cloud ideas stay at a readable base prominence', () => {
   const uniqueResponses = Array.from({ length: 36 }, (_, index) => ({ id: `unique-${index}`, text: `Idea ${index + 1}` }));
@@ -133,13 +165,13 @@ test('the live console and projector surfaces render', async ({ browser }) => {
   const resetDialog = consolePage.getByRole('dialog', { name: 'Reset this session?' });
   await expect(resetDialog).toBeVisible();
   await expect(resetDialog).toContainText('Attendance and connected students stay in place.');
-  await resetDialog.getByRole('button', { name: 'Keep current data' }).click();
+  await resetDialog.getByRole('button', { name: 'Keep teaching' }).click();
   await expect(resetDialog).toBeHidden();
 
   await consolePage.getByRole('button', { name: 'More', exact: true }).click();
   await consolePage.getByRole('menuitem', { name: /Reset session/ }).click();
-  await resetDialog.getByRole('button', { name: 'Reset and start over' }).click();
-  await expect(consolePage.getByRole('status').filter({ hasText: 'Session reset.' })).toBeVisible();
+  await resetDialog.getByRole('button', { name: 'Archive and restart' }).click();
+  await expect(consolePage.getByRole('status').filter({ hasText: 'Previous rounds archived.' })).toBeVisible();
   await expect(consolePage.getByRole('heading', { name: 'Let everyone get into the room.' })).toBeVisible();
   await expect(consolePage.getByRole('button', { name: /Start first activity/ })).toBeVisible();
   await expect(consolePage.getByRole('button', { name: /Open classroom display/ })).toHaveCount(0);
@@ -203,6 +235,46 @@ test('the class lobby carries students from joining into the first activity with
   await expect(waitingGuide.getByText('Help choose what gets discussed.')).toBeVisible();
   await waitingGuide.getByRole('button', { name: 'See questions' }).click();
   await expect(studentPage.getByRole('dialog', { name: 'Ask without interrupting.' })).toBeVisible();
+
+  await context.close();
+});
+
+test('an instructor can resume a saved round or start a fresh round without losing the earlier response', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const studentPage = await context.newPage();
+  await studentPage.setViewportSize({ width: 390, height: 844 });
+
+  await consolePage.goto('/live');
+  await studentPage.goto('/live/student');
+
+  await consolePage.getByRole('button', { name: 'More', exact: true }).click();
+  await consolePage.getByRole('menuitem', { name: /Show join screen/ }).click();
+  await consolePage.getByRole('button', { name: /Start first activity/ }).click();
+  await studentPage.getByRole('radio', { name: /Steady/ }).click();
+  await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
+  await expect(studentPage.getByText('Response sent', { exact: true })).toBeVisible();
+
+  await consolePage.getByRole('button', { name: 'Return to slides' }).click();
+  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  const sessionPlan = consolePage.getByRole('dialog', { name: 'Session plan' });
+  const arrivalPulse = sessionPlan.locator('article').filter({ hasText: 'Arrival pulse' });
+  await expect(arrivalPulse).toContainText('1 round saved');
+  await expect(arrivalPulse).toContainText('Latest has 1 response');
+
+  await arrivalPulse.getByRole('button', { name: 'Resume latest' }).click();
+  await expect(studentPage.getByText('Response sent', { exact: true })).toBeVisible();
+
+  await consolePage.getByRole('button', { name: 'Return to slides' }).click();
+  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await sessionPlan.locator('article').filter({ hasText: 'Arrival pulse' }).getByRole('button', { name: 'New round' }).click();
+
+  await expect(studentPage.getByRole('heading', { name: 'How are you arriving today?' })).toBeVisible();
+  await expect(studentPage.getByText('Response sent', { exact: true })).toHaveCount(0);
+  await expect(studentPage.getByRole('radio', { name: /Steady/ })).toHaveAttribute('aria-checked', 'false');
+
+  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await expect(sessionPlan.locator('article').filter({ hasText: 'Arrival pulse' })).toContainText('2 rounds saved');
 
   await context.close();
 });
@@ -656,9 +728,44 @@ test('group work collects one group submission beside a shared clock', async ({ 
   await studentPage.getByRole('textbox', { name: 'Your group response' }).fill('The platform depends on one payment provider.');
   await studentPage.getByRole('button', { name: 'Send group response' }).click();
 
-  await expect(remotePage.getByText('group submissions')).toBeVisible();
+  await expect(remotePage.getByText('team submissions')).toBeVisible();
   await expect(consolePage.getByText('The platform depends on one payment provider.')).toBeVisible();
   await expect(displayPage.getByRole('complementary', { name: /Group work/ })).toBeVisible();
+
+  await context.close();
+});
+
+test('students form a named team and use it for later group work', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const remotePage = await context.newPage();
+  const displayPage = await context.newPage();
+  const studentPage = await context.newPage();
+  const secondStudentPage = await context.newPage();
+
+  await consolePage.goto('/live');
+  await remotePage.goto('/live/remote');
+  await displayPage.goto('/live/display');
+  await studentPage.goto('/live/student');
+  await secondStudentPage.goto('/live/student');
+
+  await remotePage.getByRole('button', { name: /Choose your team direction/ }).click();
+  await studentPage.getByRole('textbox', { name: 'Team name' }).fill('Bright Sparks');
+  await studentPage.getByRole('textbox', { name: /Short description/ }).fill('We are exploring student life.');
+  await studentPage.getByRole('button', { name: 'Student life' }).click();
+  await studentPage.getByRole('button', { name: 'Create team' }).click();
+
+  await expect(displayPage.getByText('Bright Sparks')).toBeVisible();
+  await expect(displayPage.getByText('Student life', { exact: true })).toBeVisible();
+  await secondStudentPage.getByRole('radio', { name: /Bright Sparks/ }).click();
+  await secondStudentPage.getByRole('button', { name: 'Join Bright Sparks' }).click();
+  await expect(displayPage.getByText('2 joined', { exact: true })).toBeVisible();
+
+  await remotePage.getByRole('button', { name: 'Start next' }).click();
+  await studentPage.getByRole('combobox', { name: 'Your team' }).selectOption({ label: 'Bright Sparks · Student life' });
+  await studentPage.getByRole('textbox', { name: 'Your team response' }).fill('A shared internship matching space.');
+  await studentPage.getByRole('button', { name: 'Send for Bright Sparks' }).click();
+  await expect(consolePage.getByText('A shared internship matching space.')).toBeVisible();
 
   await context.close();
 });
@@ -827,6 +934,7 @@ test('AI classroom endpoints reject unauthenticated requests', async ({ request 
     '/api/summarize-responses',
     '/api/chat',
     '/api/generate-case-study',
+    '/api/extract-course-source',
   ]) {
     const response = await request.post(path, { data: {} });
     expect(response.status(), `${path} should require instructor authentication`).toBe(401);

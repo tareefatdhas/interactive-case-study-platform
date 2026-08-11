@@ -11,11 +11,11 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', loading, children, disabled, ...props }, ref) => {
     const variants = {
-      primary: 'bg-[#5146e5] text-white hover:bg-[#4137c7] focus:ring-[#5146e5]',
-      secondary: 'bg-[#101a38] text-white hover:bg-[#26314f] focus:ring-[#101a38]',
-      outline: 'border border-[#e3e5ed] bg-white text-[#313950] hover:bg-[#f8f7fb] focus:ring-[#5146e5]',
-      ghost: 'text-[#697087] hover:bg-[#f0efff] hover:text-[#4137c7] focus:ring-[#5146e5]',
-      destructive: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500'
+      primary: 'bg-[#5146e5] text-white hover:bg-[#4137c7] focus-visible:ring-[#5146e5]',
+      secondary: 'bg-[#101a38] text-white hover:bg-[#26314f] focus-visible:ring-[#101a38]',
+      outline: 'border border-[#e3e5ed] bg-white text-[#313950] hover:bg-[#f8f7fb] focus-visible:ring-[#5146e5]',
+      ghost: 'text-[#697087] hover:bg-[#f0efff] hover:text-[#4137c7] focus-visible:ring-[#5146e5]',
+      destructive: 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500'
     };
 
     const sizes = {
@@ -27,7 +27,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         className={cn(
-          'inline-flex min-h-10 items-center justify-center rounded-[10px] font-semibold transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#fffefa] disabled:cursor-not-allowed disabled:opacity-50',
+          'inline-flex min-h-10 items-center justify-center rounded-[10px] font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffefa] disabled:cursor-not-allowed disabled:opacity-50',
           variants[variant],
           sizes[size],
           className

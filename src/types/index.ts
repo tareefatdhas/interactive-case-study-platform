@@ -49,8 +49,10 @@ export type SessionInteractionType =
   | 'open-response'
   | 'word-cloud'
   | 'peer-learning'
+  | 'team-formation'
   | 'group-work'
   | 'timer'
+  | 'spin-wheel'
   | 'reflection'
   | 'case-study';
 
@@ -67,7 +69,43 @@ export interface SessionInteraction {
   explanation?: string;
   discussionMinutes?: number;
   groupSize?: number;
+  teamTags?: string[];
+  requireTeamTag?: boolean;
+  wheelSource?: 'students' | 'teams' | 'custom';
+  wheelItems?: string[];
+  wheelRemoveSelected?: boolean;
   resultVisibility?: 'live' | 'after-reveal' | 'instructor-only';
+}
+
+export type SessionInteractionRunStatus = 'active' | 'paused' | 'completed' | 'archived';
+
+export interface SessionInteractionRun {
+  id: string;
+  interactionId: string;
+  startedAt: number;
+  updatedAt: number;
+  endedAt?: number;
+  status: SessionInteractionRunStatus;
+  responseCount: number;
+  resultState?: {
+    open: boolean;
+    revealed: boolean;
+    phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
+    firstResponseCount?: number;
+    firstOptionCounts?: number[];
+    wheelItems?: string[];
+    wheelItemColors?: string[];
+    wheelSelectedIndex?: number | null;
+    wheelSelectedLabel?: string | null;
+    wheelSpinCount?: number;
+    wheelRotation?: number;
+    wheelHistory?: string[];
+  };
+  timerState?: {
+    label: string;
+    durationSeconds: number;
+    endsAt: number;
+  };
 }
 
 export interface Session {
@@ -83,6 +121,8 @@ export interface Session {
   scheduledFor?: string;
   presentationMode?: 'external';
   interactions?: SessionInteraction[];
+  courseSourceIds?: string[];
+  interactionRuns?: SessionInteractionRun[];
   active: boolean;
   studentsJoined: string[];
   releasedSections: number[]; // Array of section indices that have been released (0-based)
@@ -97,6 +137,19 @@ export interface Session {
   startedAt?: Timestamp;
   endedAt?: Timestamp;
   lastActivityAt?: Timestamp;
+}
+
+export type CourseSourceKind = 'syllabus' | 'slides' | 'reading' | 'case' | 'notes';
+
+export interface CourseSource {
+  id: string;
+  title: string;
+  kind: CourseSourceKind;
+  content: string;
+  fileName?: string;
+  extractedWithAi?: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface StandaloneSection {
@@ -195,6 +248,22 @@ export interface Course {
   archivedAt?: Timestamp | null;
   sourceCourseId?: string;
   interactionTemplates?: SessionInteraction[];
+  courseSources?: CourseSource[];
+  teamTags?: string[];
+  teams?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    tag?: string;
+    color?: 'violet' | 'blue' | 'teal' | 'green' | 'gold' | 'coral' | 'pink' | 'navy';
+    creatorUid?: string;
+    memberCount?: number;
+    members?: Array<{
+      studentUid: string;
+      studentNumber?: string;
+      displayName?: string;
+    }>;
+  }>;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
 }

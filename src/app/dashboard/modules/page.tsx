@@ -1,12 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Clock3, Repeat2, UsersRound } from 'lucide-react';
+import { ArrowRight, Clock3, Dices, Repeat2, UsersRound } from 'lucide-react';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
 
 const modules = [
+  {
+    name: 'Team registration',
+    icon: UsersRound,
+    color: '#2f73df',
+    tint: '#edf4ff',
+    purpose: 'Give every class one team roster that students can update themselves.',
+    steps: ['Share the course link', 'Search before creating', 'Choose a tag and color', 'Reuse teams in class'],
+    bestFor: 'Project teams, study groups, case teams, and any course where the same groups work together more than once.',
+  },
   {
     name: 'Peer learning',
     icon: Repeat2,
@@ -34,6 +43,15 @@ const modules = [
     steps: ['Show one focused prompt', 'Start the shared clock', 'Keep every screen in sync', 'Return to the lesson'],
     bestFor: 'Think time, writing, group work, breaks, and timed transitions.',
   },
+  {
+    name: 'Spin the wheel',
+    icon: Dices,
+    color: '#9a5b1f',
+    tint: '#fff7e8',
+    purpose: 'Make a fair, visible selection without losing the flow of the lesson.',
+    steps: ['Choose students, teams, or a custom list', 'Show the wheel', 'Spin with the room', 'Keep or remove the selection'],
+    bestFor: 'Choosing presenters, discussion order, review topics, case roles, and team turns.',
+  },
 ];
 
 export default function TeachingModulesPage() {
@@ -45,7 +63,7 @@ export default function TeachingModulesPage() {
             <div className="max-w-2xl">
               <p className="seminar-eyebrow mb-3">Teaching modules</p>
               <h1 className="seminar-display text-4xl text-[#101a38] sm:text-5xl">More than a single question.</h1>
-              <p className="mt-3 text-base leading-7 text-[#697087]">Modules guide the room through a short teaching routine. Add one to a session, edit it for the topic, then launch it beside your slides.</p>
+              <p className="mt-3 text-base leading-7 text-[#697087]">Modules support teaching routines that need more than one question. Some run live beside your slides. Others, such as team registration, stay available across the course.</p>
             </div>
             <Link href="/dashboard/classes"><Button className="gap-2">Choose a class <ArrowRight className="h-4 w-4" /></Button></Link>
           </header>
@@ -70,7 +88,7 @@ export default function TeachingModulesPage() {
           </div>
 
           <section className="mt-8 flex flex-col gap-5 rounded-3xl bg-[#101a38] p-6 text-white sm:flex-row sm:items-center sm:justify-between sm:p-8">
-            <div><p className="text-xs font-bold uppercase tracking-[0.1em] text-[#b8b3ff]">Use them in context</p><h2 className="seminar-display mt-2 text-3xl">Add a module to a class session.</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[#cbd0df]">Open a class, plan a session, and choose Add activity. Modules remain private until you launch them during class.</p></div>
+            <div><p className="text-xs font-bold uppercase tracking-[0.1em] text-[#b8b3ff]">Use them in context</p><h2 className="seminar-display mt-2 text-3xl">Choose the class first.</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[#cbd0df]">Open a class to share its team link or add a live module to a session. Course-level records stay connected as the term progresses.</p></div>
             <Link href="/dashboard/classes" className="shrink-0"><Button variant="outline" className="gap-2 border-white bg-white text-[#101a38] hover:bg-[#f4f2ff]">Open classes <ArrowRight className="h-4 w-4" /></Button></Link>
           </section>
         </main>

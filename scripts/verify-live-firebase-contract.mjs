@@ -3,7 +3,7 @@ import { config as loadEnv } from 'dotenv';
 import { deleteApp, initializeApp } from 'firebase/app';
 import { createUserWithEmailAndPassword, deleteUser, getAuth, signInAnonymously } from 'firebase/auth';
 import { arrayUnion, deleteDoc, doc, getDoc, getFirestore, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { get, getDatabase, ref, remove, set, update } from 'firebase/database';
+import { get, getDatabase, ref, remove, runTransaction, set, update } from 'firebase/database';
 
 loadEnv({ path: '.env.local', quiet: true });
 
@@ -65,6 +65,22 @@ try {
     name: 'Classroom contract check',
     createdAt: serverTimestamp(),
   });
+  const sourceId = `source-${randomUUID()}`;
+  await updateDoc(doc(teacherDb, 'courses', courseId), {
+    courseSources: [{
+      id: sourceId,
+      title: 'Contract teaching notes',
+      kind: 'notes',
+      content: 'Network effects become more useful as participation grows. Ask students to compare direct and indirect effects.',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }],
+  });
+  const courseWithSource = await getDoc(doc(teacherDb, 'courses', courseId));
+  assertContract(
+    courseWithSource.data()?.courseSources?.[0]?.id === sourceId,
+    'The instructor could not save private course material.',
+  );
   await setDoc(doc(teacherDb, 'sessions', sessionId), {
     teacherId: teacherUser.uid,
     courseId,
@@ -328,33 +344,58 @@ try {
 
   const resetAt = Date.now();
   const resetExpiresAt = resetAt + 60 * 60 * 1000;
-  await update(ref(teacherRealtime), {
-    [`${roomPath}/responses`]: null,
-    [`${roomPath}/welcomeResponses`]: null,
-    [`${roomPath}/studentQuestions`]: null,
-    [`${roomPath}/questionVotes`]: null,
-    [`${roomPath}/dismissedQuestions`]: null,
-    [`${roomPath}/publicState`]: {
-      ...publicStateSnapshot.val(),
-      counts: emptyCounts,
-      comparisonCounts: emptyCounts,
-      onboardingStep: 0,
-      onboardingRunId: 0,
-      onboardingMoodCounts: emptyCounts,
-      activeInteraction: null,
-      interactionResults: null,
-      featuredQuestionId: null,
-      questions: [],
-      updatedAt: resetAt,
-    },
-    [`${roomPath}/meta/status`]: 'live',
-    [`${roomPath}/meta/updatedAt`]: resetAt,
-    [`${roomPath}/meta/expiresAt`]: resetExpiresAt,
-    [`liveJoinCodes/${sessionCode}/status`]: 'live',
-    [`liveJoinCodes/${sessionCode}/expiresAt`]: resetExpiresAt,
+  const resetArchiveId = `reset-${resetAt}`;
+  const resetResult = await runTransaction(ref(teacherRealtime, roomPath), (current) => {
+    if (!current) return;
+    const {
+      responses,
+      welcomeResponses,
+      studentQuestions,
+      questionVotes,
+      dismissedQuestions,
+      questionPointClaims,
+      recognizedQuestions,
+      ...roomWithoutCollectedData
+    } = current;
+    return {
+      ...roomWithoutCollectedData,
+      archives: {
+        ...(current.archives || {}),
+        [resetArchiveId]: {
+          createdAt: resetAt,
+          reason: 'session-reset',
+          responses: responses || {},
+          welcomeResponses: welcomeResponses || {},
+          studentQuestions: studentQuestions || {},
+          questionVotes: questionVotes || {},
+          dismissedQuestions: dismissedQuestions || {},
+          questionPointClaims: questionPointClaims || {},
+          recognizedQuestions: recognizedQuestions || {},
+        },
+      },
+      publicState: {
+        ...current.publicState,
+        counts: emptyCounts,
+        comparisonCounts: emptyCounts,
+        onboardingStep: 0,
+        onboardingRunId: 0,
+        onboardingMoodCounts: emptyCounts,
+        activeInteraction: null,
+        interactionResults: null,
+        featuredQuestionId: null,
+        questions: [],
+        updatedAt: resetAt,
+      },
+      meta: { ...current.meta, status: 'live', updatedAt: resetAt, expiresAt: resetExpiresAt },
+    };
+  }, { applyLocally: false });
+  assertContract(resetResult.committed, 'Reset transaction did not commit.');
+  await update(ref(teacherRealtime, `liveJoinCodes/${sessionCode}`), {
+    status: 'live',
+    expiresAt: resetExpiresAt,
   });
 
-  const [resetAttendance, resetPresence, resetResponses, resetWelcome, resetQuestions, resetVotes, resetDismissed, resetState] = await Promise.all([
+  const [resetAttendance, resetPresence, resetResponses, resetWelcome, resetQuestions, resetVotes, resetDismissed, resetState, archivedResponse, archivedQuestion] = await Promise.all([
     get(ref(teacherRealtime, `${roomPath}/attendanceClaims/${studentUser.uid}`)),
     get(ref(teacherRealtime, `${roomPath}/presence/${studentUser.uid}/contract-connection`)),
     get(ref(teacherRealtime, `${roomPath}/responses/${interactionRunId}/${studentUser.uid}`)),
@@ -363,6 +404,8 @@ try {
     get(ref(teacherRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`)),
     get(ref(teacherRealtime, `${roomPath}/dismissedQuestions/1`)),
     get(ref(teacherRealtime, `${roomPath}/publicState`)),
+    get(ref(teacherRealtime, `${roomPath}/archives/${resetArchiveId}/responses/${interactionRunId}/${studentUser.uid}`)),
+    get(ref(teacherRealtime, `${roomPath}/archives/${resetArchiveId}/studentQuestions/${studentUser.uid}/${studentQuestionId}`)),
   ]);
   assertContract(resetAttendance.exists(), 'Reset removed attendance that should have been preserved.');
   assertContract(resetPresence.exists(), 'Reset disconnected a student who should have stayed connected.');
@@ -372,6 +415,8 @@ try {
   assertContract(!resetVotes.exists(), 'Reset did not clear question votes.');
   assertContract(!resetDismissed.exists(), 'Reset did not clear dismissed question records.');
   assertContract(!resetState.child('activeInteraction').exists(), 'Reset did not return the classroom to its starting state.');
+  assertContract(archivedResponse.val()?.optionIndex === 0, 'Reset did not archive the prior interaction response.');
+  assertContract(archivedQuestion.val()?.question === 'Could you explain this idea with another example?', 'Reset did not archive the prior student question.');
 
   const finalQuestionId = Date.now() * 100 + 9;
   await set(ref(studentRealtime, `${roomPath}/studentQuestions/${studentUser.uid}/${finalQuestionId}`), {
@@ -424,13 +469,14 @@ try {
   assertContract(endedSession.data()?.active === false, 'The prepared session record remained active after ending.');
 
   console.log('PASS Instructor created a production classroom.');
+  console.log('PASS Instructor saved private course material for later session planning.');
   console.log('PASS Student resolved the join code and read the live activity.');
   console.log('PASS Pulse, poll, quiz, peer learning, open response, word cloud, and group work crossed the production rules.');
   console.log('PASS The shared clock correctly rejected an unexpected student response.');
   console.log('PASS Instructor received the student records.');
   console.log('PASS Progress can read attendance and responses, with a durable session roster fallback.');
   console.log('PASS Dismissed questions reject new student votes.');
-  console.log('PASS Session reset cleared collected data while preserving attendance and presence.');
+  console.log('PASS Session reset archived collected data while preserving attendance and presence.');
   console.log('PASS Session ending settled final question points and closed both live records.');
 } finally {
   if (teacherUser) {

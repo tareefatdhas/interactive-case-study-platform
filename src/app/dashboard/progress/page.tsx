@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Timestamp } from 'firebase/firestore';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getAllStudentsWithStats, getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { getAllStudentsWithStats, getCoursesByTeacher, getSessionsByTeacher, syncStandaloneSessionStudents } from '@/lib/firebase/firestore';
 import { getInstructorClassroomRecords, type InstructorClassroomRecords } from '@/lib/firebase/live-classroom';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
@@ -84,7 +84,21 @@ function ProgressContent() {
             }
           }));
         const records: Record<string, InstructorClassroomRecords> = Object.fromEntries(classroomRecordPairs);
-        const knownStudents = studentData as StudentWithStats[];
+        await Promise.allSettled(sessionData
+          .filter((session) => session.sessionType === 'standalone')
+          .map((session) => syncStandaloneSessionStudents(
+            session.id,
+            user.uid,
+            Object.values(records[session.id]?.attendance || {}).map((claim) => claim.studentNumber),
+          )));
+        const knownStudents = Array.from((studentData as StudentWithStats[]).reduce((byStudentNumber, student) => {
+          const normalized = normalizeStudentNumber(student.studentIdNormalized || student.studentId || student.id);
+          const existing = byStudentNumber.get(normalized);
+          if (!existing || student.stats.totalResponses > existing.stats.totalResponses) {
+            byStudentNumber.set(normalized, student);
+          }
+          return byStudentNumber;
+        }, new Map<string, StudentWithStats>()).values());
         const knownNumbers = new Set(knownStudents.map((student) => normalizeStudentNumber(student.studentId)));
         const attendanceOnlyStudents: StudentWithStats[] = [];
         Object.values(records).forEach((record) => Object.values(record.attendance).forEach((claim) => {

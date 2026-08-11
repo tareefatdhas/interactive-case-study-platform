@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateContent } from '@/lib/ai/gemini';
 import { firebaseRequestError, requireFirebaseUser } from '@/lib/firebase/server-auth';
+import { MAX_COMBINED_SOURCE_CHARS } from '@/lib/course-sources';
 
-const MAX_LESSON_CHARS = 24_000;
 const interactionTypes = ['pulse', 'poll', 'quiz', 'open-response'] as const;
 
 type InteractionType = (typeof interactionTypes)[number];
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Send lesson material as JSON.' }, { status: 400 });
     }
     const requestBody = body as Record<string, unknown>;
-    const lessonContent = stringValue(requestBody.lessonContent, MAX_LESSON_CHARS);
+    const lessonContent = stringValue(requestBody.lessonContent, MAX_COMBINED_SOURCE_CHARS);
     const sessionTitle = stringValue(requestBody.sessionTitle, 120);
     const courseName = stringValue(requestBody.courseName, 120);
     const courseCode = stringValue(requestBody.courseCode, 60);

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'react-qr-code';
-import { Activity, CheckCircle2, Cloud, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
+import { Activity, CheckCircle2, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
 import LivingMoodField from '@/components/live/LivingMoodField';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
@@ -44,11 +44,21 @@ const DEFAULT_STATE: LessonDisplayState = {
   interactionResults: null,
   featuredQuestionId: null,
   questions: DEFAULT_LIVE_QUESTIONS,
+  teams: [],
   updatedAt: Date.now(),
 };
 
 const RESULT_COLORS = ['#5146e5', '#2f73df', '#d99f18', '#df664e', '#2f8b63'];
 const WORD_CLOUD_COLORS = ['#5146e5', '#405bc9', '#6656c7', '#526282'];
+const WHEEL_COLORS = ['#5146e5', '#4676df', '#2f9b78', '#e0a82e', '#dc6a50', '#9a62cf', '#3f8ea8', '#d8799b'];
+
+function wheelGradient(itemCount: number, itemColors?: string[]) {
+  const segments = Math.max(1, Math.min(16, itemCount));
+  const size = 360 / segments;
+  return `conic-gradient(from -90deg, ${Array.from({ length: segments }, (_, index) => `${itemColors?.[index] || WHEEL_COLORS[index % WHEEL_COLORS.length]} ${index * size}deg ${(index + 1) * size}deg`).join(', ')})`;
+}
+
+const TEAM_COLOR_VALUES: Record<string, string> = { violet: '#5b4ce6', blue: '#2f73df', teal: '#238b78', green: '#3d9456', gold: '#d99f18', coral: '#df664e', pink: '#c85f92', navy: '#24366f' };
 
 function wordCloudDensityClass(uniqueWords: number) {
   if (uniqueWords <= 1) return 'is-solo';
@@ -195,6 +205,8 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   const isPeerDiscussion = interaction.type === 'peer-learning' && results.phase === 'discuss';
   const isClock = interaction.type === 'timer';
   const isWordCloud = interaction.type === 'word-cloud';
+  const isTeamFormation = interaction.type === 'team-formation';
+  const isWheel = interaction.type === 'spin-wheel';
   const wordCloudItems = buildWordCloudItems(results.writtenResponses);
   const repeatedWordCloudItems = wordCloudItems.filter((item) => item.count > 1).slice(0, 3);
   const wordCloudDensity = wordCloudDensityClass(wordCloudItems.length);
@@ -203,17 +215,17 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   ];
 
   return (
-    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
+    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : isTeamFormation ? 'is-team-formation' : isWheel ? 'is-spin-wheel' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
       <div className="interaction-display-heading">
         <div>
           <span className="display-eyebrow"><ListChecks size={20} /> {interaction.label}</span>
           {isClock ? <h1>{interaction.title}</h1> : <MarkdownContent heading className="interaction-display-question" markdown={interaction.prompt} />}
-          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : <p>{isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? interaction.type === 'group-work' ? `Work in groups of about ${interaction.groupSize || 4}. One note-taker submits for each group.` : 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
+          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : <p>{isWheel ? results.wheelSelectedLabel ? 'The wheel has spoken.' : 'The instructor will spin when the room is ready.' : isTeamFormation ? 'Choose your team on your phone. New teams will appear here as they are created.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? interaction.type === 'group-work' ? `Choose your team. One person submits for each team.` : 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
         </div>
-        {!isClock && <div className="interaction-display-count">
+        {!isClock && !isWheel && <div className="interaction-display-count">
           <Users size={21} />
           <strong key={results.responseCount}>{results.responseCount}</strong>
-          <span>{interaction.type === 'group-work' ? 'groups' : 'responses'}</span>
+          <span>{isTeamFormation ? 'students joined' : interaction.type === 'group-work' ? 'teams' : 'responses'}</span>
           <div className="response-signal-meter" aria-hidden="true">
             {Array.from({ length: 9 }).map((_, index) => (
               <i
@@ -227,6 +239,20 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
       </div>
       {isClock ? (
         lessonState.timer ? <FullScreenProjectorTimer timer={lessonState.timer} /> : <div className="display-clock-module" aria-hidden="true"><span><Timer size={46} /></span><div><i /><i /><i /></div><strong>Timer ready.</strong></div>
+      ) : isWheel ? (
+        <div className={`display-spin-wheel ${results.wheelSpinCount ? 'has-spun' : ''}`} aria-live="polite">
+          <div className="display-wheel-wrap">
+            <div className="display-wheel-pointer" aria-hidden="true" />
+            <div className="display-wheel-disc" style={{ '--wheel-rotation': `${results.wheelRotation || 0}deg`, '--wheel-fill': wheelGradient(results.wheelItems?.length || 0, results.wheelItemColors) } as CSSProperties}>
+              <div className="display-wheel-center"><Dices size={38} /><strong>{results.wheelItems?.length || 0}</strong><span>{interaction.wheelSource === 'teams' ? 'teams' : interaction.wheelSource === 'custom' ? 'items' : 'students'}</span></div>
+            </div>
+          </div>
+          <div className={`display-wheel-selection ${results.wheelSelectedLabel ? 'has-result' : ''}`} key={`wheel-result-${results.wheelSpinCount || 0}`}><small>{results.wheelSelectedLabel ? 'Selected' : 'Ready when you are'}</small><strong>{results.wheelSelectedLabel || 'Waiting for the spin'}</strong></div>
+        </div>
+      ) : isTeamFormation ? (
+        <div className="display-team-board">
+          {lessonState.teams.length ? lessonState.teams.map((team, index) => <article key={team.id} style={{ '--team-delay': `${index * 70}ms`, '--team-color': TEAM_COLOR_VALUES[team.color || ''] || '#5146e5' } as CSSProperties}><span>{index + 1}</span><div><strong>{team.name}</strong>{team.description && <p>{team.description}</p>}</div><div className="display-team-meta">{team.tag && <small>{team.tag}</small>}<b>{team.memberCount || 0} joined</b></div></article>) : <div className="display-team-empty"><Users size={44} /><strong>Waiting for the first team</strong><span>Teams will appear as students register.</span></div>}
+        </div>
       ) : isWordCloud ? (
         <div className={`display-word-cloud ${wordCloudDensity}`} aria-label={`Word cloud for ${markdownToPlainText(interaction.prompt)} with ${wordCloudItems.length} unique answers`}>
           {results.responseCount > 0 && <i className="display-word-cloud-ripple" key={`cloud-ripple-${results.responseCount}`} aria-hidden="true" />}
@@ -260,7 +286,7 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
       ) : !showDistribution && interaction.options?.length && (
         <ResponseCurrent count={results.responseCount} runId={results.runId} open={results.open} />
       )}
-      {!isClock && !isPeerDiscussion && !isWordCloud && (showDistribution ? (
+      {!isClock && !isWheel && !isPeerDiscussion && !isWordCloud && (showDistribution ? (
         <div className="interaction-result-options">
           {interaction.options?.map((option, index) => {
             const count = results.optionCounts[index] ?? 0;
@@ -758,7 +784,7 @@ export default function ClassroomDisplayPage() {
         <>
           <ClassroomInteraction lessonState={lessonState} />
           <footer className="display-footer">
-            <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
+            <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.activeInteraction.type === 'spin-wheel' ? lessonState.interactionResults?.wheelSelectedLabel ? 'Selection complete' : 'Wheel ready' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
             <div className="display-footer-insight"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
             <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
           </footer>

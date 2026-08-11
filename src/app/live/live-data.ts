@@ -9,7 +9,7 @@ export type OnboardingStep = 0 | 1 | 2 | 3 | 4;
 
 export type LiveInteraction = {
   id: string;
-  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'word-cloud' | 'peer-learning' | 'group-work' | 'timer';
+  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'word-cloud' | 'peer-learning' | 'team-formation' | 'group-work' | 'timer' | 'spin-wheel';
   label: string;
   title: string;
   prompt: string;
@@ -19,6 +19,12 @@ export type LiveInteraction = {
   durationMinutes?: number;
   discussionMinutes?: number;
   groupSize?: number;
+  teamTags?: string[];
+  requireTeamTag?: boolean;
+  wheelSource?: 'students' | 'teams' | 'custom';
+  wheelItems?: string[];
+  wheelItemColors?: string[];
+  wheelRemoveSelected?: boolean;
   resultVisibility?: 'live' | 'after-reveal' | 'instructor-only';
   plannedTime?: string;
 };
@@ -29,6 +35,25 @@ export type InteractionResponse = {
   interactionId: string;
   optionIndex?: number;
   text?: string;
+  teamId?: string;
+  teamName?: string;
+  teamDescription?: string;
+  teamTag?: string;
+};
+
+export type LiveTeam = {
+  id: string;
+  name: string;
+  description?: string;
+  tag?: string;
+  color?: 'violet' | 'blue' | 'teal' | 'green' | 'gold' | 'coral' | 'pink' | 'navy';
+  creatorUid?: string;
+  memberCount?: number;
+  members?: Array<{
+    studentUid: string;
+    studentNumber?: string;
+    displayName?: string;
+  }>;
 };
 
 export type InteractionResults = {
@@ -42,6 +67,13 @@ export type InteractionResults = {
   phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
   firstResponseCount?: number;
   firstOptionCounts?: number[];
+  wheelItems?: string[];
+  wheelItemColors?: string[];
+  wheelSelectedIndex?: number | null;
+  wheelSelectedLabel?: string | null;
+  wheelSpinCount?: number;
+  wheelRotation?: number;
+  wheelHistory?: string[];
 };
 
 export type WordCloudItem = {
@@ -95,6 +127,7 @@ export type LessonDisplayState = {
   interactionResults: InteractionResults | null;
   featuredQuestionId: number | null;
   questions: LiveQuestion[];
+  teams: LiveTeam[];
   timer?: LiveTimer | null;
   updatedAt: number;
 };
@@ -170,6 +203,18 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
     plannedTime: 'After the concept check',
   },
   {
+    id: 'team-setup',
+    type: 'team-formation',
+    label: 'Form teams',
+    title: 'Choose your team direction',
+    prompt: 'Create a team name, add a short description, and choose the tag that best fits your work.',
+    groupSize: 4,
+    teamTags: ['Student life', 'Healthy living', 'Family support'],
+    requireTeamTag: true,
+    resultVisibility: 'live',
+    plannedTime: 'Before group work',
+  },
+  {
     id: 'group-application',
     type: 'group-work',
     label: 'Group work',
@@ -189,6 +234,18 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
     durationMinutes: 3,
     resultVisibility: 'live',
     plannedTime: 'Before discussion',
+  },
+  {
+    id: 'discussion-wheel',
+    type: 'spin-wheel',
+    label: 'Spin the wheel',
+    title: 'Choose the next discussion lens',
+    prompt: 'Which lens should we use for the next example?',
+    wheelSource: 'custom',
+    wheelItems: ['Customer value', 'Network effects', 'Switching costs', 'Market tipping', 'Governance'],
+    wheelRemoveSelected: true,
+    resultVisibility: 'instructor-only',
+    plannedTime: 'Discussion',
   },
 ];
 
@@ -279,13 +336,19 @@ export function percent(value: number, counts: Counts) {
 export function createInteractionResults(interaction: LiveInteraction): InteractionResults {
   return {
     runId: `${interaction.id}-${Date.now()}`,
-    open: interaction.type !== 'timer',
+    open: interaction.type !== 'timer' && interaction.type !== 'spin-wheel',
     responseCount: 0,
     optionCounts: interaction.options?.map(() => 0) ?? [],
     writtenResponses: [],
     revealed: interaction.resultVisibility === 'live',
     sharedResponseId: null,
     phase: interaction.type === 'group-work' ? 'work' : 'respond',
+    wheelItems: interaction.type === 'spin-wheel' ? interaction.wheelItems || [] : undefined,
+    wheelSelectedIndex: interaction.type === 'spin-wheel' ? null : undefined,
+    wheelSelectedLabel: interaction.type === 'spin-wheel' ? null : undefined,
+    wheelSpinCount: interaction.type === 'spin-wheel' ? 0 : undefined,
+    wheelRotation: interaction.type === 'spin-wheel' ? 0 : undefined,
+    wheelHistory: interaction.type === 'spin-wheel' ? [] : undefined,
   };
 }
 
@@ -343,10 +406,14 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
             ? 'Word cloud'
             : type === 'peer-learning'
               ? 'Peer learning'
+              : type === 'team-formation'
+                ? 'Form teams'
               : type === 'group-work'
                 ? 'Group work'
                 : type === 'timer'
                   ? 'Clock'
+                  : type === 'spin-wheel'
+                    ? 'Spin the wheel'
                   : 'Short response';
 
     return [{
@@ -361,6 +428,11 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       durationMinutes: interaction.durationMinutes,
       discussionMinutes: interaction.discussionMinutes,
       groupSize: interaction.groupSize,
+      teamTags: interaction.teamTags,
+      requireTeamTag: interaction.requireTeamTag,
+      wheelSource: interaction.wheelSource,
+      wheelItems: interaction.wheelItems,
+      wheelRemoveSelected: interaction.wheelRemoveSelected,
       resultVisibility: interaction.resultVisibility
         || (type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live'),
       plannedTime: interaction.plannedTime || 'During class',

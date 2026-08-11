@@ -312,7 +312,7 @@
   line-height: 1.5;
 }
 
-.remote-clock-focus {
+.remote-clock-focus, .remote-wheel-focus {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -324,6 +324,6 @@
   background: radial-gradient(circle at 80% 10%, rgba(200,85,64,.12), transparent 38%), #f7f6ff;
 }
 
-.remote-clock-focus span, .remote-clock-focus small, .remote-clock-focus strong { display: block; }
-.remote-clock-focus small { color: #697087; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
-.remote-clock-focus strong { margin-top: 2px; color: #101a38; font-family: var(--seminar-font-display); font-size: 30px; font-weight: 500; }
+.remote-clock-focus span, .remote-clock-focus small, .remote-clock-focus strong, .remote-wheel-focus span, .remote-wheel-focus small, .remote-wheel-focus strong { display: block; }
+.remote-clock-focus small, .remote-wheel-focus small { color: #697087; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
+.remote-clock-focus strong, .remote-wheel-focus strong { margin-top: 2px; color: #101a38; font-family: var(--seminar-font-display); font-size: 30px; font-weight: 500; }

@@ -6,6 +6,7 @@ const links = [
   { href: '/instructors', label: 'For instructors' },
   { href: '/students', label: 'For students' },
   { href: '/pricing', label: 'Pricing' },
+  { href: '/blog', label: 'Field Notes' },
   { href: '/resources', label: 'Resources' },
 ];
 

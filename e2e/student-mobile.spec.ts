@@ -24,6 +24,23 @@ test('student classroom fits a phone viewport', async ({ page }) => {
   await expectNoHorizontalOverflow(page);
 });
 
+test('team formation stays usable on a small phone', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'Touch layout is covered by the student mobile project.');
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('/live/remote');
+  await page.getByRole('button', { name: /Choose your team direction/ }).click();
+  await page.goto('/live/student');
+
+  await page.getByRole('textbox', { name: 'Team name' }).fill('Bright Sparks');
+  await page.getByRole('button', { name: 'Student life' }).tap();
+  const createTeam = page.getByRole('button', { name: 'Create team' });
+  await expect(createTeam).toBeVisible();
+  const bounds = await createTeam.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect((bounds?.y || 0) + (bounds?.height || 0)).toBeLessThanOrEqual(568 - 48);
+  await expectNoHorizontalOverflow(page);
+});
+
 test('course home tabs use real zero states instead of demo progress', async ({ page }) => {
   await page.goto('/live/student');
 

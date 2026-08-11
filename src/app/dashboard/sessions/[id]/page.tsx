@@ -38,8 +38,10 @@ import {
   Unlock,
   MonitorUp,
   ArrowLeft,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Repeat2,
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { Timestamp } from 'firebase/firestore';
@@ -523,11 +525,52 @@ export default function SessionPage({ params }: SessionPageProps) {
                 </Button>
               </div>
             </div>
-            {courseSessions.length > 1 && <nav aria-label="Move between class sessions" className="mt-6 grid gap-3 rounded-2xl border border-[#e3e5ed] bg-[#faf9ff] p-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-              {previousSession ? <Link href={`/dashboard/sessions/${previousSession.id}`} className="seminar-focus group flex min-h-14 items-center gap-3 rounded-xl bg-white px-3.5 py-2.5 text-left shadow-[0_2px_8px_rgba(16,26,56,0.05)] hover:text-[#5146e5]"><ChevronLeft className="h-5 w-5 shrink-0 text-[#8b91a3] group-hover:text-[#5146e5]" /><span className="min-w-0"><span className="block text-[10px] font-bold uppercase tracking-[0.08em] text-[#8b91a3]">Previous</span><strong className="block truncate text-sm text-[#101a38]">{previousSession.title || 'Untitled session'}</strong></span></Link> : <span className="hidden sm:block" />}
-              <span className="px-2 text-center text-xs font-bold text-[#697087]">Session {currentSessionIndex + 1} of {courseSessions.length}</span>
-              {nextSession ? <Link href={`/dashboard/sessions/${nextSession.id}`} className="seminar-focus group flex min-h-14 items-center justify-end gap-3 rounded-xl bg-white px-3.5 py-2.5 text-right shadow-[0_2px_8px_rgba(16,26,56,0.05)] hover:text-[#5146e5]"><span className="min-w-0"><span className="block text-[10px] font-bold uppercase tracking-[0.08em] text-[#8b91a3]">Next</span><strong className="block truncate text-sm text-[#101a38]">{nextSession.title || 'Untitled session'}</strong></span><ChevronRight className="h-5 w-5 shrink-0 text-[#8b91a3] group-hover:text-[#5146e5]" /></Link> : <span className="hidden sm:block" />}
-            </nav>}
+            {courseSessions.length > 1 && (
+              <nav aria-label="Move between class sessions" className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-[#e3e5ed] bg-[#faf9ff] p-2.5 sm:grid-cols-[128px_minmax(0,1fr)_128px] sm:items-center">
+                {previousSession ? (
+                  <Link
+                    href={`/dashboard/sessions/${previousSession.id}`}
+                    title={`Previous: ${previousSession.title || 'Untitled session'}`}
+                    className="seminar-focus group flex min-h-12 items-center justify-center gap-2 rounded-xl border border-transparent px-3 text-sm font-bold text-[#697087] transition hover:border-[#e3e5ed] hover:bg-white hover:text-[#5146e5] sm:justify-start"
+                    aria-label={`Previous session: ${previousSession.title || 'Untitled session'}`}
+                  >
+                    <ChevronLeft className="h-4 w-4 shrink-0 transition-transform group-hover:-translate-x-0.5" />
+                    <span>Previous</span>
+                  </Link>
+                ) : (
+                  <span className="flex min-h-12 items-center justify-center gap-2 px-3 text-sm font-bold text-[#b0b4c1] sm:justify-start" aria-hidden="true"><ChevronLeft className="h-4 w-4" /> Previous</span>
+                )}
+
+                <label className="relative order-first col-span-2 min-w-0 cursor-pointer rounded-xl border border-[#dcd8ff] bg-white shadow-[0_3px_12px_rgba(16,26,56,0.05)] transition hover:border-[#bdb7ff] sm:order-none sm:col-span-1">
+                  <span className="pointer-events-none absolute left-4 top-2 text-[10px] font-bold uppercase tracking-[0.09em] text-[#7b8193]">{currentSessionIndex + 1} of {courseSessions.length} in this class</span>
+                  <select
+                    aria-label="Choose another session"
+                    value={session?.id || ''}
+                    onChange={(event) => router.push(`/dashboard/sessions/${event.target.value}`)}
+                    className="min-h-14 w-full cursor-pointer appearance-none rounded-xl bg-transparent pb-2 pl-4 pr-11 pt-6 text-sm font-bold text-[#101a38] outline-none focus:border-[#5146e5]"
+                  >
+                    {courseSessions.map((courseSession, index) => (
+                      <option key={courseSession.id} value={courseSession.id}>{index + 1}. {courseSession.title || 'Untitled session'}{courseSession.active ? ' (Live)' : ''}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#697087]" />
+                </label>
+
+                {nextSession ? (
+                  <Link
+                    href={`/dashboard/sessions/${nextSession.id}`}
+                    title={`Next: ${nextSession.title || 'Untitled session'}`}
+                    className="seminar-focus group flex min-h-12 items-center justify-center gap-2 rounded-xl border border-transparent px-3 text-sm font-bold text-[#697087] transition hover:border-[#e3e5ed] hover:bg-white hover:text-[#5146e5] sm:justify-end"
+                    aria-label={`Next session: ${nextSession.title || 'Untitled session'}`}
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                ) : (
+                  <span className="flex min-h-12 items-center justify-center gap-2 px-3 text-sm font-bold text-[#b0b4c1] sm:justify-end" aria-hidden="true">Next <ChevronRight className="h-4 w-4" /></span>
+                )}
+              </nav>
+            )}
           </div>
 
           <div className="grid lg:grid-cols-3 gap-8">
@@ -688,6 +731,20 @@ export default function SessionPage({ params }: SessionPageProps) {
                             </div>
                             <h3 className="mt-1 font-semibold text-[#101a38]">{interaction.title}</h3>
                             <p className="mt-1 text-sm leading-6 text-[#697087]">{interaction.prompt}</p>
+                            {(() => {
+                              const runs = (session.interactionRuns || [])
+                                .filter((run) => run.interactionId === interaction.id)
+                                .sort((a, b) => a.startedAt - b.startedAt);
+                              if (!runs.length) return null;
+                              return <div className="mt-3 flex flex-wrap gap-2 border-t border-[#eceef3] pt-3">
+                                {runs.map((run, runIndex) => <span key={run.id} className="inline-flex items-center gap-1.5 rounded-full bg-[#f5f3ff] px-2.5 py-1 text-xs text-[#5146e5]">
+                                  <Repeat2 className="h-3.5 w-3.5" />
+                                  <strong>Round {runIndex + 1}</strong>
+                                  <span className="text-[#73798d]">{run.responseCount} {run.responseCount === 1 ? 'response' : 'responses'}</span>
+                                  {run.status === 'archived' && <span className="font-semibold text-[#9a6745]">Archived</span>}
+                                </span>)}
+                              </div>;
+                            })()}
                           </div>
                         </div>
                       )) : (

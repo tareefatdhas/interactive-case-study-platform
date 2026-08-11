@@ -128,8 +128,8 @@
 
 .projector-preflight-actions button.is-primary { border-color: #5146e5; color: white; background: #5146e5; }
 .projector-preflight-actions button:disabled { cursor: not-allowed; opacity: .42; }
-.projector-preflight-actions button:focus-visible,
-.projector-preflight-close:focus-visible { outline: 3px solid #b9b4ff; outline-offset: 2px; }
+html[data-input-modality="keyboard"] .projector-preflight-actions button:focus-visible,
+html[data-input-modality="keyboard"] .projector-preflight-close:focus-visible { outline: 2px solid #8d85ed; outline-offset: 2px; }
 
 @media (max-width: 520px) {
   .projector-preflight { border-radius: 22px; padding: 24px 20px; }

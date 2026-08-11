@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:live-contract": "node scripts/verify-live-firebase-contract.mjs",
+    "test:course-sources": "node scripts/verify-course-source-contract.mjs",
+    "test:course-source-api": "node scripts/verify-course-source-api.mjs",
     "check": "npm run typecheck && npm run lint && npm run build && npm run test:e2e",
     "ready:classroom": "node scripts/check-live-readiness.mjs"
   },

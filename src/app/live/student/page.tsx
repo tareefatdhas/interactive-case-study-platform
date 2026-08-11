@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UserCircle, UsersThree as Users, X } from '@phosphor-icons/react';
+import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UserCircle, UsersThree as Users, X } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
@@ -82,6 +82,7 @@ const DEFAULT_STATE: LessonDisplayState = {
   interactionResults: null,
   featuredQuestionId: null,
   questions: DEFAULT_LIVE_QUESTIONS,
+  teams: [],
   updatedAt: Date.now(),
 };
 
@@ -98,6 +99,7 @@ const OPTION_COLORS = ['#5146e5', '#2f73df', '#d99f18', '#df664e', '#2f8b63'];
 
 function StudentTimerBanner({ timer }: { timer: NonNullable<LessonDisplayState['timer']> }) {
   const [now, setNow] = useState(Date.now());
+
   useEffect(() => {
     setNow(Date.now());
     const tick = window.setInterval(() => setNow(Date.now()), 1000);
@@ -744,6 +746,10 @@ export default function StudentWelcomePage() {
   const [selectedMood, setSelectedMood] = useState<MoodKey | null>(null);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [writtenResponse, setWrittenResponse] = useState('');
+  const [teamName, setTeamName] = useState('');
+  const [teamDescription, setTeamDescription] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [creatingNewTeam, setCreatingNewTeam] = useState(false);
   const [interactionSubmitted, setInteractionSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedQuestionVotes, setSelectedQuestionVotes] = useState<number[]>([]);
@@ -1249,6 +1255,10 @@ export default function StudentWelcomePage() {
   useEffect(() => {
     setSelectedOption(null);
     setWrittenResponse('');
+    setTeamName('');
+    setTeamDescription('');
+    setSelectedTeamId('');
+    setCreatingNewTeam(false);
     setInteractionSubmitted(false);
     setIsSubmitting(false);
     setConfidence(null);
@@ -1262,11 +1272,35 @@ export default function StudentWelcomePage() {
           if (!response) return;
           setSelectedOption(response.optionIndex ?? null);
           setWrittenResponse(response.text || '');
+          setTeamName(response.teamName || '');
+          setTeamDescription(response.teamDescription || '');
+          setSelectedTeamId(response.teamId || '');
           setInteractionSubmitted(true);
         })
         .catch(() => undefined);
+    } else if (runId) {
+      try {
+        const storedResponse = window.localStorage.getItem(`classfully-demo-response:${demoVoterIdRef.current}:${runId}`);
+        if (!storedResponse) return;
+        const response = JSON.parse(storedResponse) as InteractionResponse;
+        setSelectedOption(response.optionIndex ?? null);
+        setWrittenResponse(response.text || '');
+        setTeamName(response.teamName || '');
+        setTeamDescription(response.teamDescription || '');
+        setSelectedTeamId(response.teamId || '');
+        setInteractionSubmitted(true);
+      } catch {
+        // A malformed local preview response should not interrupt the live room.
+      }
     }
   }, [lessonState.interactionResults?.runId, remoteSession]);
+
+  const availableTeamIds = lessonState.teams.map((team) => team.id).join('|');
+  useEffect(() => {
+    if (lessonState.activeInteraction?.type !== 'group-work') return;
+    const savedTeamId = window.localStorage.getItem(`classfully-team:${lessonState.session.courseCode}`) || '';
+    if (availableTeamIds.split('|').includes(savedTeamId)) setSelectedTeamId(savedTeamId);
+  }, [availableTeamIds, lessonState.activeInteraction?.type, lessonState.interactionResults?.runId, lessonState.session.courseCode]);
 
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1329,11 +1363,35 @@ export default function StudentWelcomePage() {
       optionIndex: selectedOption ?? undefined,
       text: writtenResponse.trim() || undefined,
     };
+    if (interaction.type === 'team-formation') {
+      const existingTeam = lessonState.teams.find((team) => team.id === selectedTeamId);
+      if (existingTeam) {
+        response.teamId = existingTeam.id;
+        response.teamName = existingTeam.name;
+        response.teamDescription = existingTeam.description;
+        response.teamTag = existingTeam.tag;
+        const tagIndex = existingTeam.tag ? interaction.teamTags?.findIndex((tag) => tag === existingTeam.tag) ?? -1 : -1;
+        response.optionIndex = tagIndex >= 0 ? tagIndex : undefined;
+      } else {
+        const normalizedTeamName = teamName.trim().toLocaleLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
+        response.teamId = `team-${normalizedTeamName || crypto.randomUUID()}`;
+        response.teamName = teamName.trim();
+        response.teamDescription = teamDescription.trim() || undefined;
+        response.teamTag = selectedOption !== null ? interaction.teamTags?.[selectedOption] : undefined;
+      }
+    } else if (interaction.type === 'group-work' && selectedTeamId) {
+      const team = lessonState.teams.find((item) => item.id === selectedTeamId);
+      response.teamId = selectedTeamId;
+      response.teamName = team?.name;
+      response.teamTag = team?.tag;
+    }
     const canShowChoiceColor = interaction.resultVisibility === 'live' || interaction.type === 'pulse';
     const transportColor = canShowChoiceColor && selectedOption !== null
       ? OPTION_COLORS[selectedOption % OPTION_COLORS.length]
       : '#6654e9';
-    const transportLabel = selectedOption !== null
+    const transportLabel = interaction.type === 'team-formation'
+      ? response.teamName || 'Your team'
+      : selectedOption !== null
       ? interaction.options?.[selectedOption] || 'Your choice'
       : writtenResponse.trim() || 'Your response';
     const transportId = beginTransport(transportColor, transportLabel, origin);
@@ -1344,8 +1402,10 @@ export default function StudentWelcomePage() {
         await submitStudentInteractionResponse(remoteSession.ownerUid, remoteSession.sessionId, response);
       } else {
         channelRef.current?.postMessage({ type: 'student-interaction-response', response });
+        window.localStorage.setItem(`classfully-demo-response:${demoVoterIdRef.current}:${results.runId}`, JSON.stringify(response));
       }
       setInteractionSubmitted(true);
+      if (response.teamId) window.localStorage.setItem(`classfully-team:${lessonState.session.courseCode}`, response.teamId);
       completeTransport(transportId);
       const participationPoints = getParticipationPoints(interaction.type);
       window.setTimeout(() => {
@@ -1358,6 +1418,9 @@ export default function StudentWelcomePage() {
       if (saved) {
         setSelectedOption(saved.optionIndex ?? null);
         setWrittenResponse(saved.text || '');
+        setTeamName(saved.teamName || '');
+        setTeamDescription(saved.teamDescription || '');
+        setSelectedTeamId(saved.teamId || '');
         setInteractionSubmitted(true);
         completeTransport(transportId);
       } else {
@@ -1558,15 +1621,23 @@ export default function StudentWelcomePage() {
   };
   const activePromptLength = markdownToPlainText(lessonState.activeInteraction?.prompt || '').length;
   const promptDensityClass = activePromptLength > 110 ? 'is-very-long' : activePromptLength > 70 ? 'is-long' : '';
-  const responseReady = Boolean(lessonState.activeInteraction?.options?.length ? selectedOption !== null : writtenResponse.trim());
+  const responseReady = Boolean(
+    lessonState.activeInteraction?.type === 'team-formation'
+      ? selectedTeamId || (teamName.trim().length >= 2 && (!lessonState.activeInteraction.requireTeamTag || selectedOption !== null))
+      : lessonState.activeInteraction?.type === 'group-work' && lessonState.teams.length
+        ? selectedTeamId && writtenResponse.trim()
+        : lessonState.activeInteraction?.options?.length ? selectedOption !== null : writtenResponse.trim(),
+  );
   const selectedAnswerLetter = selectedOption !== null ? String.fromCharCode(65 + selectedOption) : '';
   const selectedAnswerText = selectedOption !== null ? lessonState.activeInteraction?.options?.[selectedOption] : '';
   const responseActionLabel = isSubmitting
     ? 'Sending response'
     : lessonState.activeInteraction?.options?.length && selectedAnswerLetter
       ? `Send answer ${selectedAnswerLetter}`
+      : lessonState.activeInteraction?.type === 'team-formation'
+        ? selectedTeamId ? `Join ${lessonState.teams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : 'Create team'
       : lessonState.activeInteraction?.type === 'group-work'
-        ? 'Send group response'
+        ? selectedTeamId ? `Send for ${lessonState.teams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : lessonState.teams.length ? 'Send team response' : 'Send group response'
         : lessonState.activeInteraction?.type === 'word-cloud'
           ? 'Add to word cloud'
           : 'Send response';
@@ -1672,7 +1743,7 @@ export default function StudentWelcomePage() {
             {interactionSubmitted ? (
               <StudentPostSubmit
                 interaction={lessonState.activeInteraction}
-                answer={lessonState.activeInteraction.options?.[selectedOption ?? -1] || writtenResponse || 'Response saved'}
+                answer={lessonState.activeInteraction.type === 'team-formation' ? lessonState.teams.find((team) => team.id === selectedTeamId)?.name || teamName || 'Team saved' : lessonState.activeInteraction.options?.[selectedOption ?? -1] || writtenResponse || 'Response saved'}
                 questions={lessonState.questions}
                 selectedQuestionVotes={selectedQuestionVotes}
                 ownQuestionIds={ownQuestionIds}
@@ -1699,6 +1770,15 @@ export default function StudentWelcomePage() {
                   />
                 ) : undefined}
               />
+            ) : lessonState.activeInteraction.type === 'spin-wheel' ? (
+              <div className={`student-wheel-module ${lessonState.interactionResults.wheelSelectedLabel ? 'has-result' : ''}`}>
+                <span className="student-round-icon"><DiceFive size={28} /></span>
+                <div className="student-kicker">Spin the wheel · Live now</div>
+                <MarkdownContent heading className="student-interaction-question" markdown={lessonState.activeInteraction.prompt} />
+                <div className="student-wheel-orbit" aria-hidden="true"><i /><i /><i /><span><DiceFive size={24} /></span></div>
+                <div className="student-wheel-result" key={`student-wheel-${lessonState.interactionResults.wheelSpinCount || 0}`}><small>{lessonState.interactionResults.wheelSelectedLabel ? 'Selected' : 'Watch the classroom screen'}</small><strong>{lessonState.interactionResults.wheelSelectedLabel || 'The instructor will spin the wheel.'}</strong></div>
+                <div className="student-clock-note"><Lock size={16} /><span>No response is needed. Your phone will update with the result.</span></div>
+              </div>
             ) : lessonState.activeInteraction.type === 'timer' ? (
               <div className="student-clock-module" role="timer">
                 <span className="student-round-icon"><Timer size={27} /></span>
@@ -1715,9 +1795,19 @@ export default function StudentWelcomePage() {
                   <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
                 </div>
                 <MarkdownContent heading className={`student-interaction-question ${promptDensityClass}`} markdown={lessonState.activeInteraction.prompt} />
-                <p>{lessonState.activeInteraction.type === 'group-work' ? `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
+                <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Choose your team, then have one person send the response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
 
-                {lessonState.activeInteraction.options?.length ? (
+                {lessonState.activeInteraction.type === 'team-formation' ? (
+                  <div className="student-team-form">
+                    {lessonState.teams.length > 0 && <fieldset className="student-team-picker"><legend>Which team are you on?</legend><div>{lessonState.teams.map((team) => <HapticButton key={team.id} type="button" role="radio" aria-checked={selectedTeamId === team.id} className={selectedTeamId === team.id ? 'is-selected' : ''} onClick={() => { setSelectedTeamId(team.id); setCreatingNewTeam(false); }}><span><strong>{team.name}</strong>{team.tag && <small>{team.tag}</small>}</span><b>{team.memberCount || 0} joined</b>{selectedTeamId === team.id && <Check size={18} />}</HapticButton>)}</div></fieldset>}
+                    {lessonState.teams.length > 0 && <button type="button" className="student-create-team-toggle" onClick={() => { setCreatingNewTeam((current) => !current); setSelectedTeamId(''); }}>{creatingNewTeam ? 'Choose a team already here' : 'My team is not listed'}</button>}
+                    {(lessonState.teams.length === 0 || creatingNewTeam || teamName.trim().length > 0) && <div className="student-new-team-fields">
+                      <label><span>Team name</span><input value={teamName} onChange={(event) => setTeamName(event.target.value.slice(0, 48))} maxLength={48} placeholder="Give your team a name" autoComplete="off" /></label>
+                      <label><span>What are you working on? <small>Optional</small></span><textarea value={teamDescription} onChange={(event) => setTeamDescription(event.target.value.slice(0, 160))} maxLength={160} rows={3} placeholder="Add a short note for the class" /></label>
+                      {Boolean(lessonState.activeInteraction.teamTags?.length) && <fieldset><legend>Choose your focus</legend><div className="student-team-tags">{lessonState.activeInteraction.teamTags?.map((tag, index) => <HapticButton key={tag} type="button" className={selectedOption === index ? 'is-selected' : ''} aria-pressed={selectedOption === index} onClick={() => setSelectedOption(index)}>{tag}{selectedOption === index && <Check size={16} />}</HapticButton>)}</div></fieldset>}
+                    </div>}
+                  </div>
+                ) : lessonState.activeInteraction.options?.length ? (
                   <div className="student-interaction-options" role="radiogroup" aria-label={markdownToPlainText(lessonState.activeInteraction.prompt)}>
                     {lessonState.activeInteraction.options.map((option, index) => (
                       <HapticButton
@@ -1752,7 +1842,10 @@ export default function StudentWelcomePage() {
                     <small>{writtenResponse.length}/48</small>
                   </label>
                 ) : (
-                  <textarea value={writtenResponse} onChange={(event) => setWrittenResponse(event.target.value.slice(0, 280))} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? 'Your group response' : 'Your response'} />
+                  <div className="student-group-response">
+                    {lessonState.activeInteraction.type === 'group-work' && lessonState.teams.length > 0 && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{lessonState.teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
+                    <textarea value={writtenResponse} onChange={(event) => setWrittenResponse(event.target.value.slice(0, 280))} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'One response from your team' : 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Your team response' : 'Your group response' : 'Your response'} />
+                  </div>
                 )}
 
                 {!lessonState.interactionResults.open ? (
@@ -1764,7 +1857,7 @@ export default function StudentWelcomePage() {
                       className={`student-send-response ${isSubmitting ? 'is-sending' : ''}`}
                       hapticTone="action"
                       aria-label={selectedAnswerText ? `${responseActionLabel}: ${selectedAnswerText}` : responseActionLabel}
-                      disabled={isSubmitting || (lessonState.activeInteraction.options?.length ? selectedOption === null : !writtenResponse.trim())}
+                      disabled={isSubmitting || !responseReady}
                       onClick={(event) => submitInteraction(event.currentTarget)}
                     >
                       <span>{responseActionLabel}</span><Send size={17} />

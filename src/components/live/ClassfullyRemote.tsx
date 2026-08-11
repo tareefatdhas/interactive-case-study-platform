@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Check,
   ChevronLeft,
+  Dices,
   Maximize2,
   MessageCircle,
   MonitorUp,
@@ -45,6 +46,7 @@ type ClassfullyRemoteProps = {
   onToggleResponses: () => void;
   onReveal: () => void;
   onAdvanceModule: () => void;
+  onSpinWheel: () => void;
   onFinish: () => void;
   onOpenDisplay: () => void;
   onOpenConsole: () => void;
@@ -71,6 +73,7 @@ export default function ClassfullyRemote({
   onToggleResponses,
   onReveal,
   onAdvanceModule,
+  onSpinWheel,
   onFinish,
   onOpenDisplay,
   onOpenConsole,
@@ -132,6 +135,8 @@ export default function ClassfullyRemote({
   const isPeerLearning = activeInteraction?.type === 'peer-learning';
   const isClock = activeInteraction?.type === 'timer';
   const isGroupWork = activeInteraction?.type === 'group-work';
+  const isTeamFormation = activeInteraction?.type === 'team-formation';
+  const isWheel = activeInteraction?.type === 'spin-wheel';
   const peerPhase = results?.phase || 'respond';
 
   const submitQuickAsk = () => {
@@ -200,27 +205,29 @@ export default function ClassfullyRemote({
             <h2>{activeInteraction.type === 'timer' ? activeInteraction.title : activeInteraction.prompt}</h2>
             {activeInteraction.type === 'timer' && <MarkdownContent className="remote-clock-instructions" markdown={activeInteraction.prompt} />}
 
-            {!isClock && <div className="remote-response-metric">
+            {!isClock && !isWheel && <div className="remote-response-metric">
               <div>
                 <strong key={results.responseCount}>{results.responseCount}</strong>
-                <span>{isGroupWork ? 'group submissions' : `of ${responseTarget || 'the class'} responded`}</span>
+                <span>{isTeamFormation ? 'students joined a team' : isGroupWork ? 'team submissions' : `of ${responseTarget || 'the class'} responded`}</span>
               </div>
               <span className="remote-response-status">{isPeerLearning && peerPhase === 'discuss' ? 'Partner discussion' : isPeerLearning && peerPhase === 'respond-again' ? 'Second answer' : results.open ? 'Collecting' : results.revealed ? 'Revealed' : 'Locked'}</span>
             </div>}
-            {!isClock && <div className="remote-progress" aria-label={`${responseProgress}% of connected students responded`}>
+            {!isClock && !isWheel && <div className="remote-progress" aria-label={`${responseProgress}% of connected students responded`}>
               <i style={{ width: `${responseProgress}%` }} />
             </div>}
 
             {isPeerLearning && <div className="remote-module-steps" aria-label="Peer learning stages"><span className="is-complete">1 Answer</span><span className={peerPhase === 'discuss' || peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>2 Discuss</span><span className={peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>3 Answer again</span></div>}
             {isGroupWork && <p className="remote-module-note">Groups of about {activeInteraction.groupSize || 4}. Ask each group to choose one note-taker.</p>}
             {isClock && <div className="remote-clock-focus"><Timer size={22} /><span><small>{timerSeconds === 0 ? 'Time is up' : 'Shared clock'}</small><strong>{timerText}</strong></span></div>}
+            {isWheel && <div className="remote-wheel-focus"><Dices size={22} /><span><small>{results.wheelSelectedLabel ? 'Selected' : `${results.wheelItems?.length || 0} items ready`}</small><strong>{results.wheelSelectedLabel || 'Ready to spin'}</strong></span></div>}
 
             <div className="remote-primary-actions">
-              {!isClock && !isPeerLearning && <button type="button" className="remote-lock" onClick={onToggleResponses}>
+              {!isClock && !isPeerLearning && !isWheel && <button type="button" className="remote-lock" onClick={onToggleResponses}>
                 {results.open ? <Pause size={18} /> : <Play size={18} />}
                 <span>{results.open ? 'Lock responses' : 'Reopen responses'}</span>
               </button>}
               {isPeerLearning && peerPhase !== 'complete' && <button type="button" className="remote-reveal" onClick={onAdvanceModule} disabled={peerPhase !== 'discuss' && !results.responseCount}><ArrowRight size={18} /><span>{peerPhase === 'respond' ? 'Start partner discussion' : peerPhase === 'discuss' ? 'Ask again' : 'Show the shift'}</span></button>}
+              {isWheel && <button type="button" className="remote-reveal" onClick={onSpinWheel} disabled={!results.wheelItems?.length}><Dices size={18} /><span>{results.wheelSpinCount ? 'Spin again' : 'Spin the wheel'}</span></button>}
               {!isPeerLearning && activeInteraction.resultVisibility === 'after-reveal' && !results.revealed && (
                 <button type="button" className="remote-reveal" onClick={onReveal} disabled={!results.responseCount}>
                   <Sparkles size={18} />

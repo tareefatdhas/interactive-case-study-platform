@@ -68,6 +68,18 @@ export type InstructorClassroomRecords = {
   responses: Record<string, Record<string, StoredLiveResponse>>;
 };
 
+type InstructorClassroomArchive = {
+  createdAt: number;
+  reason: 'session-reset';
+  responses?: Record<string, Record<string, StoredLiveResponse>>;
+  welcomeResponses?: Record<string, Record<string, StoredWelcomeResponse>>;
+  studentQuestions?: Record<string, Record<string, StoredStudentQuestion>>;
+  questionVotes?: Record<string, Record<string, true>>;
+  dismissedQuestions?: Record<string, true>;
+  questionPointClaims?: Record<string, Record<string, StoredQuestionPointClaim>>;
+  recognizedQuestions?: Record<string, true>;
+};
+
 export type LiveJoinRecord = {
   sessionId: string;
   ownerUid: string;
@@ -106,6 +118,7 @@ function normalizePublicState(state: LessonDisplayState): LessonDisplayState {
   return {
     ...state,
     questions: normalizeFirebaseList(state.questions),
+    teams: normalizeFirebaseList(state.teams),
     interactionResults: state.interactionResults ? {
       ...state.interactionResults,
       optionCounts: normalizeFirebaseList(state.interactionResults.optionCounts),
@@ -334,33 +347,62 @@ export async function resetInstructorClassroom(
   }
 
   const basePath = roomPath(ownerUid, sessionId);
-  const metaRef = ref(realtimeDb, `${basePath}/meta`);
-  const metaSnapshot = await get(metaRef);
-  const meta = metaSnapshot.val() as LiveClassroomMeta | null;
-  if (!meta || meta.ownerUid !== ownerUid) {
-    throw new Error('The live classroom record could not be found.');
-  }
-
   const now = Date.now();
-  const expiresAt = Math.max(meta.expiresAt || 0, now + 12 * 60 * 60 * 1000);
-  const updates: Record<string, unknown> = {
-    [`${basePath}/responses`]: null,
-    [`${basePath}/welcomeResponses`]: null,
-    [`${basePath}/studentQuestions`]: null,
-    [`${basePath}/questionVotes`]: null,
-    [`${basePath}/dismissedQuestions`]: null,
-    [`${basePath}/questionPointClaims`]: null,
-    [`${basePath}/recognizedQuestions`]: null,
-    [`${basePath}/publicState`]: cleanFirebaseValue({ ...resetState, updatedAt: now }),
-    [`${basePath}/meta/status`]: 'live',
-    [`${basePath}/meta/updatedAt`]: now,
-    [`${basePath}/meta/expiresAt`]: expiresAt,
-  };
-  if (meta.sessionCode) {
-    updates[`${joinCodePath(meta.sessionCode)}/status`] = 'live';
-    updates[`${joinCodePath(meta.sessionCode)}/expiresAt`] = expiresAt;
+  const archiveId = `reset-${now}`;
+  const resetResult = await runTransaction(ref(realtimeDb, basePath), (currentValue) => {
+    const current = currentValue as (Record<string, unknown> & {
+      meta?: LiveClassroomMeta;
+      archives?: Record<string, InstructorClassroomArchive>;
+      responses?: InstructorClassroomArchive['responses'];
+      welcomeResponses?: InstructorClassroomArchive['welcomeResponses'];
+      studentQuestions?: InstructorClassroomArchive['studentQuestions'];
+      questionVotes?: InstructorClassroomArchive['questionVotes'];
+      dismissedQuestions?: InstructorClassroomArchive['dismissedQuestions'];
+      questionPointClaims?: InstructorClassroomArchive['questionPointClaims'];
+      recognizedQuestions?: InstructorClassroomArchive['recognizedQuestions'];
+    }) | null;
+    if (!current?.meta || current.meta.ownerUid !== ownerUid) return;
+
+    const expiresAt = Math.max(current.meta.expiresAt || 0, now + 12 * 60 * 60 * 1000);
+    const {
+      responses,
+      welcomeResponses,
+      studentQuestions,
+      questionVotes,
+      dismissedQuestions,
+      questionPointClaims,
+      recognizedQuestions,
+      ...roomWithoutCollectedData
+    } = current;
+    const archive = cleanFirebaseValue({
+      createdAt: now,
+      reason: 'session-reset',
+      responses: responses || {},
+      welcomeResponses: welcomeResponses || {},
+      studentQuestions: studentQuestions || {},
+      questionVotes: questionVotes || {},
+      dismissedQuestions: dismissedQuestions || {},
+      questionPointClaims: questionPointClaims || {},
+      recognizedQuestions: recognizedQuestions || {},
+    } satisfies InstructorClassroomArchive);
+
+    return {
+      ...roomWithoutCollectedData,
+      archives: { ...(current.archives || {}), [archiveId]: archive },
+      publicState: cleanFirebaseValue({ ...resetState, updatedAt: now }),
+      meta: { ...current.meta, status: 'live', updatedAt: now, expiresAt },
+    };
+  }, { applyLocally: false });
+
+  if (!resetResult.committed) throw new Error('The live classroom record could not be found.');
+  const meta = resetResult.snapshot.child('meta').val() as LiveClassroomMeta | null;
+  if (meta?.sessionCode) {
+    await update(ref(realtimeDb, joinCodePath(meta.sessionCode)), {
+      status: 'live',
+      expiresAt: meta.expiresAt,
+    });
   }
-  await update(ref(realtimeDb), updates);
+  return archiveId;
 }
 
 export async function getInstructorClassroomRecords(
@@ -379,9 +421,20 @@ export async function getInstructorClassroomRecords(
     console.error('Live responses could not be loaded for progress:', error);
     return null;
   });
+  const archivesSnapshot = await get(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/archives`)).catch((error) => {
+    console.warn('Archived live responses could not be loaded for progress:', error);
+    return null;
+  });
+  const responses = (responsesSnapshot?.val() || {}) as Record<string, Record<string, StoredLiveResponse>>;
+  const archives = (archivesSnapshot?.val() || {}) as Record<string, InstructorClassroomArchive>;
+  Object.values(archives).forEach((archive) => {
+    Object.entries(archive.responses || {}).forEach(([runId, runResponses]) => {
+      responses[runId] = { ...(responses[runId] || {}), ...runResponses };
+    });
+  });
   return {
     attendance: (attendanceSnapshot.val() || {}) as Record<string, StoredAttendanceClaim>,
-    responses: (responsesSnapshot?.val() || {}) as Record<string, Record<string, StoredLiveResponse>>,
+    responses,
   };
 }
 
@@ -464,6 +517,10 @@ export async function submitStudentInteractionResponse(
     interactionId: response.interactionId,
     studentUid: student.uid,
     ...answer,
+    teamId: response.teamId?.trim().slice(0, 80),
+    teamName: response.teamName?.trim().slice(0, 48),
+    teamDescription: response.teamDescription?.trim().slice(0, 160),
+    teamTag: response.teamTag?.trim().slice(0, 48),
     submittedAt: Date.now(),
   } as StoredLiveResponse);
   await set(

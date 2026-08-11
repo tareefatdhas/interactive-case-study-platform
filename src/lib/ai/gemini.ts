@@ -45,6 +45,20 @@ export async function generateContent(prompt: string): Promise<string> {
   return response.text || '';
 }
 
+export async function extractPdfTeachingText(data: string, fileName: string): Promise<string> {
+  const response = await genAI.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: [{
+      role: 'user',
+      parts: [
+        { inlineData: { data, mimeType: 'application/pdf' } },
+        { text: `Extract the readable teaching content from ${fileName}. Preserve headings, lists, definitions, examples, and question wording. Return plain text only. Do not summarize, interpret, add facts, or include commentary.` },
+      ],
+    }],
+  });
+  return response.text || '';
+}
+
 /**
  * Assesses a student's response using the Gemini Pro model, providing a score, feedback, and milestone analysis.
  *

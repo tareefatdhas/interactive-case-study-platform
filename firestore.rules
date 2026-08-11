@@ -97,6 +97,74 @@ service cloud.firestore {
       allow create: if isTeacher() && 
         isTeacherOfResource(request.resource.data.teacherId);
     }
+
+    // A course-level team module can be shared outside a live session. Team
+    // names are reserved in a separate claim document so duplicates cannot be
+    // created by two phones at the same time.
+    match /teamModules/{courseId} {
+      allow get: if isAuthenticated();
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid && request.resource.data.courseId == courseId;
+      allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == request.auth.uid;
+
+      match /nameClaims/{claimId} {
+        allow get: if isAuthenticated();
+        allow list: if isTeacher() && get(/databases/$(database)/documents/teamModules/$(courseId)).data.teacherId == request.auth.uid;
+        allow create: if isAuthenticated()
+          && (request.resource.data.creatorUid == request.auth.uid || request.resource.data.teacherId == request.auth.uid)
+          && request.resource.data.courseId == courseId
+          && claimId == request.resource.data.normalizedName
+          && getAfter(/databases/$(database)/documents/teamModules/$(courseId)/teams/$(request.resource.data.teamId)).data.normalizedName == request.resource.data.normalizedName;
+        allow delete: if isAuthenticated() && (resource.data.creatorUid == request.auth.uid || resource.data.teacherId == request.auth.uid);
+        allow update: if false;
+      }
+
+      match /teams/{teamId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated()
+          && (request.resource.data.creatorUid == request.auth.uid || request.resource.data.teacherId == request.auth.uid)
+          && request.resource.data.courseId == courseId
+          && request.resource.data.name is string
+          && request.resource.data.name.size() >= 2
+          && request.resource.data.name.size() <= 48
+          && request.resource.data.normalizedName is string
+          && request.resource.data.color in ['violet', 'blue', 'teal', 'green', 'gold', 'coral', 'pink', 'navy']
+          && get(/databases/$(database)/documents/teamModules/$(courseId)).data.enabled == true
+          && get(/databases/$(database)/documents/teamModules/$(courseId)).data.teacherId == request.resource.data.teacherId
+          && getAfter(/databases/$(database)/documents/teamModules/$(courseId)/nameClaims/$(request.resource.data.normalizedName)).data.teamId == teamId;
+        allow update: if isAuthenticated()
+          && (resource.data.creatorUid == request.auth.uid || resource.data.teacherId == request.auth.uid)
+          && request.resource.data.courseId == courseId
+          && request.resource.data.teacherId == resource.data.teacherId
+          && request.resource.data.creatorUid == resource.data.creatorUid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() >= 2
+          && request.resource.data.name.size() <= 48
+          && request.resource.data.color in ['violet', 'blue', 'teal', 'green', 'gold', 'coral', 'pink', 'navy']
+          && getAfter(/databases/$(database)/documents/teamModules/$(courseId)/nameClaims/$(request.resource.data.normalizedName)).data.teamId == teamId;
+        allow delete: if isAuthenticated() && (resource.data.creatorUid == request.auth.uid || resource.data.teacherId == request.auth.uid);
+      }
+
+      match /memberships/{studentUid} {
+        allow get: if isAuthenticated() && (studentUid == request.auth.uid || resource.data.teacherId == request.auth.uid);
+        allow list: if isTeacher() && get(/databases/$(database)/documents/teamModules/$(courseId)).data.teacherId == request.auth.uid;
+        allow create: if isAuthenticated()
+          && (studentUid == request.auth.uid || request.resource.data.teacherId == request.auth.uid)
+          && request.resource.data.studentUid == studentUid
+          && request.resource.data.courseId == courseId
+          && request.resource.data.studentNumber is string
+          && request.resource.data.studentNumber.size() >= 3
+          && request.resource.data.studentNumber.size() <= 32
+          && get(/databases/$(database)/documents/teamModules/$(courseId)).data.enabled == true
+          && getAfter(/databases/$(database)/documents/teamModules/$(courseId)/teams/$(request.resource.data.teamId)).data.courseId == courseId;
+        allow update: if isAuthenticated()
+          && (studentUid == request.auth.uid || resource.data.teacherId == request.auth.uid)
+          && request.resource.data.studentUid == studentUid
+          && request.resource.data.courseId == courseId
+          && request.resource.data.teacherId == resource.data.teacherId
+          && get(/databases/$(database)/documents/teamModules/$(courseId)/teams/$(request.resource.data.teamId)).data.courseId == courseId;
+        allow delete: if isAuthenticated() && (studentUid == request.auth.uid || resource.data.teacherId == request.auth.uid);
+      }
+    }
     
     // Highlights - students can manage their own highlights, teachers can read all
     match /highlights/{highlightId} {

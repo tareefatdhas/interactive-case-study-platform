@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { getSession } from '@/lib/firebase/firestore';
 import {
   publishInstructorState,
+  getInstructorClassroomRecords,
   subscribeToInstructorDisplayPresence,
   subscribeToInstructorPresence,
   subscribeToInstructorPublicState,
@@ -59,6 +60,7 @@ function createDemoState(): LessonDisplayState {
     interactionResults: null,
     featuredQuestionId: null,
     questions: [],
+    teams: [],
     timer: null,
     updatedAt: Date.now(),
   };
@@ -183,11 +185,27 @@ export default function InstructorRemotePage() {
     channelRef.current?.postMessage({ type: 'instructor-remote-command', command, interactionId });
   };
 
-  const launch = (interaction: LiveInteraction) => {
+  const launch = async (interaction: LiveInteraction) => {
+    let wheelItems = interaction.wheelItems || [];
+    let wheelItemColors: string[] | undefined;
+    if (interaction.type === 'spin-wheel') {
+      if (interaction.wheelSource === 'teams') {
+        const uniqueTeams = stateRef.current.teams.filter((team, index, all) => team.name.trim() && all.findIndex((candidate) => candidate.name.trim().toLocaleLowerCase() === team.name.trim().toLocaleLowerCase()) === index).slice(0, 40);
+        wheelItems = uniqueTeams.map((team) => team.name);
+        const colors: Record<string, string> = { violet: '#5b4ce6', blue: '#2f73df', teal: '#238b78', green: '#3d9456', gold: '#d99f18', coral: '#df664e', pink: '#c85f92', navy: '#24366f' };
+        wheelItemColors = uniqueTeams.map((team) => colors[team.color || ''] || '#5146e5');
+      } else if ((interaction.wheelSource || 'students') === 'students' && classroomIds) {
+        const records = await getInstructorClassroomRecords(classroomIds.ownerUid, classroomIds.sessionId).catch(() => null);
+        wheelItems = Object.values(records?.attendance || {}).map((claim) => claim.studentDisplayName?.trim() || `Student •${claim.studentNumber.slice(-4)}`);
+      }
+      wheelItems = [...new Set(wheelItems.map((item) => item.trim()).filter(Boolean))].slice(0, 40);
+    }
     updateRemoteState((current) => ({
       ...current,
       activeInteraction: interaction,
-      interactionResults: createInteractionResults(interaction),
+      interactionResults: interaction.type === 'spin-wheel'
+        ? { ...createInteractionResults(interaction), wheelItems, wheelItemColors }
+        : createInteractionResults(interaction),
       timer: interaction.type === 'timer' || interaction.type === 'group-work' ? {
         id: `timer-${Date.now()}`,
         label: interaction.type === 'group-work' ? 'Group work' : interaction.title,
@@ -196,6 +214,40 @@ export default function InstructorRemotePage() {
       } : null,
     }));
     if (!classroomIds) sendDemoCommand('launch', interaction.id);
+  };
+
+  const spinWheel = () => {
+    updateRemoteState((current) => {
+      if (current.activeInteraction?.type !== 'spin-wheel' || !current.interactionResults) return current;
+      const results = current.interactionResults;
+      const items = current.activeInteraction.wheelRemoveSelected !== false && results.wheelSelectedLabel
+        ? (results.wheelItems || []).filter((item) => item !== results.wheelSelectedLabel)
+        : results.wheelItems || [];
+      const itemColors = current.activeInteraction.wheelRemoveSelected !== false && results.wheelSelectedLabel
+        ? (results.wheelItemColors || []).filter((_, index) => (results.wheelItems || [])[index] !== results.wheelSelectedLabel)
+        : results.wheelItemColors;
+      if (!items.length) return current;
+      const random = new Uint32Array(1);
+      window.crypto.getRandomValues(random);
+      const selectedIndex = random[0] % items.length;
+      const sector = 360 / items.length;
+      const currentRotation = results.wheelRotation || 0;
+      const target = 360 - (selectedIndex * sector + sector / 2);
+      const delta = (target - (currentRotation % 360) + 360) % 360;
+      return {
+        ...current,
+        interactionResults: {
+          ...results,
+          wheelItems: items,
+          wheelItemColors: itemColors,
+          wheelSelectedIndex: selectedIndex,
+          wheelSelectedLabel: items[selectedIndex],
+          wheelSpinCount: (results.wheelSpinCount || 0) + 1,
+          wheelRotation: currentRotation + 5 * 360 + delta,
+          wheelHistory: [...(results.wheelHistory || []), items[selectedIndex]].slice(-40),
+        },
+      };
+    });
   };
 
   const toggleResponses = () => {
@@ -368,6 +420,7 @@ export default function InstructorRemotePage() {
       onToggleResponses={toggleResponses}
       onReveal={reveal}
       onAdvanceModule={advanceModule}
+      onSpinWheel={spinWheel}
       onFinish={finish}
       onOpenDisplay={openDisplay}
       onOpenConsole={openConsole}

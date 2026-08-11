@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { createSession, generateSessionCode, getCaseStudiesByTeacher, getCourse, getSession, updateSession } from '@/lib/firebase/firestore';
 import { auth } from '@/lib/firebase/config';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { buildLessonMaterial, courseSourceWordCount } from '@/lib/course-sources';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
@@ -22,7 +23,9 @@ import {
   CircleHelp,
   Clock3,
   Cloud,
+  Dices,
   FileText,
+  GripVertical,
   HeartPulse,
   ListChecks,
   LoaderCircle,
@@ -49,9 +52,11 @@ const interactionOptions: Array<{
   { type: 'quiz', label: 'Knowledge check', description: 'Reveal a misconception while there is time to reteach it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', description: 'Gather questions or a brief reflection for review.', icon: MessageCircle },
   { type: 'word-cloud', label: 'Word cloud', description: 'Gather one word or a short phrase and show shared themes live.', icon: Cloud },
+  { type: 'team-formation', label: 'Form teams', description: 'Create named teams students can use throughout the course.', icon: UsersRound },
   { type: 'peer-learning', label: 'Peer learning', description: 'Let students answer, discuss, then answer again.', icon: Repeat2 },
   { type: 'group-work', label: 'Group work', description: 'Give small groups a shared task, clock, and submission.', icon: UsersRound },
   { type: 'timer', label: 'Clock', description: 'Put focused thinking or working time into the session flow.', icon: Clock3 },
+  { type: 'spin-wheel', label: 'Spin the wheel', description: 'Choose a student, team, or custom item with the room.', icon: Dices },
   { type: 'case-study', label: 'Case material', description: 'Open a prepared decision or reading.', icon: BookOpen },
 ];
 
@@ -84,9 +89,11 @@ const defaultPrompt: Record<SessionInteractionType, string> = {
   quiz: 'Choose the best answer.',
   'open-response': 'What question is still unresolved?',
   'word-cloud': 'What one word best captures this idea?',
+  'team-formation': 'Create a team name, add a short description, and choose the direction that fits your group.',
   'peer-learning': 'Choose the best answer. You will discuss it with a partner, then answer again.',
   'group-work': 'Work together on this prompt. Choose one note-taker to submit for your group.',
   timer: 'Use this time to think, write, or complete the task on screen.',
+  'spin-wheel': 'Who or what should go next?',
   reflection: 'What will you take from this discussion?',
   'case-study': 'Open the case and review the first decision point.',
 };
@@ -119,10 +126,14 @@ function NewSessionContent() {
   const [interactions, setInteractions] = useState<SessionInteraction[]>(startingInteractions);
   const [lessonContent, setLessonContent] = useState('');
   const [lessonSourceName, setLessonSourceName] = useState('');
+  const [selectedCourseSourceIds, setSelectedCourseSourceIds] = useState<string[]>([]);
   const [generatingInteractions, setGeneratingInteractions] = useState(false);
   const [generationError, setGenerationError] = useState('');
   const [generationNotice, setGenerationNotice] = useState('');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [expandedInteractionId, setExpandedInteractionId] = useState<string | null>(null);
+  const [draggingInteractionId, setDraggingInteractionId] = useState<string | null>(null);
+  const [dragOverInteractionId, setDragOverInteractionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -149,7 +160,10 @@ function NewSessionContent() {
           setSelectedCourse(course);
           setCourseCode(course.code);
           setCourseName(course.name);
-          if (!session) setInteractions([]);
+          if (!session) {
+            setInteractions([]);
+            setExpandedInteractionId(null);
+          }
         } else if (session) {
           setCourseCode(session.courseCode || '');
           setCourseName(session.courseName || '');
@@ -159,6 +173,8 @@ function NewSessionContent() {
           setSessionTitle(session.title || '');
           setScheduledFor(session.scheduledFor || '');
           setInteractions(session.interactions || []);
+          setSelectedCourseSourceIds(session.courseSourceIds || []);
+          setExpandedInteractionId(session.interactions?.[0]?.id || null);
         }
 
         const selectedCase = studies.find((study) => study.id === preselectedCaseStudyId);
@@ -192,19 +208,28 @@ function NewSessionContent() {
     [interactions],
   );
 
+  const lessonMaterial = useMemo(() => buildLessonMaterial(
+    selectedCourse?.courseSources || [],
+    selectedCourseSourceIds,
+    lessonContent,
+  ), [lessonContent, selectedCourse?.courseSources, selectedCourseSourceIds]);
+
   const addInteraction = (type: SessionInteractionType, caseStudy?: CaseStudy) => {
     const option = interactionOptions.find((item) => item.type === type);
+    const interactionId = `${type}-${Date.now()}`;
     setInteractions((current) => [
       ...current,
       {
-        id: `${type}-${Date.now()}`,
+        id: interactionId,
         type,
         title: caseStudy?.title || option?.label || 'Class activity',
         prompt: defaultPrompt[type],
         plannedTime: 'During class',
-        durationMinutes: type === 'case-study' ? 15 : type === 'group-work' ? 8 : type === 'timer' ? 5 : type === 'word-cloud' ? 2 : 3,
+        durationMinutes: type === 'case-study' ? 15 : type === 'group-work' ? 8 : type === 'timer' ? 5 : type === 'word-cloud' || type === 'spin-wheel' ? 2 : 3,
         discussionMinutes: type === 'peer-learning' ? 2 : undefined,
         groupSize: type === 'group-work' ? 4 : undefined,
+        teamTags: type === 'team-formation' ? (selectedCourse?.teamTags?.length ? selectedCourse.teamTags : ['Theme 1', 'Theme 2', 'Theme 3']) : undefined,
+        requireTeamTag: type === 'team-formation' ? true : undefined,
         caseStudyId: caseStudy?.id,
         options: type === 'pulse'
           ? ['Very low', 'Low', 'Steady', 'High', 'Very high']
@@ -213,17 +238,25 @@ function NewSessionContent() {
             : undefined,
         correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
         explanation: type === 'quiz' || type === 'peer-learning' ? 'Explain why this answer is correct.' : undefined,
+        wheelSource: type === 'spin-wheel' ? 'students' : undefined,
+        wheelItems: type === 'spin-wheel' ? [] : undefined,
+        wheelRemoveSelected: type === 'spin-wheel' ? true : undefined,
         resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live',
       },
     ]);
+    setExpandedInteractionId(interactionId);
     setAddMenuOpen(false);
+    window.setTimeout(() => document.getElementById(`activity-${interactionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   };
 
   const addLibraryInteraction = (template: SessionInteraction) => {
+    const interactionId = `session-${template.type}-${Date.now()}-${interactions.length}`;
     setInteractions((current) => [
       ...current,
-      { ...template, id: `session-${template.type}-${Date.now()}-${current.length}` },
+      { ...template, id: interactionId },
     ]);
+    setExpandedInteractionId(interactionId);
+    window.setTimeout(() => document.getElementById(`activity-${interactionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   };
 
   const updateInteraction = (id: string, updates: Partial<SessionInteraction>) => {
@@ -277,8 +310,33 @@ function NewSessionContent() {
     });
   };
 
+  const reorderInteraction = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setInteractions((current) => {
+      const sourceIndex = current.findIndex((interaction) => interaction.id === sourceId);
+      const targetIndex = current.findIndex((interaction) => interaction.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+      const next = [...current];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
+  const handleDropInteraction = (targetId: string) => {
+    if (draggingInteractionId) reorderInteraction(draggingInteractionId, targetId);
+    setDraggingInteractionId(null);
+    setDragOverInteractionId(null);
+  };
+
+  const focusInteraction = (id: string) => {
+    setExpandedInteractionId(id);
+    window.setTimeout(() => document.getElementById(`activity-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 20);
+  };
+
   const removeInteraction = (id: string) => {
     setInteractions((current) => current.filter((interaction) => interaction.id !== id));
+    setExpandedInteractionId((current) => current === id ? null : current);
   };
 
   const handleLessonFile = async (file: File | undefined) => {
@@ -313,9 +371,9 @@ function NewSessionContent() {
   };
 
   const handleGenerateInteractions = async () => {
-    const trimmedLesson = lessonContent.trim();
+    const trimmedLesson = lessonMaterial.trim();
     if (trimmedLesson.length < 80) {
-      setGenerationError('Paste or upload a short section of lesson material first.');
+      setGenerationError('Choose a course source, or paste a short section of lesson material first.');
       return;
     }
 
@@ -345,6 +403,8 @@ function NewSessionContent() {
         id: `generated-${interaction.type}-${Date.now()}-${index}`,
       }));
       setInteractions((current) => [...current, ...drafts]);
+      setExpandedInteractionId(drafts[0]?.id || null);
+      if (drafts[0]) window.setTimeout(() => document.getElementById(`activity-${drafts[0].id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
       setGenerationNotice('Four drafts were added below. Review the wording, choices, and correct answer before saving.');
     } catch (generationIssue: unknown) {
       setGenerationError(getUserFacingError(generationIssue, 'The question drafts could not be generated. Check your connection and try again.'));
@@ -368,6 +428,7 @@ function NewSessionContent() {
           ...(scheduledFor ? { scheduledFor } : {}),
           presentationMode: 'external',
           interactions,
+          courseSourceIds: selectedCourseSourceIds,
         });
         router.push(`/dashboard/sessions/${editingSessionId}`);
         return;
@@ -382,6 +443,7 @@ function NewSessionContent() {
         courseName: courseName.trim(),
         presentationMode: 'external',
         interactions,
+        courseSourceIds: selectedCourseSourceIds,
         teacherId: user.uid,
         active: false,
         studentsJoined: [],
@@ -516,7 +578,7 @@ function NewSessionContent() {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h3 className="seminar-display text-2xl text-[#101a38]">Draft questions from this class</h3>
-                        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#697087]">Paste a lesson outline, slides, reading excerpt, or upload a plain-text file. Every draft can be reviewed before you save.</p>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#697087]">Choose saved course sources, paste an excerpt, or upload a text file. Every draft can be reviewed before you save.</p>
                         <div className="mt-4 flex max-w-2xl items-start gap-2 rounded-xl border border-[#dcd8ff] bg-[#f6f4ff] p-3 text-xs leading-5 text-[#555d73]"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#5146e5]" /><span>Use teaching material only. Do not upload student names, numbers, grades, health information, or private submissions. This text is sent to the configured AI service to draft questions.</span></div>
                       </div>
                     <input
@@ -531,6 +593,15 @@ function NewSessionContent() {
                     </Button>
                   </div>
 
+                  {selectedCourse?.courseSources?.length ? <fieldset className="mt-5 rounded-2xl border border-[#dedaf8] bg-white p-4">
+                    <legend className="px-1 text-sm font-bold text-[#101a38]">Use saved course sources</legend>
+                    <p className="mb-3 text-xs leading-5 text-[#697087]">Select only what is relevant to this session.</p>
+                    <div className="grid gap-2 sm:grid-cols-2">{selectedCourse.courseSources.map((source) => {
+                      const selected = selectedCourseSourceIds.includes(source.id);
+                      return <button key={source.id} type="button" aria-pressed={selected} onClick={() => { setSelectedCourseSourceIds((current) => selected ? current.filter((sourceId) => sourceId !== source.id) : [...current, source.id]); setGenerationError(''); setGenerationNotice(''); }} className={`seminar-focus flex min-h-16 items-center gap-3 rounded-xl border p-3 text-left transition ${selected ? 'border-[#5146e5] bg-[#f0efff]' : 'border-[#e3e5ed] bg-white hover:border-[#bdb6ff]'}`}><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${selected ? 'bg-[#5146e5] text-white' : 'bg-[#f4f3f8] text-[#697087]'}`}>{selected ? <Check className="h-4 w-4" /> : <FileText className="h-4 w-4" />}</span><span className="min-w-0"><strong className="block truncate text-sm text-[#101a38]">{source.title}</strong><small className="block text-[#697087]">{courseSourceWordCount(source.content).toLocaleString()} words</small></span></button>;
+                    })}</div>
+                  </fieldset> : selectedCourse ? <div className="mt-5 rounded-xl border border-dashed border-[#cfd2df] bg-white p-4 text-sm leading-6 text-[#697087]">No saved course sources yet. Add them from the class Interactions view, or paste material below.</div> : null}
+
                   <textarea
                     aria-label="Lesson material for question drafts"
                     value={lessonContent}
@@ -542,33 +613,88 @@ function NewSessionContent() {
                     }}
                     rows={8}
                     maxLength={MAX_LESSON_CHARS}
-                    placeholder="Paste the part of the lesson you want students to discuss or check for understanding."
+                    placeholder="Add any session-specific excerpt or note. Leave this blank if the selected course sources are enough."
                     className="mt-5 w-full resize-y rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]"
                   />
                   <div className="mt-3 flex flex-col gap-3 text-xs leading-5 text-[#697087] sm:flex-row sm:items-center sm:justify-between">
                     <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" /> {lessonSourceName || 'Plain text only: .txt, .md, .csv, or .tsv'}</span>
-                    <span>{lessonContent.length.toLocaleString()} / {MAX_LESSON_CHARS.toLocaleString()} characters</span>
+                    <span>{lessonMaterial.length.toLocaleString()} characters ready for drafting</span>
                   </div>
                   {generationError && <InlineMessage className="mt-3" title="The question draft needs another try." message={generationError} />}
                   {generationNotice && <p className="mt-3 rounded-lg border border-[#cce8d2] bg-[#f2fbf4] px-3 py-2 text-sm leading-6 text-[#296e3c]" role="status">{generationNotice}</p>}
                   <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs leading-5 text-[#5a6278]">Creates one pulse, poll, quiz, and short response. You can edit or remove every draft.</p>
-                    <Button type="button" onClick={handleGenerateInteractions} loading={generatingInteractions} disabled={lessonContent.trim().length < 80} className="shrink-0 gap-2">
+                    <Button type="button" onClick={handleGenerateInteractions} loading={generatingInteractions} disabled={lessonMaterial.trim().length < 80} className="shrink-0 gap-2">
                       <Sparkles className="h-4 w-4" /> Draft activities
                     </Button>
                   </div>
                   </div>
                 </details>
 
-                <div className="mt-2 divide-y divide-[#e3e5ed]">
+                {interactions.length === 0 && (
+                  <div className="mt-6 rounded-2xl border border-dashed border-[#cbc7e8] bg-[#faf9fc] px-6 py-10 text-center">
+                    <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#f0efff] text-[#5146e5]"><Plus className="h-5 w-5" /></span>
+                    <h3 className="mt-4 text-base font-semibold text-[#101a38]">Your session flow starts here</h3>
+                    <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#697087]">Choose from your class library or add an activity. You can change the order at any time.</p>
+                  </div>
+                )}
+
+                <div className="mt-3">
                   {interactions.map((interaction, index) => {
                     const option = interactionOptions.find((item) => item.type === interaction.type);
                     const Icon = option?.icon || ListChecks;
+                    const isExpanded = expandedInteractionId === interaction.id;
                     return (
-                      <article key={interaction.id} className="grid gap-4 py-6 md:grid-cols-[44px_minmax(0,1fr)_150px_auto] md:items-start">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f0efff] text-[#5146e5]"><Icon className="h-5 w-5" /></span>
+                      <article
+                        id={`activity-${interaction.id}`}
+                        key={interaction.id}
+                        onDragOver={(event) => {
+                          if (!draggingInteractionId || draggingInteractionId === interaction.id) return;
+                          event.preventDefault();
+                          setDragOverInteractionId(interaction.id);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          handleDropInteraction(interaction.id);
+                        }}
+                        className={`my-3 overflow-hidden rounded-2xl border bg-white transition-[border-color,box-shadow,transform] duration-200 ${isExpanded ? 'border-[#bdb7ff] shadow-[0_14px_38px_rgba(56,46,150,0.09)]' : 'border-[#e3e5ed] hover:border-[#cbc7e8]'} ${dragOverInteractionId === interaction.id ? 'translate-y-1 border-[#5146e5]' : ''}`}
+                      >
+                        <div className="flex min-h-20 items-center gap-3 px-3 py-3 sm:px-4">
+                          <span
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = 'move';
+                              event.dataTransfer.setData('text/plain', interaction.id);
+                              setDraggingInteractionId(interaction.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingInteractionId(null);
+                              setDragOverInteractionId(null);
+                            }}
+                            className="hidden cursor-grab rounded-lg p-2 text-[#a0a5b4] hover:bg-[#f7f6fb] hover:text-[#5146e5] active:cursor-grabbing sm:block"
+                            aria-label={`Drag ${interaction.title} to reorder`}
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </span>
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f0efff] text-[#5146e5]"><Icon className="h-4.5 w-4.5" /></span>
+                          <button type="button" onClick={() => setExpandedInteractionId(isExpanded ? null : interaction.id)} className="seminar-focus min-w-0 flex-1 rounded-lg text-left">
+                            <span className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#5146e5]">{index + 1}. {option?.label || 'Class activity'}</span>
+                              {interaction.plannedTime && <span className="hidden truncate text-[11px] text-[#8a90a2] sm:inline">· {interaction.plannedTime}</span>}
+                            </span>
+                            <strong className="mt-1 block truncate text-sm text-[#101a38]">{interaction.title || 'Untitled activity'}</strong>
+                            {!isExpanded && <span className="mt-0.5 block truncate text-xs text-[#697087]">{interaction.prompt}</span>}
+                          </button>
+                          <span className="hidden rounded-full bg-[#f7f6fb] px-2.5 py-1 text-[11px] font-semibold text-[#697087] lg:inline">{Math.ceil(interaction.durationMinutes || 0)} min</span>
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <button type="button" onClick={() => moveInteraction(index, -1)} disabled={index === 0} className="seminar-focus rounded-lg p-2 text-[#858b9d] hover:bg-[#f8f7fb] hover:text-[#101a38] disabled:opacity-25" aria-label={`Move ${interaction.title} up`}><ArrowUp className="h-4 w-4" /></button>
+                            <button type="button" onClick={() => moveInteraction(index, 1)} disabled={index === interactions.length - 1} className="seminar-focus rounded-lg p-2 text-[#858b9d] hover:bg-[#f8f7fb] hover:text-[#101a38] disabled:opacity-25" aria-label={`Move ${interaction.title} down`}><ArrowDown className="h-4 w-4" /></button>
+                            <button type="button" onClick={() => removeInteraction(interaction.id)} className="seminar-focus rounded-lg p-2 text-[#858b9d] hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Remove ${interaction.title}`}><Trash2 className="h-4 w-4" /></button>
+                          </div>
+                        </div>
+                        {isExpanded && <div className="grid gap-5 border-t border-[#e7e5f0] bg-[#fdfcff] p-4 sm:p-5 md:grid-cols-[minmax(0,1fr)_180px] md:items-start">
                         <div className="space-y-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5]">{option?.label || 'Class activity'}</p>
+                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5]">Edit activity</p>
                           <Input aria-label="Interaction title" value={interaction.title} onChange={(event) => updateInteraction(interaction.id, { title: event.target.value })} />
                           <textarea aria-label="Prompt" value={interaction.prompt} onChange={(event) => updateInteraction(interaction.id, { prompt: event.target.value })} rows={2} className="w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
                           {interaction.options && (
@@ -611,7 +737,27 @@ function NewSessionContent() {
                           {interaction.type === 'timer' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">The clock starts when you launch this activity. Students see the prompt and the same countdown on their phones.</p>}
                           {interaction.type === 'open-response' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Written responses stay on the instructor screen. You choose what appears on the projector.</p>}
                           {interaction.type === 'word-cloud' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Students send one word or a short phrase. Repeated answers grow larger in the live projector cloud.</p>}
+                          {interaction.type === 'team-formation' && <label className="grid gap-2 rounded-lg bg-[#f7f6ff] px-3 py-3 text-xs font-semibold text-[#4f576d]"><span>Course tags <small className="font-normal">Separate with commas</small></span><input defaultValue={(interaction.teamTags || []).join(', ')} onBlur={(event) => { const teamTags = event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8); updateInteraction(interaction.id, { teamTags, requireTeamTag: teamTags.length > 0 }); }} placeholder="Theme 1, Theme 2, Theme 3" className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal" /></label>}
                           {interaction.type === 'group-work' && <p className="rounded-lg bg-[#fff7f2] px-3 py-2 text-xs leading-5 text-[#6a554e]">Ask each group to choose one note-taker. The projector shows the number of group submissions, not individual names.</p>}
+                          {interaction.type === 'spin-wheel' && (
+                            <div className="space-y-3 rounded-xl border border-[#dedaf8] bg-[#f8f7ff] p-4">
+                              <label className="grid gap-1.5 text-xs font-semibold text-[#4f576d]">
+                                <span>Choose from</span>
+                                <select aria-label="Wheel item source" value={interaction.wheelSource || 'students'} onChange={(event) => updateInteraction(interaction.id, { wheelSource: event.target.value as NonNullable<SessionInteraction['wheelSource']> })} className="min-h-10 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm text-[#313950] outline-none focus:border-[#5146e5]">
+                                  <option value="students">Students who joined this session</option>
+                                  <option value="teams">Teams created in this class</option>
+                                  <option value="custom">A custom list</option>
+                                </select>
+                              </label>
+                              {interaction.wheelSource === 'custom' ? (
+                                <label className="grid gap-1.5 text-xs font-semibold text-[#4f576d]">
+                                  <span>Items <small className="font-normal text-[#7a8194]">One per line</small></span>
+                                  <textarea aria-label="Custom wheel items" value={(interaction.wheelItems || []).join('\n')} onChange={(event) => updateInteraction(interaction.id, { wheelItems: event.target.value.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 40) })} rows={5} maxLength={1000} placeholder={'Topic A\nTopic B\nTopic C'} className="w-full resize-y rounded-lg border border-[#d7dae5] bg-white px-3 py-2.5 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5]" />
+                                </label>
+                              ) : <p className="text-xs leading-5 text-[#697087]">{interaction.wheelSource === 'teams' ? 'The wheel uses the current team list when you launch it.' : 'The wheel uses the live attendance list. Student display names will appear on the classroom screen.'}</p>}
+                              <label className="flex items-center gap-2.5 text-xs font-semibold text-[#4f576d]"><input type="checkbox" checked={interaction.wheelRemoveSelected !== false} onChange={(event) => updateInteraction(interaction.id, { wheelRemoveSelected: event.target.checked })} className="h-4 w-4 accent-[#5146e5]" /> Remove a selected item before the next spin</label>
+                            </div>
+                          )}
                         </div>
                         <div className="grid gap-3">
                           <Input aria-label="Planned moment" value={interaction.plannedTime || ''} onChange={(event) => updateInteraction(interaction.id, { plannedTime: event.target.value })} />
@@ -635,11 +781,7 @@ function NewSessionContent() {
                             </label>
                           )}
                         </div>
-                        <div className="flex gap-1 md:flex-col">
-                          <button type="button" onClick={() => moveInteraction(index, -1)} disabled={index === 0} className="seminar-focus rounded-lg p-2 text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38] disabled:opacity-30" aria-label={`Move ${interaction.title} up`}><ArrowUp className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => moveInteraction(index, 1)} disabled={index === interactions.length - 1} className="seminar-focus rounded-lg p-2 text-[#697087] hover:bg-[#f8f7fb] hover:text-[#101a38] disabled:opacity-30" aria-label={`Move ${interaction.title} down`}><ArrowDown className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => removeInteraction(interaction.id)} className="seminar-focus rounded-lg p-2 text-[#697087] hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Remove ${interaction.title}`}><Trash2 className="h-4 w-4" /></button>
-                        </div>
+                        </div>}
                       </article>
                     );
                   })}
@@ -648,16 +790,69 @@ function NewSessionContent() {
             </div>
 
             <aside className="space-y-5 xl:sticky xl:top-6">
-              <section className="rounded-2xl border border-[#dcd8ff] bg-[#f7f6ff] p-6">
-                <p className="seminar-eyebrow mb-2">Session summary</p>
-                <h2 className="seminar-display text-3xl text-[#101a38]">{sessionTitle || 'Untitled session'}</h2>
-                <p className="mt-2 text-sm text-[#697087]">{courseCode}{courseName ? ` · ${courseName}` : ''}</p>
-                <div className="mt-6 space-y-3 border-y border-[#dcd8ff] py-5 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-[#697087]">Activities</span><strong className="text-[#101a38]">{interactions.length}</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-[#697087]">Activity time</span><strong className="text-[#101a38]">About {Math.ceil(estimatedMinutes)} min</strong></div>
+              <section className="overflow-hidden rounded-2xl border border-[#dcd8ff] bg-white shadow-[0_12px_32px_rgba(45,38,110,0.06)]" aria-labelledby="run-of-show-title">
+                <div className="border-b border-[#e5e2fb] bg-[#f7f6ff] p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="seminar-eyebrow mb-1.5">Run of show</p>
+                      <h2 id="run-of-show-title" className="seminar-display text-2xl text-[#101a38]">{sessionTitle || 'Untitled session'}</h2>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#5146e5] shadow-sm">{interactions.length}</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-[#697087]">Drag to reorder. Select an activity to edit it.</p>
                 </div>
-                <div className="mt-5 flex gap-3 text-sm leading-6 text-[#4f576d]"><Check className="mt-1 h-4 w-4 shrink-0 text-[#3aa45a]" /><span>You can add an unplanned question during class without changing this plan.</span></div>
+
+                <div className="max-h-[52vh] space-y-1.5 overflow-y-auto p-3" aria-label="Activity sequence">
+                  {interactions.length === 0 ? (
+                    <p className="px-3 py-7 text-center text-sm leading-6 text-[#7a8194]">Activities will appear here as you add them.</p>
+                  ) : interactions.map((interaction, index) => {
+                    const option = interactionOptions.find((item) => item.type === interaction.type);
+                    const Icon = option?.icon || ListChecks;
+                    const isActive = expandedInteractionId === interaction.id;
+                    return (
+                      <div
+                        key={`sequence-${interaction.id}`}
+                        draggable
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', interaction.id);
+                          setDraggingInteractionId(interaction.id);
+                        }}
+                        onDragOver={(event) => {
+                          if (!draggingInteractionId || draggingInteractionId === interaction.id) return;
+                          event.preventDefault();
+                          setDragOverInteractionId(interaction.id);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          handleDropInteraction(interaction.id);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingInteractionId(null);
+                          setDragOverInteractionId(null);
+                        }}
+                        className={`group flex items-center gap-2 rounded-xl border px-2 py-2 transition-[background-color,border-color,transform] duration-150 ${isActive ? 'border-[#bdb7ff] bg-[#f4f2ff]' : 'border-transparent hover:border-[#e3e5ed] hover:bg-[#faf9fc]'} ${dragOverInteractionId === interaction.id ? 'translate-y-1 border-[#5146e5]' : ''}`}
+                      >
+                        <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-[#b0b4c1] group-hover:text-[#5146e5]" />
+                        <button type="button" onClick={() => focusInteraction(interaction.id)} className="seminar-focus flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[#5146e5] shadow-sm"><Icon className="h-3.5 w-3.5" /></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[10px] font-bold uppercase tracking-[0.08em] text-[#7a8194]">{index + 1} · {option?.label || 'Activity'}</span>
+                            <strong className="mt-0.5 block truncate text-xs text-[#101a38]">{interaction.title || 'Untitled activity'}</strong>
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-2 border-t border-[#e5e2fb] bg-[#fbfaff] text-xs">
+                  <div className="border-r border-[#e5e2fb] px-4 py-3"><span className="block text-[#7a8194]">Activities</span><strong className="mt-0.5 block text-[#101a38]">{interactions.length}</strong></div>
+                  <div className="px-4 py-3"><span className="block text-[#7a8194]">Planned time</span><strong className="mt-0.5 block text-[#101a38]">About {Math.ceil(estimatedMinutes)} min</strong></div>
+                </div>
               </section>
+
+              <div className="flex gap-3 rounded-xl border border-[#dce9df] bg-[#f5fbf6] p-4 text-sm leading-6 text-[#4f576d]"><Check className="mt-1 h-4 w-4 shrink-0 text-[#3aa45a]" /><span>You can still add an unplanned question during class.</span></div>
 
               {error && <InlineMessage title="The session is not saved yet." message={error} />}
 
