@@ -2271,12 +2271,13 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .blog-article-cover img { object-fit: cover; }
 
 .blog-signal-thread { border-bottom: 1px solid var(--seminar-line); background: white; }
-.blog-signal-thread > div { position: relative; display: grid; grid-template-columns: repeat(3,1fr); }
-.blog-signal-thread > div::before { position: absolute; top: 2rem; right: calc(16.66% - 1rem); left: calc(16.66% - 1rem); height: 2px; background: linear-gradient(90deg,var(--seminar-brand-coral),var(--seminar-violet),var(--seminar-success)); content: ''; }
-.blog-signal-thread > div > div { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; padding: 1.25rem clamp(0.7rem,2vw,1.4rem); }
-.blog-signal-thread > div > div > span { display: grid; width: 28px; height: 28px; place-items: center; border: 4px solid white; border-radius: 50%; background: var(--seminar-ink); color: white; font-size: 0.58rem; font-weight: 850; box-shadow: 0 0 0 1px var(--seminar-line); }
-.blog-signal-thread strong { display: block; color: var(--seminar-ink); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
-.blog-signal-thread p { margin-top: 0.25rem; color: var(--seminar-muted); font-size: 0.72rem; line-height: 1.5; }
+.blog-signal-thread > div { position: relative; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+.blog-signal-thread > div::before { position: absolute; z-index: 0; top: 2.05rem; right: calc(16.66% + 17px); left: calc(16.66% + 17px); height: 2px; background: linear-gradient(90deg,var(--seminar-brand-coral),var(--seminar-violet),var(--seminar-success)); content: ''; }
+.blog-signal-thread > div > div { position: relative; z-index: 1; min-width: 0; padding: 1.2rem clamp(1rem,2.4vw,2rem) 1.45rem; text-align: center; }
+.blog-signal-thread > div > div > span { display: grid; width: 34px; height: 34px; margin-inline: auto; place-items: center; border: 5px solid white; border-radius: 50%; background: var(--seminar-ink); color: white; font-size: 0.62rem; font-weight: 850; box-shadow: 0 0 0 1px var(--seminar-line); }
+.blog-signal-thread > div > div > div { max-width: 19rem; margin: 0.8rem auto 0; }
+.blog-signal-thread strong { display: block; color: var(--seminar-ink); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; }
+.blog-signal-thread p { margin-top: 0.35rem; color: var(--seminar-muted); font-size: 0.78rem; line-height: 1.5; text-wrap: balance; }
 
 .blog-reading-layout { display: grid; grid-template-columns: minmax(150px,0.52fr) minmax(0,2fr) minmax(180px,0.68fr); gap: clamp(2rem,4vw,4.5rem); align-items: start; }
 .blog-article-toc { position: sticky; top: 1.5rem; }
@@ -2354,8 +2355,11 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .blog-track-grid article:nth-child(2) { transform: none; }
   .blog-track-grid article { min-height: 230px; }
   .blog-signal-thread > div { grid-template-columns: 1fr; padding-block: 0.75rem; }
-  .blog-signal-thread > div::before { top: 2rem; bottom: 2rem; left: 1.85rem; width: 2px; height: auto; background: linear-gradient(var(--seminar-brand-coral),var(--seminar-violet),var(--seminar-success)); }
-  .blog-signal-thread > div > div { padding-block: 0.7rem; }
+  .blog-signal-thread > div::before { top: 2rem; right: auto; bottom: 2rem; left: 1.85rem; width: 2px; height: auto; background: linear-gradient(var(--seminar-brand-coral),var(--seminar-violet),var(--seminar-success)); }
+  .blog-signal-thread > div > div { display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; padding-block: 0.7rem; text-align: left; }
+  .blog-signal-thread > div > div > span { width: 28px; height: 28px; margin-inline: 0; border-width: 4px; }
+  .blog-signal-thread > div > div > div { max-width: none; margin: 0; }
+  .blog-signal-thread p { font-size: 0.72rem; text-wrap: initial; }
   .blog-reading-layout { display: block; }
   .blog-article-toc { position: static; border: 1px solid var(--seminar-line); border-radius: 15px; padding: 1rem; background: white; }
   .blog-article-toc nav { grid-template-columns: 1fr 1fr; gap: 0.2rem 0.8rem; border-left: 0; }
