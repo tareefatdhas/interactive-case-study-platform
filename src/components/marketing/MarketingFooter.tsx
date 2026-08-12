@@ -7,7 +7,7 @@ export default function MarketingFooter() {
       <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 sm:px-8 md:grid-cols-[1fr_auto_auto_auto] md:items-start">
         <div>
           <ClassfullyBrand className="text-xl" />
-          <h2 className="marketing-footer-belief seminar-display">Make every class count toward the next.</h2>
+          <h2 className="marketing-footer-belief seminar-display">Make every class count toward the next</h2>
           <p className="mt-3 max-w-sm text-sm leading-6 text-[var(--seminar-muted)]">The participation layer for university courses.</p>
         </div>
         <nav className="grid gap-2 text-sm" aria-label="Product links">

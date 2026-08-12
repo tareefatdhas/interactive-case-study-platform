@@ -76,8 +76,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .seminar-display {
   font-family: var(--seminar-font-display);
-  font-weight: 400;
-  letter-spacing: -0.035em;
+  font-weight: 500;
+  letter-spacing: -0.025em;
 }
 
 .seminar-wordmark {
@@ -2305,6 +2305,196 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 
 @media (prefers-reduced-motion: reduce) {
   .course-thread-live i { animation: none; }
+}
+
+/* Handcrafted marketing pass
+   The page now borrows from course notes, classroom displays, and teaching plans.
+   Decorative blobs, arbitrary numbering, and card stacks recede so the response
+   signal and course thread remain the recognizable Classfully elements. */
+.marketing-page {
+  --seminar-font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --seminar-font-ui: var(--font-plex-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --marketing-rule: rgba(16, 26, 56, 0.105);
+  --marketing-corner: 12px;
+  font-family: var(--seminar-font-ui);
+}
+
+.marketing-header {
+  border-top-width: 3px;
+  background: rgba(255, 254, 250, 0.97);
+  backdrop-filter: blur(14px);
+}
+
+.marketing-nav-link { border-radius: 7px; }
+.marketing-button { border-radius: 10px; }
+.marketing-button-primary { box-shadow: 0 4px 0 #3127b7; }
+.marketing-button-primary:hover { box-shadow: 0 6px 0 #3127b7; transform: translateY(-2px); }
+.marketing-button-primary:active { box-shadow: 0 1px 0 #3127b7; transform: translateY(3px); }
+
+.world-hero {
+  background-color: #fbfaff;
+  background-image:
+    linear-gradient(90deg, transparent 0 7.5%, rgba(223, 102, 78, 0.16) 7.5% calc(7.5% + 1px), transparent calc(7.5% + 1px)),
+    repeating-linear-gradient(180deg, transparent 0 47px, rgba(81, 70, 229, 0.055) 47px 48px);
+  background-size: auto;
+}
+.world-hero::before {
+  background: linear-gradient(180deg, rgba(255,254,250,0.76), rgba(255,254,250,0.1) 62%, rgba(255,254,250,0.78));
+}
+.world-hero::after { display: none; }
+.world-hero h1 em::after {
+  bottom: -0.02em;
+  height: 4px;
+  border-radius: 0;
+  opacity: 0.9;
+  transform: rotate(-0.35deg);
+}
+
+.hero-room-note {
+  border-radius: 4px 14px 14px 14px;
+  box-shadow: 7px 8px 0 rgba(81, 70, 229, 0.12);
+  transform: rotate(1deg);
+  backdrop-filter: none;
+}
+.hero-room-note::after { display: none; }
+
+.classroom-stage {
+  border-radius: 18px;
+  background: #eeecff;
+  box-shadow: 0 28px 70px -42px rgba(16,26,56,0.48);
+}
+.classroom-stage::before {
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.55), transparent 38%),
+    repeating-linear-gradient(180deg, transparent 0 47px, rgba(81,70,229,0.045) 47px 48px);
+}
+.stage-atmosphere { display: none; }
+.stage-projector { border-radius: 16px 16px 9px 9px; }
+.stage-console { border-radius: 10px; }
+.stage-phone { border-radius: 22px; }
+.stage-label { border-radius: 7px; box-shadow: none; }
+
+.class-rhythm { background: #ffd76b; }
+.class-rhythm-steps {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(16,26,56,0.2);
+  border-radius: 12px;
+  background: rgba(16,26,56,0.16);
+}
+.class-rhythm-steps article {
+  min-height: 190px;
+  border: 0;
+  border-right: 1px solid rgba(16,26,56,0.14);
+  border-radius: 0;
+  background: #fffdf5;
+  box-shadow: none;
+}
+.class-rhythm-steps article:last-child { border-right: 0; }
+
+.surface-proof-grid { border-radius: 12px; }
+.surface-proof-grid article { min-height: 250px; }
+.surface-proof-grid article > svg { margin-top: 0.2rem; }
+.surface-number { display: none; }
+
+.classroom-moves {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--marketing-rule);
+  border-radius: 12px;
+  background: var(--marketing-rule);
+}
+.classroom-moves article {
+  min-height: 315px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.classroom-move-index { justify-content: flex-start; }
+.classroom-move-index span { display: none; }
+.classroom-move-index svg { width: 24px; height: 24px; }
+.classroom-moves-foot { border-radius: 7px; background: transparent; }
+
+.teaching-note::before,
+.teaching-note::after,
+.teaching-note-line,
+.world-final-signal { display: none; }
+.teaching-note {
+  background:
+    linear-gradient(90deg, transparent 0 9%, rgba(223,102,78,0.25) 9% calc(9% + 1px), transparent calc(9% + 1px)),
+    repeating-linear-gradient(180deg, transparent 0 47px, rgba(255,255,255,0.055) 47px 48px),
+    var(--seminar-ink);
+}
+
+.module-grid {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(16,26,56,0.14);
+  border-radius: 12px;
+  background: rgba(16,26,56,0.14);
+}
+.module-grid article {
+  min-height: 220px;
+  border: 0;
+  border-right: 1px solid rgba(16,26,56,0.12);
+  border-bottom: 1px solid rgba(16,26,56,0.12);
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+.legal-trust-grid {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--seminar-line);
+  border-radius: 12px;
+}
+.legal-trust-card,
+.legal-trust-card:nth-child(2),
+.legal-trust-card:nth-child(3) {
+  min-height: 250px;
+  border: 0;
+  border-right: 1px solid var(--seminar-line);
+  border-radius: 0;
+  background: white;
+  box-shadow: none;
+}
+.legal-trust-card:last-child { border-right: 0; }
+.legal-trust-card:hover { background: #f6f4ff; box-shadow: none; transform: none; }
+.legal-trust-card h3 { margin-top: 2.2rem; }
+
+.faq-list details { border-radius: 7px; box-shadow: none; }
+.faq-list details:hover { box-shadow: none; }
+
+.world-final-cta {
+  background:
+    linear-gradient(90deg, transparent 0 9%, rgba(223,102,78,0.24) 9% calc(9% + 1px), transparent calc(9% + 1px)),
+    repeating-linear-gradient(180deg, transparent 0 47px, rgba(81,70,229,0.06) 47px 48px),
+    #eeecff;
+}
+
+@media (max-width: 820px) {
+  .class-rhythm-steps article:nth-child(2) { border-right: 0; }
+  .class-rhythm-steps article { border-bottom: 1px solid rgba(16,26,56,0.14); }
+  .class-rhythm-steps article:nth-last-child(-n + 2) { border-bottom: 0; }
+}
+
+@media (max-width: 640px) {
+  .world-hero {
+    background-image:
+      linear-gradient(90deg, transparent 0 18px, rgba(223,102,78,0.14) 18px 19px, transparent 19px),
+      repeating-linear-gradient(180deg, transparent 0 39px, rgba(81,70,229,0.05) 39px 40px);
+  }
+  .class-rhythm-steps { grid-template-columns: 1fr; }
+  .class-rhythm-steps article,
+  .class-rhythm-steps article:nth-child(2),
+  .class-rhythm-steps article:nth-last-child(-n + 2) { border-right: 0; border-bottom: 1px solid rgba(16,26,56,0.14); }
+  .class-rhythm-steps article:last-child { border-bottom: 0; }
+  .module-grid article { border-right: 0; }
+  .legal-trust-grid { display: grid; }
+  .legal-trust-card,
+  .legal-trust-card:last-child { min-height: 220px; border-right: 0; border-bottom: 1px solid var(--seminar-line); }
+  .legal-trust-card:last-child { border-bottom: 0; }
 }
 
 /* Classfully Field Notes */

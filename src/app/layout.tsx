@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Fraunces, IBM_Plex_Sans, Inter, Newsreader } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
 import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/metadata";
 import InputModality from "@/components/ui/InputModality";
+
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  variable: "--font-plex-sans",
+  weight: ["400", "500", "600", "700"],
+});
 
 const inter = Inter({
   subsets: ["latin"],
@@ -13,6 +19,12 @@ const inter = Inter({
 const fraunces = Fraunces({
   subsets: ["latin"],
   variable: "--font-fraunces",
+  display: "swap",
+});
+
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  variable: "--font-newsreader",
   display: "swap",
 });
 
@@ -95,7 +107,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${fraunces.variable} antialiased`}>
+      <body className={`${inter.variable} ${fraunces.variable} ${plexSans.variable} ${newsreader.variable} antialiased`}>
         <InputModality />
         <AuthProvider>
           {children}
