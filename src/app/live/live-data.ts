@@ -105,10 +105,12 @@ export type LiveTimer = {
 
 export type LiveSessionContext = {
   sessionId?: string;
+  courseId?: string;
   ownerUid?: string;
   instructorName?: string;
   sessionCode: string;
   courseCode: string;
+  rewardScopeId?: string;
   courseName: string;
   sessionTitle: string;
 };

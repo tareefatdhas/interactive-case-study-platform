@@ -132,10 +132,12 @@ export default function InstructorRemotePage() {
       const prepared = prepareLiveInteractions(session.interactions);
       const context: LiveSessionContext = {
         sessionId,
+        ...(session.courseId ? { courseId: session.courseId } : {}),
         ownerUid,
         instructorName: user.name || user.email?.split('@')[0] || 'Your instructor',
         sessionCode: session.sessionCode,
         courseCode: session.courseCode || 'Class',
+        rewardScopeId: session.rewardScopeId || session.courseCode || 'Class',
         courseName: session.courseName || '',
         sessionTitle: session.title || 'Live session',
       };

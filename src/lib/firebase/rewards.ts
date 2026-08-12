@@ -76,23 +76,23 @@ export async function reviewRewardRequest(requestId: string, status: Exclude<Rew
   });
 }
 
-export async function getAvailableRewardsForStudent(teacherId: string, courseCode: string): Promise<RewardDefinition[]> {
+export async function getAvailableRewardsForStudent(teacherId: string, courseIdOrCode: string): Promise<RewardDefinition[]> {
   await ensureStudentAnonymousAuth();
   // Keep this to a single-field query so a pilot classroom does not depend on
   // deploying a new composite Firestore index before rewards can load.
   const snapshot = await getDocs(query(collection(studentDb, REWARD_DEFINITIONS), where('teacherId', '==', teacherId)));
   return snapshot.docs
     .map((rewardDoc) => ({ id: rewardDoc.id, ...rewardDoc.data() } as RewardDefinition))
-    .filter((reward) => reward.enabled && reward.courseCode === courseCode)
+    .filter((reward) => reward.enabled && (reward.courseId === courseIdOrCode || reward.courseCode === courseIdOrCode))
     .sort((a, b) => a.pointsRequired - b.pointsRequired);
 }
 
-export async function getStudentRewardRequests(teacherId: string, courseCode: string): Promise<RewardRequest[]> {
+export async function getStudentRewardRequests(teacherId: string, courseIdOrCode: string): Promise<RewardRequest[]> {
   const student = await ensureStudentAnonymousAuth();
   const snapshot = await getDocs(query(collection(studentDb, REWARD_REQUESTS), where('authorUid', '==', student.uid)));
   return snapshot.docs
     .map((requestDoc) => ({ id: requestDoc.id, ...requestDoc.data() } as RewardRequest))
-    .filter((request) => request.teacherId === teacherId && request.courseCode === courseCode)
+    .filter((request) => request.teacherId === teacherId && (request.courseId === courseIdOrCode || request.courseCode === courseIdOrCode))
     .sort((a, b) => (b.requestedAt?.toMillis?.() || 0) - (a.requestedAt?.toMillis?.() || 0));
 }
 
@@ -106,7 +106,7 @@ export async function requestReward(input: {
   pointsAtRequest: number;
 }): Promise<string> {
   const student = await ensureStudentAnonymousAuth();
-  const existing = await getStudentRewardRequests(input.teacherId, input.courseCode);
+  const existing = await getStudentRewardRequests(input.teacherId, input.courseId);
   if (existing.some((request) => request.rewardId === input.reward.id && (request.status === 'pending' || request.status === 'approved'))) {
     throw new Error('You already have an active request for this reward.');
   }

@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { createCourse, deleteSession, getCourse, getCoursesByTeacher, getSessionsByTeacher, updateCourse } from '@/lib/firebase/firestore';
+import { createCourse, deleteSession, getCourse, getCoursesByTeacher, getSessionsByTeacher, updateCourse, updateCourseIdentity } from '@/lib/firebase/firestore';
 import { deleteInstructorClassroomData } from '@/lib/firebase/live-classroom';
 import { TEAM_COLORS, addInstructorTeamMember, createInstructorCourseTeam, deleteInstructorCourseTeam, ensureTeamModule, normalizeTeamName, normalizeTeamStudentNumber, removeInstructorTeamMember, subscribeInstructorTeamRoster, updateInstructorCourseTeam, type CourseTeamWithMembers, type TeamColorId } from '@/lib/firebase/course-teams';
 import { COURSE_SOURCE_KINDS, MAX_COURSE_SOURCES, MAX_COURSE_SOURCE_CHARS, courseSourceWordCount, removeCourseSource, upsertCourseSource } from '@/lib/course-sources';
@@ -184,6 +184,9 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [rolloverOpen, setRolloverOpen] = useState(false);
   const [classMenuOpen, setClassMenuOpen] = useState(false);
+  const [classDetailsOpen, setClassDetailsOpen] = useState(false);
+  const [classCode, setClassCode] = useState('');
+  const [classDetailsError, setClassDetailsError] = useState('');
   const [sessionMenuOpen, setSessionMenuOpen] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
   const [rollingOver, setRollingOver] = useState(false);
@@ -230,6 +233,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
         setCourse(courseData);
         setTemplates(courseData.interactionTemplates || []);
         setClassName(courseData.name);
+        setClassCode(courseData.code);
         setClassTerm(courseData.term || '');
         setCourseTagsInput((courseData.teamTags || []).join(', '));
         setSessions(sessionData.filter((session) => session.courseId === id || (!session.courseId && session.courseCode === courseData.code)));
@@ -544,17 +548,82 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
     setError('');
     try {
       await updateCourse(course.id, {
-        name: className.trim() || course.name,
-        term: classTerm.trim() || undefined,
         interactionTemplates: templates,
         teamTags: courseTagsInput.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8),
       });
-      setCourse((current) => current ? { ...current, name: className.trim() || current.name, term: classTerm.trim() || undefined, interactionTemplates: templates, teamTags: courseTagsInput.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8) } : current);
+      setCourse((current) => current ? { ...current, interactionTemplates: templates, teamTags: courseTagsInput.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8) } : current);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2400);
     } catch (saveError) {
       console.error('Could not save interaction library:', saveError);
       setError('Your interaction library could not be saved. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openClassDetails = () => {
+    if (!course) return;
+    setClassName(course.name);
+    setClassCode(course.code);
+    setClassTerm(course.term || '');
+    setClassDetailsError('');
+    setClassDetailsOpen(true);
+  };
+
+  const saveClassDetails = async () => {
+    if (!course) return;
+    const nextName = className.trim();
+    const nextCode = classCode.trim().toUpperCase().replace(/\s+/g, ' ');
+    const codeChanged = nextCode !== course.code;
+    if (!nextName) {
+      setClassDetailsError('Add a class name before saving.');
+      return;
+    }
+    if (!nextCode || nextCode.length > 24 || !/^[A-Z0-9][A-Z0-9 ._/-]*$/.test(nextCode)) {
+      setClassDetailsError('Use 1 to 24 letters, numbers, spaces, periods, slashes, dashes, or underscores.');
+      return;
+    }
+    if (codeChanged && sessions.some((session) => session.active)) {
+      setClassDetailsError('End the live class before changing its class code. The name and term can still be changed now.');
+      return;
+    }
+
+    setSaving(true);
+    setClassDetailsError('');
+    try {
+      if (codeChanged) {
+        const existingCourses = await getCoursesByTeacher(course.teacherId, true);
+        if (existingCourses.some((candidate) => candidate.id !== course.id && candidate.code.trim().toUpperCase() === nextCode)) {
+          setClassDetailsError('That class code is already in use. Choose a different code so the records stay separate.');
+          return;
+        }
+      }
+      await updateCourseIdentity(course, sessions.map((session) => session.id), {
+        name: nextName,
+        code: nextCode,
+        term: classTerm.trim() || undefined,
+      });
+      const rewardScopeId = course.rewardScopeId || course.code;
+      setCourse((current) => current ? {
+        ...current,
+        name: nextName,
+        code: nextCode,
+        term: classTerm.trim() || undefined,
+        rewardScopeId,
+      } : current);
+      setSessions((current) => current.map((session) => ({
+        ...session,
+        courseCode: nextCode,
+        courseName: nextName,
+        rewardScopeId,
+      })));
+      setClassDetailsOpen(false);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2400);
+    } catch (detailsError) {
+      console.error('Could not update class details:', detailsError);
+      setClassDetailsError('The class details could not be updated. Nothing was changed, so you can try again.');
     } finally {
       setSaving(false);
     }
@@ -665,6 +734,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                     <div className="relative" data-overflow-menu>
                       <Button variant="outline" aria-label="More class actions" aria-haspopup="menu" aria-expanded={classMenuOpen} onClick={() => setClassMenuOpen((open) => !open)} className="px-3"><MoreHorizontal className="h-5 w-5" /></Button>
                       {classMenuOpen && <div role="menu" className="absolute right-0 z-30 mt-2 w-56 origin-top-right rounded-2xl border border-[#e3e5ed] bg-white p-1.5 shadow-[0_18px_48px_rgba(16,26,56,0.16)] animate-[fadeIn_180ms_ease-out]">
+                        <button type="button" role="menuitem" onClick={() => { setClassMenuOpen(false); openClassDetails(); }} className="seminar-focus flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-[#313950] hover:bg-[#f8f7fb]"><Pencil className="h-4 w-4 text-[#697087]" /> Edit class details</button>
                         <button type="button" role="menuitem" onClick={() => { setClassMenuOpen(false); openRollover(); }} className="seminar-focus flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-[#313950] hover:bg-[#f8f7fb]"><CalendarSync className="h-4 w-4 text-[#697087]" /> Start next term</button>
                         <button type="button" role="menuitem" onClick={() => { setClassMenuOpen(false); setArchiveOpen(true); }} className="seminar-focus flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-[#8a4b3d] hover:bg-[#fff1ee]"><Archive className="h-4 w-4" /> Archive class</button>
                       </div>}
@@ -873,16 +943,30 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                   </section>
                   <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6">
                     <p className="seminar-eyebrow mb-2">Class settings</p><h2 className="seminar-display text-2xl text-[#101a38]">Details used across the course</h2>
-                    <label className="mt-5 grid gap-1.5 text-xs font-bold text-[#697087]">Class name<input value={className} onChange={(event) => { setClassName(event.target.value); setSaved(false); }} className="min-h-11 rounded-xl border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
-                    <label className="mt-4 grid gap-1.5 text-xs font-bold text-[#697087]">Term<input value={classTerm} onChange={(event) => { setClassTerm(event.target.value); setSaved(false); }} placeholder="Fall 2026" className="min-h-11 rounded-xl border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                    <div className="mt-5 rounded-2xl border border-[#e3e5ed] bg-[#faf9ff] p-4"><strong className="block text-sm text-[#101a38]">{course.code} · {course.name}</strong><span className="mt-1 block text-xs text-[#697087]">{course.term || 'No term set'}</span><Button variant="ghost" onClick={openClassDetails} className="mt-3 -ml-3 gap-2 text-[#5146e5]"><Pencil className="h-4 w-4" /> Edit class details</Button></div>
                     <label className="mt-4 grid gap-1.5 text-xs font-bold text-[#697087]">Team tags <small className="font-normal">Separate with commas</small><input value={courseTagsInput} onChange={(event) => { setCourseTagsInput(event.target.value); setSaved(false); }} placeholder="Case topic, Track, Theme" className="min-h-11 rounded-xl border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
-                    <p className="mt-3 text-xs leading-5 text-[#697087]">The class code stays fixed so older attendance and session records remain connected.</p>
                   </section>
                 </aside>
               </fieldset>
               )}
 
               <Dialog isOpen={archiveOpen} onClose={() => setArchiveOpen(false)} onConfirm={archiveClass} title="Archive this class?" message="It will move out of your current classes. Sessions, attendance, student progress, and reusable interactions will be kept." confirmText="Archive class" variant="destructive" />
+
+              {classDetailsOpen && <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-[#101a38]/45 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setClassDetailsOpen(false); }}>
+                <section role="dialog" aria-modal="true" aria-labelledby="class-details-title" className="w-full max-w-xl rounded-3xl border border-[#e3e5ed] bg-[#fffefa] p-6 shadow-[0_28px_90px_rgba(16,26,56,0.28)] sm:p-8">
+                  <div className="flex items-start justify-between gap-4"><div><p className="seminar-eyebrow mb-2">Class settings</p><h2 id="class-details-title" className="seminar-display text-3xl text-[#101a38]">Edit class details</h2><p className="mt-2 text-sm leading-6 text-[#697087]">These details appear across your sessions and instructor views.</p></div><button type="button" onClick={() => setClassDetailsOpen(false)} disabled={saving} className="seminar-focus rounded-lg p-2 text-[#697087] hover:bg-[#f8f7fb]" aria-label="Close"><X className="h-5 w-5" /></button></div>
+                  <div className="mt-6 grid gap-4">
+                    <label className="grid gap-1.5 text-xs font-bold text-[#697087]">Class name<input autoFocus value={className} onChange={(event) => setClassName(event.target.value)} className="min-h-12 rounded-xl border border-[#d7dae5] bg-white px-4 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="grid gap-1.5 text-xs font-bold text-[#697087]">Class code<input value={classCode} onChange={(event) => setClassCode(event.target.value.toUpperCase())} maxLength={24} className="min-h-12 rounded-xl border border-[#d7dae5] bg-white px-4 text-sm font-bold uppercase tracking-[0.04em] text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                      <label className="grid gap-1.5 text-xs font-bold text-[#697087]">Term<input value={classTerm} onChange={(event) => setClassTerm(event.target.value)} placeholder="Fall 2026" className="min-h-12 rounded-xl border border-[#d7dae5] bg-white px-4 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                    </div>
+                  </div>
+                  {classCode.trim().toUpperCase() !== course.code && <div className="mt-5 rounded-2xl border border-[#f1d6a1] bg-[#fff8e8] p-4 text-sm leading-6 text-[#654918]"><strong className="block text-[#49330f]">Changing the class code</strong>Saved sessions, rewards, and team information will move to the new code together. Attendance, responses, and student progress will remain attached to this class.</div>}
+                  {classDetailsError && <InlineMessage className="mt-5" title="Check these class details." message={classDetailsError} />}
+                  <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={() => setClassDetailsOpen(false)} disabled={saving}>Cancel</Button><Button onClick={saveClassDetails} loading={saving} className="gap-2"><Save className="h-4 w-4" /> Save class details</Button></div>
+                </section>
+              </div>}
 
               <Dialog isOpen={Boolean(sessionToDelete)} onClose={() => setSessionToDelete(null)} onConfirm={confirmDeleteSession} title="Delete this session?" message={`“${sessionToDelete?.title || 'Untitled session'}” and its live classroom data will be permanently deleted. This cannot be undone.`} confirmText="Delete session" variant="destructive" />
 

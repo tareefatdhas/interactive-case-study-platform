@@ -884,10 +884,12 @@ export default function LiveLessonPrototype() {
 
       const context: LiveSessionContext = {
         sessionId,
+        ...(course?.id ? { courseId: course.id } : {}),
         ownerUid: session.teacherId,
         instructorName: user.name || user.email?.split('@')[0] || 'Your instructor',
         sessionCode: session.sessionCode,
         courseCode: session.courseCode || 'Class',
+        rewardScopeId: course?.rewardScopeId || session.rewardScopeId || session.courseCode || 'Class',
         courseName: session.courseName || '',
         sessionTitle: session.title || 'Live session',
       };

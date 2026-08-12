@@ -194,6 +194,7 @@ export default function SessionsPage() {
         teacherId: user.uid,
         courseId: session.courseId,
         courseCode: session.courseCode,
+        rewardScopeId: session.rewardScopeId || session.courseCode,
         courseName: session.courseName,
         presentationMode: session.presentationMode || 'external',
         interactions: (session.interactions || []).map((interaction, index) => ({

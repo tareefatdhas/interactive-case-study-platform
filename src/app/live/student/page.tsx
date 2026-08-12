@@ -1045,15 +1045,17 @@ export default function StudentWelcomePage() {
               const ended = meta?.status === 'ended' || Boolean(meta?.expiresAt && meta.expiresAt < Date.now());
               setRemoteEnded(ended);
               if (meta) {
-                setRewardScope(`${ownerUid}:${meta.courseCode || sessionId}`);
+                setRewardScope(`${ownerUid}:${meta.rewardScopeId || meta.courseCode || sessionId}`);
                 setLessonState((current) => ({
                   ...current,
                   session: {
                     sessionId,
+                    courseId: meta.courseId,
                     ownerUid,
                     instructorName: meta.instructorName,
                     sessionCode: meta.sessionCode,
                     courseCode: meta.courseCode,
+                    rewardScopeId: meta.rewardScopeId,
                     courseName: meta.courseName,
                     sessionTitle: meta.sessionTitle,
                   },
@@ -1088,7 +1090,7 @@ export default function StudentWelcomePage() {
           setRemoteEnded(false);
           setRemoteUnavailable(false);
           setConnectionRecovery('idle');
-          setRewardScope(`${ownerUid}:${state.session?.courseCode || sessionId}`);
+          setRewardScope(`${ownerUid}:${state.session?.rewardScopeId || state.session?.courseCode || sessionId}`);
           setLessonState({
             ...DEFAULT_STATE,
             ...state,
@@ -1224,9 +1226,10 @@ export default function StudentWelcomePage() {
     if (!remoteSession || !studentNumber || !lessonState.session.courseCode) return;
     let cancelled = false;
     setManagedRewardsLoading(true);
+    const rewardCourseKey = lessonState.session.courseId || lessonState.session.courseCode;
     Promise.all([
-      getAvailableRewardsForStudent(remoteSession.ownerUid, lessonState.session.courseCode),
-      getStudentRewardRequests(remoteSession.ownerUid, lessonState.session.courseCode),
+      getAvailableRewardsForStudent(remoteSession.ownerUid, rewardCourseKey),
+      getStudentRewardRequests(remoteSession.ownerUid, rewardCourseKey),
     ]).then(([rewardDefinitions, rewardRequests]) => {
       if (cancelled) return;
       setManagedRewards(rewardDefinitions);
@@ -1237,7 +1240,7 @@ export default function StudentWelcomePage() {
       if (!cancelled) setManagedRewardsLoading(false);
     });
     return () => { cancelled = true; };
-  }, [lessonState.session.courseCode, remoteSession, studentNumber]);
+  }, [lessonState.session.courseCode, lessonState.session.courseId, remoteSession, studentNumber]);
 
   const awardReward = useCallback((eventKey: string, balance: RewardBalance, amount: number, label: string) => {
     setRewardState((current) => {
@@ -1387,9 +1390,10 @@ export default function StudentWelcomePage() {
   const availableTeamIds = lessonState.teams.map((team) => team.id).join('|');
   useEffect(() => {
     if (lessonState.activeInteraction?.type !== 'group-work') return;
-    const savedTeamId = window.localStorage.getItem(`classfully-team:${lessonState.session.courseCode}`) || '';
+    const teamStorageScope = lessonState.session.courseId || lessonState.session.rewardScopeId || lessonState.session.courseCode;
+    const savedTeamId = window.localStorage.getItem(`classfully-team:${teamStorageScope}`) || '';
     if (availableTeamIds.split('|').includes(savedTeamId)) setSelectedTeamId(savedTeamId);
-  }, [availableTeamIds, lessonState.activeInteraction?.type, lessonState.interactionResults?.runId, lessonState.session.courseCode]);
+  }, [availableTeamIds, lessonState.activeInteraction?.type, lessonState.interactionResults?.runId, lessonState.session.courseCode, lessonState.session.courseId, lessonState.session.rewardScopeId]);
 
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1498,7 +1502,7 @@ export default function StudentWelcomePage() {
       }
       setInteractionSubmitted(true);
       window.localStorage.removeItem(`classfully-response-draft:${responseScope}`);
-      if (response.teamId) window.localStorage.setItem(`classfully-team:${lessonState.session.courseCode}`, response.teamId);
+      if (response.teamId) window.localStorage.setItem(`classfully-team:${lessonState.session.courseId || lessonState.session.rewardScopeId || lessonState.session.courseCode}`, response.teamId);
       completeTransport(transportId);
       const participationPoints = getParticipationPoints(interaction.type);
       window.setTimeout(() => {
@@ -1574,7 +1578,7 @@ export default function StudentWelcomePage() {
           reward: managedReward,
           pointsAtRequest: rewardState.seminarPoints,
         });
-        setManagedRequests(await getStudentRewardRequests(remoteSession.ownerUid, managedReward.courseCode));
+        setManagedRequests(await getStudentRewardRequests(remoteSession.ownerUid, managedReward.courseId));
         confirmResponseHaptic();
       } catch (requestError) {
         setRewardRequestError(getUserFacingError(requestError, 'The reward request did not go through. Your points are unchanged, so you can try again.'));
@@ -1965,7 +1969,7 @@ export default function StudentWelcomePage() {
                   </label>
                 ) : (
                   <div className="student-group-response">
-                    {lessonState.activeInteraction.type === 'group-work' && lessonState.teams.length > 0 && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); persistResponseDraft({ selectedTeamId: event.target.value }); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{lessonState.teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
+                  {lessonState.activeInteraction.type === 'group-work' && lessonState.teams.length > 0 && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); persistResponseDraft({ selectedTeamId: event.target.value }); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseId || lessonState.session.rewardScopeId || lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{lessonState.teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
                     <textarea value={writtenResponse} onChange={(event) => { const value = event.target.value.slice(0, 280); setWrittenResponse(value); persistResponseDraft({ writtenResponse: value }); }} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'One response from your team' : 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Your team response' : 'Your group response' : 'Your response'} />
                   </div>
                 )}

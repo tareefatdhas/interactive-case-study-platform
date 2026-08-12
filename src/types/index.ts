@@ -120,6 +120,7 @@ export interface Session {
   teacherId: string;
   courseId?: string;
   courseCode?: string;
+  rewardScopeId?: string;
   courseName?: string;
   scheduledFor?: string;
   presentationMode?: 'external';
@@ -252,6 +253,7 @@ export interface Course {
   id: string;
   name: string;
   code: string;
+  rewardScopeId?: string;
   teacherId: string;
   studentIds: string[];
   term?: string;

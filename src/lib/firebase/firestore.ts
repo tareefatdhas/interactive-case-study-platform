@@ -15,7 +15,8 @@ import {
   DocumentData,
   WriteBatch,
   writeBatch,
-  arrayUnion
+  arrayUnion,
+  deleteField,
 } from 'firebase/firestore';
 import { db } from './config';
 import type {
@@ -145,6 +146,7 @@ export const createCourse = async (
   const now = Timestamp.now();
   const docRef = await addDoc(collection(db, COLLECTIONS.COURSES), {
     ...omitUndefinedValues(course),
+    rewardScopeId: course.rewardScopeId || course.code,
     archived: course.archived ?? false,
     createdAt: now,
     updatedAt: now,
@@ -176,6 +178,55 @@ export const updateCourse = async (
     ...omitUndefinedValues(updates),
     updatedAt: Timestamp.now(),
   });
+};
+
+export const updateCourseIdentity = async (
+  course: Course,
+  sessionIds: string[],
+  updates: { name: string; code: string; term?: string },
+): Promise<void> => {
+  const normalizedCode = updates.code.trim().toUpperCase();
+  const rewardScopeId = course.rewardScopeId || course.code;
+  const rewardSnapshot = await getDocs(query(
+    collection(db, 'rewardDefinitions'),
+    where('courseId', '==', course.id),
+  ));
+  const uniqueSessionIds = [...new Set(sessionIds)];
+  const writeCount = 2 + uniqueSessionIds.length + rewardSnapshot.size;
+  if (writeCount > 490) {
+    throw new Error('This class has too many linked records to update safely in one step.');
+  }
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, COLLECTIONS.COURSES, course.id), omitUndefinedValues({
+    name: updates.name.trim(),
+    code: normalizedCode,
+    term: updates.term?.trim() || deleteField(),
+    rewardScopeId,
+    updatedAt: Timestamp.now(),
+  }));
+  uniqueSessionIds.forEach((sessionId) => {
+    batch.update(doc(db, COLLECTIONS.SESSIONS, sessionId), {
+      courseId: course.id,
+      courseCode: normalizedCode,
+      courseName: updates.name.trim(),
+      rewardScopeId,
+    });
+  });
+  rewardSnapshot.docs.forEach((rewardDoc) => {
+    batch.update(rewardDoc.ref, { courseCode: normalizedCode, updatedAt: Timestamp.now() });
+  });
+  batch.set(doc(db, 'teamModules', course.id), omitUndefinedValues({
+    courseId: course.id,
+    teacherId: course.teacherId,
+    courseCode: normalizedCode,
+    courseName: updates.name.trim(),
+    term: updates.term?.trim() || deleteField(),
+    tags: course.teamTags || [],
+    enabled: !course.archived,
+    updatedAt: Timestamp.now(),
+  }), { merge: true });
+  await batch.commit();
 };
 
 // Sessions

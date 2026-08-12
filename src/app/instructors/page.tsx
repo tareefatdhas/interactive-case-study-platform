@@ -71,8 +71,8 @@ export default function InstructorsPage() {
         <div className="mx-auto grid max-w-7xl gap-14 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-2">
           <div>
             <Users className="h-6 w-6 text-[var(--seminar-violet)]" />
-            <h2 className="seminar-display mt-5 text-4xl text-[var(--seminar-ink)]">Read a room of 100 to 200.</h2>
-            <p className="mt-4 leading-7 text-[var(--seminar-muted)]">Large classes need useful patterns, not 200 individual alerts. The console focuses attention on totals, unanswered questions, attendance, and responses that need a pause.</p>
+            <h2 className="seminar-display mt-5 text-4xl text-[var(--seminar-ink)]">Read the room, whatever its size.</h2>
+            <p className="mt-4 leading-7 text-[var(--seminar-muted)]">From small seminars to full lecture halls, the console turns individual responses into useful patterns. See attendance, unanswered questions, and signals that suggest it is time to pause.</p>
           </div>
           <div>
             <Presentation className="h-6 w-6 text-[var(--seminar-violet)]" />
