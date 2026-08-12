@@ -3,6 +3,7 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
 import { getStorage } from 'firebase/storage';
+import { getFunctions } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -24,5 +25,6 @@ export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const realtimeDb = getDatabase(app);
 export const storage = getStorage(app);
+export const functions = getFunctions(app, 'asia-southeast1');
 
 export default app;

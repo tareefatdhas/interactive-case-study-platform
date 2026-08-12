@@ -18,6 +18,7 @@ import {
 } from './firestore';
 import type { Session } from '@/types';
 import { Timestamp } from 'firebase/firestore';
+import { claimSessionStart } from './billing';
 
 // Create a session in both databases
 export const createHybridSession = async (sessionData: Omit<Session, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -39,10 +40,7 @@ export const createHybridSession = async (sessionData: Omit<Session, 'id' | 'cre
 // Start a session (activate live features)
 export const startHybridSession = async (sessionId: string) => {
   // 1. Update Firestore
-  await updateFirestoreSession(sessionId, {
-    active: true,
-    startedAt: Timestamp.now()
-  });
+  await claimSessionStart(sessionId);
   
   // 2. Update Realtime Database
   await updateSessionStatus(sessionId, {

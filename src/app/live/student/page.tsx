@@ -263,6 +263,7 @@ function StudentPostSubmit({
   writtenResponses,
   rewardState,
   latestReward,
+  showRewards,
   phase,
   guidance,
 }: {
@@ -285,6 +286,7 @@ function StudentPostSubmit({
   writtenResponses: Array<{ id: string; text: string }>;
   rewardState: StudentRewardState;
   latestReward: RewardLedgerEntry | null;
+  showRewards: boolean;
   phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
   guidance?: ReactNode;
 }) {
@@ -301,7 +303,7 @@ function StudentPostSubmit({
     <div className="student-after-response">
       <div className="student-response-confirmation" role="status"><Check size={19} /><strong>Response sent</strong></div>
 
-      <div className={`student-reward-arrival ${latestReward ? 'is-arriving' : ''}`} data-reward={latestReward ? `+${latestReward.amount}` : undefined} aria-live="polite">
+      {showRewards && <div className={`student-reward-arrival ${latestReward ? 'is-arriving' : ''}`} data-reward={latestReward ? `+${latestReward.amount}` : undefined} aria-live="polite">
         <ParticipationSignal active={Boolean(latestReward)} />
         <span><span className="student-ripple-glyph" aria-hidden="true"><i /><i /></span></span>
         <div>
@@ -309,7 +311,7 @@ function StudentPostSubmit({
           <strong>{latestReward ? `+${latestReward.amount} ${latestReward.balance === 'score' ? 'class score' : 'points'}` : `${rewardState.seminarPoints} points`}</strong>
         </div>
         <b>{latestReward?.balance === 'score' ? rewardState.classScore : rewardState.seminarPoints}</b>
-      </div>
+      </div>}
 
       <details className="student-answer-summary">
         <summary><ClipboardCheck size={19} /><span>Your answer: <strong>{answer}</strong></span><ChevronDown size={19} /></summary>
@@ -1045,7 +1047,9 @@ export default function StudentWelcomePage() {
               const ended = meta?.status === 'ended' || Boolean(meta?.expiresAt && meta.expiresAt < Date.now());
               setRemoteEnded(ended);
               if (meta) {
-                setRewardScope(`${ownerUid}:${meta.rewardScopeId || meta.courseCode || sessionId}`);
+                setRewardScope((meta.participationMode || 'course-record') === 'course-record'
+                  ? `${ownerUid}:${meta.rewardScopeId || meta.courseCode || sessionId}`
+                  : '');
                 setLessonState((current) => ({
                   ...current,
                   session: {
@@ -1058,6 +1062,7 @@ export default function StudentWelcomePage() {
                     rewardScopeId: meta.rewardScopeId,
                     courseName: meta.courseName,
                     sessionTitle: meta.sessionTitle,
+                    participationMode: meta.participationMode || 'course-record',
                   },
                 }));
               }
@@ -1090,7 +1095,7 @@ export default function StudentWelcomePage() {
           setRemoteEnded(false);
           setRemoteUnavailable(false);
           setConnectionRecovery('idle');
-          setRewardScope(`${ownerUid}:${state.session?.rewardScopeId || state.session?.courseCode || sessionId}`);
+          setRewardScope(state.session?.participationMode === 'course-record' ? `${ownerUid}:${state.session?.rewardScopeId || state.session?.courseCode || sessionId}` : '');
           setLessonState({
             ...DEFAULT_STATE,
             ...state,
@@ -1223,7 +1228,12 @@ export default function StudentWelcomePage() {
   }, [remoteSession]);
 
   useEffect(() => {
-    if (!remoteSession || !studentNumber || !lessonState.session.courseCode) return;
+    if (!remoteSession || lessonState.session.participationMode !== 'course-record' || !studentNumber || !lessonState.session.courseCode) {
+      setManagedRewards([]);
+      setManagedRequests([]);
+      setManagedRewardsLoading(false);
+      return;
+    }
     let cancelled = false;
     setManagedRewardsLoading(true);
     const rewardCourseKey = lessonState.session.courseId || lessonState.session.courseCode;
@@ -1243,6 +1253,7 @@ export default function StudentWelcomePage() {
   }, [lessonState.session.courseCode, lessonState.session.courseId, remoteSession, studentNumber]);
 
   const awardReward = useCallback((eventKey: string, balance: RewardBalance, amount: number, label: string) => {
+    if (remoteSession && lessonState.session.participationMode !== 'course-record') return;
     setRewardState((current) => {
       const applied = applyReward(current, { eventKey, balance, amount, label });
       if (applied.entry) {
@@ -1251,9 +1262,10 @@ export default function StudentWelcomePage() {
       }
       return applied.state;
     });
-  }, [rewardScope]);
+  }, [lessonState.session.participationMode, remoteSession, rewardScope]);
 
   const claimQuestionReward = useCallback(async (type: QuestionPointRuleKey, questionId: number) => {
+    if (remoteSession && lessonState.session.participationMode !== 'course-record') return;
     const rule = getQuestionPointRule(type);
     const claimKey = `${type}:${questionId}`;
     if (pendingQuestionClaimsRef.current.has(claimKey)) return;
@@ -1273,7 +1285,7 @@ export default function StudentWelcomePage() {
     } finally {
       pendingQuestionClaimsRef.current.delete(claimKey);
     }
-  }, [awardReward, remoteSession]);
+  }, [awardReward, lessonState.session.participationMode, remoteSession]);
 
   useEffect(() => {
     if (!remoteSession) return;
@@ -1687,7 +1699,9 @@ export default function StudentWelcomePage() {
     return statuses;
   }, {});
 
-  const courseSpaceEnabled = !remoteSession || Boolean(studentNumber);
+  const courseSpaceEnabled = !remoteSession || (
+    lessonState.session.participationMode === 'course-record' && Boolean(studentNumber)
+  );
   const lobbyGuidance: StudentGuidanceId | null = guidanceReady && lessonState.lobbyOpen && !lessonState.activeInteraction
     ? !learnedGuidance.includes('questions') ? 'questions'
       : null
@@ -1885,6 +1899,7 @@ export default function StudentWelcomePage() {
                 writtenResponses={lessonState.interactionResults.writtenResponses}
                 rewardState={rewardState}
                 latestReward={latestReward}
+                showRewards={courseSpaceEnabled}
                 phase={lessonState.interactionResults.phase}
                 guidance={waitingGuidance && !guidanceHiddenForMoment && !questionSheetOpen && !courseSpaceOpen ? (
                   <StudentQuietGuide

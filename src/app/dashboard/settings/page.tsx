@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import InstructorAvatar from '@/components/teacher/InstructorAvatar';
+import BillingSettings from '@/components/teacher/BillingSettings';
 import { 
   User, 
   Lock, 
@@ -317,6 +318,8 @@ export default function SettingsPage() {
                 </div>
               </div>
             </Card>
+
+            <BillingSettings />
 
             {/* Security Settings */}
             <Card>

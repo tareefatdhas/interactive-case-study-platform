@@ -31,7 +31,7 @@ export default function MarketingFooter() {
         </nav>
       </div>
       <div className="mx-auto flex max-w-7xl flex-col gap-2 border-t border-[var(--seminar-line)] px-5 py-5 text-xs text-[var(--seminar-muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8">
-        <span>© 2026 Classfully. Operated by Tareef Jafferi.</span>
+        <span>© 2026 Classfully.</span>
         <Link href="mailto:tareef@happily.ai">tareef@happily.ai</Link>
       </div>
     </footer>

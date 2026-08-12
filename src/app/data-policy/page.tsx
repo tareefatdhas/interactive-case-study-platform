@@ -24,7 +24,7 @@ export default function DataPolicyPage() {
         <h2>2. Information Classfully may process</h2>
         <ul>
           <li><strong>Instructor information:</strong> name, email address, account identifiers, course details, lesson material, interaction plans, and support messages.</li>
-          <li><strong>Student identity information:</strong> student number, optional preferred name, class membership, temporary authentication identifier, and device or session identifiers used to prevent duplicate responses.</li>
+          <li><strong>Student identity information, when the instructor enables it:</strong> student number, preferred name or session nickname, class membership, temporary authentication identifier, and device or session identifiers used to prevent duplicate responses. Anonymous participation does not ask for a student number or name.</li>
           <li><strong>Classroom activity:</strong> attendance, poll and quiz responses, written responses, questions, votes, check-ins, points, streaks, rewards, and timestamps.</li>
           <li><strong>Optional pulse information:</strong> pace, confidence, sentiment, or wellbeing responses. These prompts should remain optional and must not be used for grading or discipline.</li>
           <li><strong>Technical information:</strong> browser, device, IP address, security events, diagnostic logs, and service usage needed to operate and protect the platform.</li>
@@ -33,7 +33,8 @@ export default function DataPolicyPage() {
 
       <section>
         <h2>3. How information is used</h2>
-        <p>Information is used to authenticate users, run live activities, record attendance, preserve course progress, show class-level results, calculate instructor-approved points or rewards, deliver instructor-selected class reports, provide support, maintain security, improve reliability, and meet legal obligations.</p>
+        <p>Information is used to authenticate users, run live activities, record attendance where enabled, preserve course progress for identified students, show class-level results, calculate instructor-approved points or rewards for course-record sessions, deliver instructor-selected class reports, provide support, maintain security, improve reliability, and meet legal obligations.</p>
+        <p>Instructors can instead run a session using names or nicknames without student numbers, or use anonymous participation. Those modes keep participation within that session and do not create individual attendance, progress, streak, leaderboard, or reward records across the course.</p>
         <p>Email reports use class-level totals and links back to the authenticated instructor workspace. Student names, student numbers, and individual responses should remain inside Classfully rather than being included in email.</p>
         <p>Classfully does not sell student personal data. Individual student numbers and personal pulse responses are not shown on the classroom projector. Instructors choose when an anonymous written response is shared with the room.</p>
       </section>

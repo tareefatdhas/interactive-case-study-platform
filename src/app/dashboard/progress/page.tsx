@@ -275,7 +275,7 @@ function ProgressContent() {
           .map((session) => syncStandaloneSessionStudents(
             session.id,
             user.uid,
-            Object.values(records[session.id]?.attendance || {}).map((claim) => claim.studentNumber),
+            Object.values(records[session.id]?.attendance || {}).flatMap((claim) => claim.participationMode !== 'session-name' && claim.participationMode !== 'anonymous' && claim.studentNumber ? [claim.studentNumber] : []),
           )));
 
         const knownStudents = Array.from((studentData as StudentWithStats[]).reduce((byStudentNumber, student) => {
@@ -288,6 +288,8 @@ function ProgressContent() {
         const attendanceOnlyStudents: StudentWithStats[] = [];
 
         Object.values(records).forEach((record) => Object.values(record.attendance).forEach((claim) => {
+          if (claim.participationMode && claim.participationMode !== 'course-record') return;
+          if (!claim.studentNumber) return;
           const normalized = normalizeStudentNumber(claim.studentNumber);
           if (!normalized || knownNumbers.has(normalized)) return;
           knownNumbers.add(normalized);
@@ -349,7 +351,7 @@ function ProgressContent() {
   const attendedSession = useCallback((session: Session, student: StudentWithStats) => {
     if (hasStudent(session, student)) return true;
     const target = normalizeStudentNumber(student.studentId);
-    return Object.values(liveRecords[session.id]?.attendance || {}).some((claim) => normalizeStudentNumber(claim.studentNumber) === target);
+    return Object.values(liveRecords[session.id]?.attendance || {}).some((claim) => claim.participationMode !== 'session-name' && claim.participationMode !== 'anonymous' && normalizeStudentNumber(claim.studentNumber || '') === target);
   }, [liveRecords]);
 
   const studentMetrics = useCallback((student: StudentWithStats, scopedSessions: Session[]): LiveStudentMetrics => {
@@ -362,7 +364,7 @@ function ProgressContent() {
 
     const sessionStates = scopedSessions.map((session) => {
       const records = liveRecords[session.id];
-      const studentUid = Object.entries(records?.attendance || {}).find(([, claim]) => normalizeStudentNumber(claim.studentNumber) === target)?.[0];
+      const studentUid = Object.entries(records?.attendance || {}).find(([, claim]) => claim.participationMode !== 'session-name' && claim.participationMode !== 'anonymous' && normalizeStudentNumber(claim.studentNumber || '') === target)?.[0];
       const sessionResponses = studentUid
         ? Object.values(records?.responses || {}).map((runResponses) => runResponses[studentUid]).filter(Boolean)
         : [];
@@ -500,7 +502,7 @@ function ProgressContent() {
     const attendanceClaims = Object.values(record?.attendance || {});
     const joined = new Set([
       ...(session.studentsJoined || []).map(normalizeStudentNumber),
-      ...attendanceClaims.map((claim) => normalizeStudentNumber(claim.studentNumber)),
+      ...attendanceClaims.flatMap((claim) => claim.participationMode !== 'session-name' && claim.participationMode !== 'anonymous' && claim.studentNumber ? [normalizeStudentNumber(claim.studentNumber)] : []),
     ].filter(Boolean));
     const respondents = new Set<string>();
     const pulseResponses: Array<{ interaction: SessionInteraction; response: StoredLiveResponse }> = [];

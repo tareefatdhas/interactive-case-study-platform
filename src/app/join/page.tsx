@@ -17,6 +17,7 @@ import Input from '@/components/ui/Input';
 import ClassfullyBrand from '@/components/marketing/ClassfullyBrand';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { ArrowRight, CheckCircle2, EyeOff, Smartphone, UserRound, Users } from 'lucide-react';
+import type { SessionParticipationMode } from '@/types';
 
 const REMEMBERED_STUDENT_KEY = 'classfully-remembered-student';
 
@@ -45,6 +46,8 @@ export default function JoinPage() {
   const [rememberOnDevice, setRememberOnDevice] = useState(true);
   const [rememberedStudentNumber, setRememberedStudentNumber] = useState('');
   const [codeFromLink, setCodeFromLink] = useState(false);
+  const [participationMode, setParticipationMode] = useState<SessionParticipationMode | null>(null);
+  const [checkingClass, setCheckingClass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const codeInputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +83,28 @@ export default function JoinPage() {
     });
   }, []);
 
+  useEffect(() => {
+    const normalizedCode = sessionCode.replace(/[^a-z0-9]/gi, '').toUpperCase();
+    if (normalizedCode.length !== 6) {
+      setParticipationMode(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setCheckingClass(true);
+      try {
+        await ensureStudentAnonymousAuth();
+        const liveClassroom = await getLiveClassroomByCode(normalizedCode);
+        if (!cancelled) setParticipationMode(liveClassroom?.participationMode || 'course-record');
+      } catch {
+        if (!cancelled) setParticipationMode(null);
+      } finally {
+        if (!cancelled) setCheckingClass(false);
+      }
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [sessionCode]);
+
   const saveRememberedStudent = (normalizedStudentNumber: string, normalizedDisplayName: string) => {
     if (!rememberOnDevice) {
       window.localStorage.removeItem(REMEMBERED_STUDENT_KEY);
@@ -107,10 +132,7 @@ export default function JoinPage() {
 
   const handleJoinSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sessionCode.trim() || normalizeStudentNumber(studentNumber).length < 3 || !privacyAcknowledged) {
-      setError('Enter your class code and student number, then review the privacy notice.');
-      return;
-    }
+    if (!sessionCode.trim()) return setError('Enter the class code shown by your instructor.');
 
     setLoading(true);
     setError('');
@@ -122,8 +144,12 @@ export default function JoinPage() {
       const normalizedDisplayName = normalizeStudentDisplayName(studentDisplayName);
       const liveClassroom = await getLiveClassroomByCode(normalizedCode);
       if (liveClassroom) {
-        await claimStudentAttendance(liveClassroom.ownerUid, liveClassroom.sessionId, normalizedStudentNumber, normalizedDisplayName);
-        saveRememberedStudent(normalizedStudentNumber, normalizedDisplayName);
+        const participationMode: SessionParticipationMode = liveClassroom.participationMode || 'course-record';
+        if (participationMode === 'course-record' && normalizedStudentNumber.length < 3) return setError('Enter your student number so this session can join your course record.');
+        if (participationMode === 'session-name' && normalizedDisplayName.length < 2) return setError('Enter a name or nickname for this session.');
+        if (participationMode !== 'anonymous' && !privacyAcknowledged) return setError('Review the privacy notice before joining.');
+        await claimStudentAttendance(liveClassroom.ownerUid, liveClassroom.sessionId, normalizedStudentNumber, normalizedDisplayName, participationMode);
+        if (participationMode === 'course-record') saveRememberedStudent(normalizedStudentNumber, normalizedDisplayName);
         router.push(`/live/student?sessionId=${encodeURIComponent(liveClassroom.sessionId)}&ownerUid=${encodeURIComponent(liveClassroom.ownerUid)}`);
         return;
       }
@@ -180,7 +206,7 @@ export default function JoinPage() {
 
         <section className="order-1 rounded-[24px] border border-[#e3e5ed] bg-white p-6 shadow-[0_24px_70px_rgba(16,26,56,0.08)] sm:p-8 lg:order-2" aria-labelledby="join-form-title">
             <h2 id="join-form-title" className="seminar-display text-3xl text-[#101a38]">{codeFromLink ? 'You found the class' : 'Join this class'}</h2>
-            <p className="mt-2 text-sm leading-6 text-[#697087]">{codeFromLink ? 'Confirm your student number to join and record attendance.' : 'Use the code on the projector, then identify yourself for attendance.'}</p>
+            <p className="mt-2 text-sm leading-6 text-[#697087]">Enter the class code first. The next step depends on how your instructor is running this session.</p>
             <form onSubmit={handleJoinSession} className="space-y-6">
               <div className="mt-6 space-y-4">
                 {codeFromLink ? (
@@ -208,7 +234,13 @@ export default function JoinPage() {
                   />
                 )}
 
-                <div>
+                {checkingClass && <p className="text-sm text-[#697087]">Checking how this class is joining…</p>}
+                {participationMode && <div className="rounded-xl border border-[#dcd8ff] bg-[#f7f5ff] p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5]">{participationMode === 'course-record' ? 'Course record' : participationMode === 'session-name' ? 'Names for this session' : 'Anonymous session'}</p>
+                  <p className="mt-1 text-sm leading-6 text-[#555d73]">{participationMode === 'course-record' ? 'Your attendance, progress, points, and rewards can carry into future sessions.' : participationMode === 'session-name' ? 'Your nickname helps the instructor recognize you today. This session will not be added to a course-long record.' : 'No name or student number is collected. Responses contribute only to this session’s class results.'}</p>
+                </div>}
+
+                {participationMode === 'course-record' && <div>
                   <Input
                     label="Student number"
                     ref={studentNumberInputRef}
@@ -221,14 +253,13 @@ export default function JoinPage() {
                     spellCheck={false}
                     autoComplete="username"
                     className="h-14 text-lg font-semibold tracking-[0.04em]"
-                    required
                   />
-                  <p className="mt-2 text-xs leading-5 text-[#697087]">Used for attendance and course progress. It is never shown to classmates.</p>
-                </div>
+                  <p className="mt-2 text-xs leading-5 text-[#697087]">Required only when your instructor is recording attendance and course progress.</p>
+                </div>}
 
-                <div>
+                {(participationMode === 'course-record' || participationMode === 'session-name') && <div>
                   <Input
-                    label="Preferred name (optional)"
+                    label="Name or nickname (if requested)"
                     value={studentDisplayName}
                     onChange={(e) => setStudentDisplayName(e.target.value.slice(0, 60))}
                     placeholder="What your instructor should call you"
@@ -236,10 +267,10 @@ export default function JoinPage() {
                     autoComplete="name"
                     className="h-14 text-base font-semibold"
                   />
-                  <p className="mt-2 text-xs leading-5 text-[#697087]">Shown only to you and your instructor. Class standings still use a private alias.</p>
-                </div>
+                  <p className="mt-2 text-xs leading-5 text-[#697087]">A session using names can recognize you today without creating a course-long record.</p>
+                </div>}
 
-                {rememberedStudentNumber && (
+                {participationMode === 'course-record' && rememberedStudentNumber && (
                   <div className="flex items-center gap-3 rounded-xl border border-[#dcd8ff] bg-[#f7f5ff] p-4">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#5146e5]"><UserRound className="h-5 w-5" aria-hidden="true" /></span>
                     <div className="min-w-0 flex-1"><p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#7057e8]">Welcome back</p><p className="mt-0.5 text-sm font-semibold text-[#101a38]">{studentDisplayName || 'Student'} · {maskStudentNumber(rememberedStudentNumber)}</p></div>
@@ -247,7 +278,7 @@ export default function JoinPage() {
                   </div>
                 )}
 
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e3e5ed] p-3.5 text-sm leading-6 text-[#555d73]">
+                {participationMode === 'course-record' && <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e3e5ed] p-3.5 text-sm leading-6 text-[#555d73]">
                   <input
                     type="checkbox"
                     checked={rememberOnDevice}
@@ -255,18 +286,17 @@ export default function JoinPage() {
                     className="mt-1 h-4 w-4 shrink-0 accent-[#5146e5]"
                   />
                   <span><strong className="font-semibold text-[#313950]">Remember me on this device.</strong> Use this only on your own phone or computer.</span>
-                </label>
+                </label>}
 
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e3e5ed] bg-[#fbfbfd] p-4 text-sm leading-6 text-[#555d73]">
+                {participationMode !== 'anonymous' && participationMode !== null && <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e3e5ed] bg-[#fbfbfd] p-4 text-sm leading-6 text-[#555d73]">
                   <input
                     type="checkbox"
                     checked={privacyAcknowledged}
                     onChange={(event) => setPrivacyAcknowledged(event.target.checked)}
                     className="mt-1 h-4 w-4 shrink-0 accent-[#5146e5]"
-                    required
                   />
-                  <span>I have read how my student number, optional preferred name, and class responses are used. <Link className="font-semibold text-[#5146e5] underline underline-offset-2" href={`/privacy?version=${STUDENT_PRIVACY_NOTICE_VERSION}`} target="_blank">Read the student privacy notice</Link>.</span>
-                </label>
+                  <span>I have read how any identity details and class responses are used. Anonymous participation does not require this acknowledgement. <Link className="font-semibold text-[#5146e5] underline underline-offset-2" href={`/privacy?version=${STUDENT_PRIVACY_NOTICE_VERSION}`} target="_blank">Read the student privacy notice</Link>.</span>
+                </label>}
 
                 {error && (
                   <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">

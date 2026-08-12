@@ -15,6 +15,7 @@ interface DialogProps {
   cancelText?: string;
   variant?: 'default' | 'destructive';
   children?: ReactNode;
+  size?: 'default' | 'wide';
 }
 
 export default function Dialog({
@@ -26,7 +27,8 @@ export default function Dialog({
   confirmText = 'OK',
   cancelText = 'Cancel',
   variant = 'default',
-  children
+  children,
+  size = 'default'
 }: DialogProps) {
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -108,7 +110,7 @@ export default function Dialog({
       {/* Dialog */}
       <div 
         ref={dialogRef}
-        className="relative bg-white/95 backdrop-blur-md rounded-lg shadow-2xl max-w-md w-full mx-auto transform transition-all z-10 border border-gray-200/50"
+        className={`relative max-h-[calc(100vh-2rem)] w-full overflow-y-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl mx-auto transform transition-all z-10 border border-gray-200/50 ${size === 'wide' ? 'max-w-2xl' : 'max-w-md'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"

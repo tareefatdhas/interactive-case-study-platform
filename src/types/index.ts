@@ -42,6 +42,8 @@ export interface CaseStudy {
 
 export type SessionType = 'case-study' | 'standalone';
 
+export type SessionParticipationMode = 'course-record' | 'session-name' | 'anonymous';
+
 export type SessionInteractionType =
   | 'pulse'
   | 'poll'
@@ -124,6 +126,7 @@ export interface Session {
   courseName?: string;
   scheduledFor?: string;
   presentationMode?: 'external';
+  participationMode?: SessionParticipationMode;
   interactions?: SessionInteraction[];
   courseSourceIds?: string[];
   interactionRuns?: SessionInteractionRun[];
@@ -239,8 +242,52 @@ export interface Teacher {
   photoURL?: string;
   timeZone?: string;
   notificationPreferences?: TeacherNotificationPreferences;
+  billing?: TeacherBilling;
   courseIds: string[];
   createdAt: Timestamp;
+}
+
+export type BillingPlan = 'pilot' | 'instructor_term' | 'instructor_annual' | 'institution';
+export type BillingStatus = 'pilot' | 'trialing' | 'active' | 'past_due' | 'unpaid' | 'canceled' | 'paused' | 'inactive' | 'incomplete' | 'incomplete_expired';
+
+export interface TeacherBilling {
+  plan: BillingPlan;
+  status: BillingStatus;
+  pilotSessionsUsed: number;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripePriceId?: string | null;
+  currentPeriodEnd?: Timestamp | null;
+  graceEndsAt?: Timestamp | null;
+  cancelAtPeriodEnd?: boolean;
+  lastStripeEventCreated?: number;
+  updatedAt?: Timestamp;
+}
+
+export interface InstructorBillingSummary {
+  plan: BillingPlan;
+  effectivePlan: BillingPlan;
+  status: BillingStatus;
+  paid: boolean;
+  hasBillingAccount: boolean;
+  pilotSessionsUsed: number;
+  sessionsRemaining: number | null;
+  canStartSession: boolean;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+  graceEndsAt: string | null;
+  billingEnabled: boolean;
+  limits: {
+    activeCourses: number | null;
+    studentsPerCourse: number | null;
+    liveSessions: number | null;
+  };
+  usage: {
+    activeCourses?: number;
+    totalCourses?: number;
+    totalSessions?: number;
+    studentsAcrossCourses?: number;
+  };
 }
 
 export interface TeacherNotificationPreferences {

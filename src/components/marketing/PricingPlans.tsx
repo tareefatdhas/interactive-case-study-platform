@@ -37,7 +37,7 @@ const plans = [
       'Points, streaks, and instructor-approved rewards',
     ],
     cta: 'Start six sessions free',
-    href: '/signup',
+    href: '/signup?plan=instructor-term',
   },
   {
     name: 'Institution',

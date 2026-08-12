@@ -13,13 +13,15 @@ import {
 } from 'firebase/database';
 import { auth, realtimeDb } from './config';
 import { ensureStudentAnonymousAuth, studentAuth, studentRealtimeDb } from './student-config';
-import { STUDENT_PRIVACY_NOTICE_VERSION } from '@/lib/privacy';
+import { httpsCallable } from 'firebase/functions';
+import { studentFunctions } from './student-config';
 import type {
   InteractionResponse,
   LessonDisplayState,
   LiveQuestion,
   LiveSessionContext,
 } from '@/app/live/live-data';
+import type { SessionParticipationMode } from '@/types';
 import { getQuestionPointRule, type QuestionPointRuleKey } from '@/app/live/student/rewards';
 
 export type StoredLiveResponse = InteractionResponse & {
@@ -53,7 +55,8 @@ export type AttendanceStatus = 'claimed' | 'participated' | 'confirmed' | 'excus
 
 export type StoredAttendanceClaim = {
   studentUid: string;
-  studentNumber: string;
+  participationMode?: SessionParticipationMode;
+  studentNumber?: string;
   studentDisplayName?: string;
   status: AttendanceStatus;
   joinedAt: number;
@@ -86,12 +89,15 @@ type InstructorClassroomArchive = {
 
 export type LiveJoinRecord = {
   sessionId: string;
+  courseId?: string;
   ownerUid: string;
   sessionCode: string;
   courseCode: string;
+  rewardScopeId?: string;
   courseName: string;
   sessionTitle: string;
   instructorName: string;
+  participationMode?: SessionParticipationMode;
   status: 'live' | 'ended';
   expiresAt: number;
 };
@@ -143,35 +149,26 @@ export function normalizeStudentDisplayName(value: string) {
   return value.trim().replace(/\s+/g, ' ').slice(0, 60);
 }
 
-export async function claimStudentAttendance(ownerUid: string, sessionId: string, rawStudentNumber: string, rawDisplayName = '') {
-  const student = await ensureStudentAnonymousAuth();
+export async function claimStudentAttendance(
+  ownerUid: string,
+  sessionId: string,
+  rawStudentNumber: string,
+  rawDisplayName = '',
+  participationMode: SessionParticipationMode = 'course-record',
+) {
+  await ensureStudentAnonymousAuth();
   const studentNumber = normalizeStudentNumber(rawStudentNumber);
   const studentDisplayName = normalizeStudentDisplayName(rawDisplayName);
-  if (studentNumber.length < 3) throw new Error('Enter your student number.');
-
-  const claimRef = ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/attendanceClaims/${student.uid}`);
-  const result = await runTransaction(claimRef, (current: StoredAttendanceClaim | null) => {
-    const now = Date.now();
-    if (current?.status === 'participated' && current.studentNumber !== studentNumber) return;
-    const resolvedDisplayName = studentDisplayName || current?.studentDisplayName || '';
-    return {
-      studentUid: student.uid,
-      studentNumber,
-      ...(resolvedDisplayName ? { studentDisplayName: resolvedDisplayName } : {}),
-      status: current?.status || 'claimed',
-      joinedAt: current?.joinedAt || now,
-      updatedAt: now,
-      privacyNoticeVersion: STUDENT_PRIVACY_NOTICE_VERSION,
-      privacyNoticeAcknowledgedAt: now,
-      ...(current?.participatedAt ? { participatedAt: current.participatedAt } : {}),
-    } satisfies StoredAttendanceClaim;
-  });
-
-  const claim = result.snapshot.val() as StoredAttendanceClaim | null;
-  if (!result.committed || !claim || claim.studentNumber !== studentNumber) {
-    throw new Error('This device has already participated under another student number. Use your original device or ask your instructor for help.');
-  }
-  return claim;
+  if (participationMode === 'course-record' && studentNumber.length < 3) throw new Error('Enter your student number.');
+  if (participationMode === 'session-name' && studentDisplayName.length < 2) throw new Error('Enter a name or nickname.');
+  const callable = httpsCallable<{
+    ownerUid: string;
+    sessionId: string;
+    studentNumber: string;
+    studentDisplayName: string;
+    participationMode: SessionParticipationMode;
+  }, StoredAttendanceClaim>(studentFunctions, 'claimStudentAttendance');
+  return (await callable({ ownerUid, sessionId, studentNumber, studentDisplayName, participationMode })).data;
 }
 
 export async function getCurrentStudentAttendance(ownerUid: string, sessionId: string): Promise<StoredAttendanceClaim | null> {
@@ -196,7 +193,7 @@ async function markCurrentStudentParticipated(ownerUid: string, sessionId: strin
   await runTransaction(claimRef, (current: StoredAttendanceClaim | null) => {
     if (!current || current.status !== 'claimed') return current;
     const now = Date.now();
-    return { ...current, status: 'participated', participatedAt: now, updatedAt: now } satisfies StoredAttendanceClaim;
+    return { ...current, participationMode: current.participationMode || 'course-record', status: 'participated', participatedAt: now, updatedAt: now } satisfies StoredAttendanceClaim;
   });
 }
 
@@ -242,12 +239,15 @@ export async function initializeInstructorClassroom(
 
   const joinRecord: LiveJoinRecord = {
     sessionId,
+    ...(session.courseId ? { courseId: session.courseId } : {}),
     ownerUid: instructor.uid,
     sessionCode: session.sessionCode,
     courseCode: session.courseCode,
+    ...(session.rewardScopeId ? { rewardScopeId: session.rewardScopeId } : {}),
     courseName: session.courseName || '',
     sessionTitle: session.sessionTitle,
     instructorName: session.instructorName || 'Your instructor',
+    participationMode: session.participationMode || 'course-record',
     status: 'live',
     expiresAt: meta.expiresAt,
   };
@@ -294,12 +294,15 @@ export async function endInstructorClassroom(ownerUid: string, sessionId: string
 
 async function settleQuestionPointClaims(ownerUid: string, sessionId: string) {
   const basePath = roomPath(ownerUid, sessionId);
-  const [questionsSnapshot, votesSnapshot, claimsSnapshot, recognizedSnapshot] = await Promise.all([
+  const [metaSnapshot, questionsSnapshot, votesSnapshot, claimsSnapshot, recognizedSnapshot] = await Promise.all([
+    get(ref(realtimeDb, `${basePath}/meta`)),
     get(ref(realtimeDb, `${basePath}/studentQuestions`)),
     get(ref(realtimeDb, `${basePath}/questionVotes`)),
     get(ref(realtimeDb, `${basePath}/questionPointClaims`)),
     get(ref(realtimeDb, `${basePath}/recognizedQuestions`)),
   ]);
+  const meta = metaSnapshot.val() as LiveClassroomMeta | null;
+  if ((meta?.participationMode || 'course-record') !== 'course-record') return;
   const questionsByStudent = (questionsSnapshot.val() || {}) as Record<string, Record<string, StoredStudentQuestion>>;
   const votesByQuestion = (votesSnapshot.val() || {}) as Record<string, Record<string, true>>;
   const claimsByStudent = (claimsSnapshot.val() || {}) as Record<string, Record<string, StoredQuestionPointClaim>>;

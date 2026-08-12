@@ -198,7 +198,11 @@ export default function InstructorRemotePage() {
         wheelItemColors = uniqueTeams.map((team) => colors[team.color || ''] || '#5146e5');
       } else if ((interaction.wheelSource || 'students') === 'students' && classroomIds) {
         const records = await getInstructorClassroomRecords(classroomIds.ownerUid, classroomIds.sessionId).catch(() => null);
-        wheelItems = Object.values(records?.attendance || {}).map((claim) => claim.studentDisplayName?.trim() || `Student •${claim.studentNumber.slice(-4)}`);
+        wheelItems = Object.values(records?.attendance || {}).flatMap((claim) => {
+          if (claim.studentDisplayName?.trim()) return [claim.studentDisplayName.trim()];
+          if (claim.studentNumber) return [`Student •${claim.studentNumber.slice(-4)}`];
+          return [];
+        });
       }
       wheelItems = [...new Set(wheelItems.map((item) => item.trim()).filter(Boolean))].slice(0, 40);
     }

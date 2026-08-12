@@ -26,8 +26,16 @@ service cloud.firestore {
     // Teachers collection - only teachers can read/write their own data
     match /teachers/{teacherId} {
       allow read: if isOwner(teacherId);
-      allow create: if isAuthenticated() && request.auth.uid == teacherId;
-      allow update, delete: if isOwner(teacherId);
+      allow create: if isAuthenticated()
+        && request.auth.uid == teacherId
+        && request.resource.data.billing.plan == 'pilot'
+        && request.resource.data.billing.status == 'pilot'
+        && request.resource.data.billing.pilotSessionsUsed == 0;
+      // Billing fields are written only by trusted Cloud Functions after Stripe
+      // or server-side entitlement checks. Instructor devices may not change them.
+      allow update: if isOwner(teacherId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['billing']);
+      allow delete: if isOwner(teacherId);
     }
     
     // Case studies - teachers can manage, students (anonymous) can read
@@ -44,10 +52,13 @@ service cloud.firestore {
       // Standalone lesson plans can contain hidden quiz answers. Live students use
       // the sanitized Realtime Database join record instead of this document.
       allow read: if isAuthenticated() && (!isAnonymous() || resource.data.sessionType != 'standalone');
-      allow write, update: if isTeacher() && 
-        isTeacherOfResource(resource.data.teacherId);
+      allow update, delete: if isTeacher()
+        && isTeacherOfResource(resource.data.teacherId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['startedAt', 'billingSessionClaimedAt'])
+        && (resource.data.active == true || request.resource.data.active != true || request.resource.data.keys().hasAny(['billingSessionClaimedAt']));
       allow create: if isTeacher() && 
-        isTeacherOfResource(request.resource.data.teacherId);
+        isTeacherOfResource(request.resource.data.teacherId)
+        && request.resource.data.active == false;
       
       // Legacy case-study students may only append one joined student ID and
       // refresh the activity timestamp. They cannot change lesson content,
@@ -92,10 +103,17 @@ service cloud.firestore {
     
     // Courses - teachers can manage their courses
     match /courses/{courseId} {
-      allow read, write: if isTeacher() && 
+      allow read, update, delete: if isTeacher() &&
         isTeacherOfResource(resource.data.teacherId);
-      allow create: if isTeacher() && 
-        isTeacherOfResource(request.resource.data.teacherId);
+      // New classes go through createInstructorCourse so the current plan is
+      // checked atomically before the document is created.
+      allow create: if false;
+    }
+
+    // Payment records are server-only. The instructor receives a sanitized
+    // billing summary through an authenticated callable function.
+    match /stripeWebhookEvents/{eventId} {
+      allow read, write: if false;
     }
 
     // A course-level team module can be shared outside a live session. Team

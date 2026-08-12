@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth, signInAnonymously, type User } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
+import { getFunctions } from 'firebase/functions';
 
 // Same Firebase config but using a different app name for students
 const firebaseConfig = {
@@ -26,6 +27,7 @@ const studentApp = initializeApp(firebaseConfig, 'student-app');
 export const studentDb = getFirestore(studentApp);
 export const studentAuth = getAuth(studentApp);
 export const studentRealtimeDb = getDatabase(studentApp);
+export const studentFunctions = getFunctions(studentApp, 'asia-southeast1');
 
 let anonymousAuthPromise: Promise<User> | null = null;
 

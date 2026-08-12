@@ -46,6 +46,8 @@ import {
 import { Timestamp } from 'firebase/firestore';
 import type { SessionInteractionRun } from '@/types';
 import { interactionRunSummariesDiffer, reconcileInteractionRuns } from '@/lib/session-response-summary';
+import { claimSessionStart } from '@/lib/firebase/billing';
+import { getUserFacingError } from '@/lib/user-facing-error';
 import {
   Activity,
   ArrowRight,
@@ -199,7 +201,9 @@ function resolveWheelItems(
     ? teams.map((team) => team.name)
     : source === 'custom'
       ? interaction.wheelItems || []
-      : attendance.map((claim) => claim.studentDisplayName?.trim() || `Student •${claim.studentNumber.slice(-4)}`);
+      : attendance.flatMap((claim) => claim.studentDisplayName?.trim()
+        ? [claim.studentDisplayName.trim()]
+        : claim.studentNumber ? [`Student •${claim.studentNumber.slice(-4)}`] : []);
   const seen = new Set<string>();
   return labels.map((label) => label.trim()).filter((label) => {
     const key = label.toLocaleLowerCase();
@@ -750,7 +754,7 @@ export default function LiveLessonPrototype() {
   }, [classQuestions, discussedQuestions, questionFilter]);
   const sortedAttendanceClaims = useMemo(() => [...attendanceClaims].sort((a, b) => (
     (a.status === 'participated' ? 0 : 1) - (b.status === 'participated' ? 0 : 1)
-    || a.studentNumber.localeCompare(b.studentNumber)
+    || (a.studentDisplayName || a.studentNumber || '').localeCompare(b.studentDisplayName || b.studentNumber || '')
   )), [attendanceClaims]);
   const participatedStudents = attendanceClaims.filter((claim) => claim.status === 'participated' || claim.status === 'confirmed').length;
   useEffect(() => {
@@ -860,6 +864,10 @@ export default function LiveLessonPrototype() {
         return;
       }
 
+      if (!session.active) {
+        await claimSessionStart(sessionId);
+      }
+
       if (session.teacherId !== user.uid) {
         setClassroomStateError('This session belongs to another instructor.');
         setClassroomStateReady(true);
@@ -892,6 +900,7 @@ export default function LiveLessonPrototype() {
         rewardScopeId: course?.rewardScopeId || session.rewardScopeId || session.courseCode || 'Class',
         courseName: session.courseName || '',
         sessionTitle: session.title || 'Live session',
+        participationMode: session.participationMode || 'course-record',
       };
       setSessionContext(context);
       setLiveCounts({ ...EMPTY_ONBOARDING_COUNTS });
@@ -978,9 +987,6 @@ export default function LiveLessonPrototype() {
       setFormedTeams(remoteState.teams || []);
       setActiveQuestion(remoteState.featuredQuestionId || null);
       setLiveTimer(remoteState.timer || null);
-      if (!session.active) {
-        await updateSession(sessionId, { active: true, startedAt: Timestamp.now(), lastActivityAt: Timestamp.now() });
-      }
       if (!cancelled) {
         setConnectedStudents(0);
         setRemoteClassroomReady(true);
@@ -989,9 +995,9 @@ export default function LiveLessonPrototype() {
       }
     };
 
-    loadPreparedSession().catch(() => {
+    loadPreparedSession().catch((error: unknown) => {
       if (cancelled) return;
-      setClassroomStateError('The saved session plan could not be loaded. Try opening it again from your class.');
+      setClassroomStateError(getUserFacingError(error, 'The saved session plan could not be loaded. Try opening it again from your class.'));
       setClassroomStateReady(true);
     });
     return () => { cancelled = true; };
@@ -1278,14 +1284,15 @@ export default function LiveLessonPrototype() {
     return subscribeToInstructorAttendance(ownerUid, sessionId, (claims) => {
       const uniqueClaims = new Map<string, StoredAttendanceClaim>();
       Object.values(claims).forEach((claim) => {
-        const existing = uniqueClaims.get(claim.studentNumber);
+        const identityKey = claim.participationMode === 'course-record' && claim.studentNumber ? `record:${claim.studentNumber}` : `device:${claim.studentUid}`;
+        const existing = uniqueClaims.get(identityKey);
         if (!existing) {
-          uniqueClaims.set(claim.studentNumber, claim);
+          uniqueClaims.set(identityKey, claim);
           return;
         }
         const existingParticipated = existing.status === 'participated' || existing.status === 'confirmed';
         const claimParticipated = claim.status === 'participated' || claim.status === 'confirmed';
-        uniqueClaims.set(claim.studentNumber, {
+        uniqueClaims.set(identityKey, {
           ...(claimParticipated && !existingParticipated ? claim : existing),
           joinedAt: Math.min(existing.joinedAt, claim.joinedAt),
           updatedAt: Math.max(existing.updatedAt, claim.updatedAt),
@@ -1293,7 +1300,7 @@ export default function LiveLessonPrototype() {
       });
       const uniqueAttendance = [...uniqueClaims.values()];
       setAttendanceClaims(uniqueAttendance);
-      const studentNumbers = [...uniqueClaims.keys()].sort();
+      const studentNumbers = uniqueAttendance.flatMap((claim) => claim.participationMode !== 'session-name' && claim.participationMode !== 'anonymous' && claim.studentNumber ? [claim.studentNumber] : []).sort();
       const rosterSignature = `${sessionId}:${studentNumbers.join('|')}`;
       if (studentNumbers.length && lastSyncedRosterRef.current !== rosterSignature) {
         lastSyncedRosterRef.current = rosterSignature;
@@ -2553,7 +2560,7 @@ export default function LiveLessonPrototype() {
 
             <div className="attendance-explainer">
               <ClipboardCheck size={18} />
-              <p><strong>Joined</strong> means the student entered a number. <strong>Participated</strong> means they also answered in this session.</p>
+              <p><strong>Joined</strong> means the student entered the room. <strong>Participated</strong> means they also answered in this session.</p>
             </div>
 
             <div className="attendance-list">
@@ -2561,13 +2568,13 @@ export default function LiveLessonPrototype() {
                 <div className="attendance-empty">
                   <Users size={24} />
                   <strong>No attendance claims yet</strong>
-                  <p>Students appear here after they enter the class code and their student number.</p>
+                  <p>Students appear here after they enter the class code.</p>
                 </div>
               ) : sortedAttendanceClaims.map((claim) => (
                 <article key={claim.studentUid}>
                   <span className={`attendance-status-dot is-${claim.status}`} aria-hidden="true" />
                   <div>
-                    <strong>{claim.studentNumber}</strong>
+                    <strong>{claim.participationMode === 'anonymous' ? 'Anonymous participant' : claim.studentDisplayName || claim.studentNumber || 'Session participant'}</strong>
                     <small>Joined {new Date(claim.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
                   </div>
                   <span className={`attendance-status is-${claim.status}`}>{claim.status === 'participated' ? 'Participated' : claim.status === 'confirmed' ? 'Confirmed' : claim.status === 'excused' ? 'Excused' : 'Joined'}</span>
@@ -2575,7 +2582,7 @@ export default function LiveLessonPrototype() {
               ))}
             </div>
 
-            <footer>Student numbers are visible only to the instructor.</footer>
+            <footer>{sessionContext.participationMode === 'course-record' ? 'Student numbers are visible only to the instructor.' : 'This session does not create course-long student records.'}</footer>
           </section>
         </div>
       )}

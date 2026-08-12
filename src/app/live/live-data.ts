@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { SessionInteraction } from '@/types';
+import type { SessionInteraction, SessionParticipationMode } from '@/types';
 
 export type MoodKey = 'energized' | 'steady' | 'tired' | 'overwhelmed' | 'private';
 
@@ -108,6 +108,7 @@ export type LiveSessionContext = {
   courseId?: string;
   ownerUid?: string;
   instructorName?: string;
+  participationMode?: SessionParticipationMode;
   sessionCode: string;
   courseCode: string;
   rewardScopeId?: string;

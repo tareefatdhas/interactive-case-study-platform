@@ -21,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
 import { AmbientLoading } from '@/components/motion';
-import type { Session, CaseStudy, Response, Student } from '@/types';
+import type { Session, CaseStudy, Response, Student, SessionParticipationMode } from '@/types';
 import { 
   QrCode, 
   Users, 
@@ -55,6 +55,7 @@ import {
   reconcileInteractionRuns,
 } from '@/lib/session-response-summary';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { claimSessionStart } from '@/lib/firebase/billing';
 
 interface SessionPageProps {
   params: Promise<{
@@ -84,6 +85,8 @@ export default function SessionPage({ params }: SessionPageProps) {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false);
+  const [participationDialogOpen, setParticipationDialogOpen] = useState(false);
+  const [pendingParticipationMode, setPendingParticipationMode] = useState<SessionParticipationMode>('course-record');
   const [appUrl, setAppUrl] = useState(process.env.NEXT_PUBLIC_APP_URL || '');
 
   const joinUrl = session?.sessionType === 'standalone'
@@ -126,7 +129,7 @@ export default function SessionPage({ params }: SessionPageProps) {
             );
             const joinedStudents = Array.from(new Set([
               ...(sessionData.studentsJoined || []),
-              ...Object.values(classroomRecords.attendance).map((claim) => claim.studentNumber),
+              ...Object.values(classroomRecords.attendance).flatMap((claim) => claim.participationMode !== 'session-name' && claim.participationMode !== 'anonymous' && claim.studentNumber ? [claim.studentNumber] : []),
             ]));
             hydratedSession = {
               ...sessionData,
@@ -309,13 +312,25 @@ export default function SessionPage({ params }: SessionPageProps) {
     if (!session) return;
 
     if (session.sessionType === 'standalone' && !session.active) {
-      router.push(`/live?sessionId=${session.id}`);
+      setUpdating(true);
+      setError('');
+      try {
+        await claimSessionStart(session.id);
+        router.push(`/live?sessionId=${session.id}`);
+      } catch (error: unknown) {
+        setError(getUserFacingError(error, 'This class could not be started. Try again.'));
+        setUpdating(false);
+      }
       return;
     }
 
     setUpdating(true);
     try {
       const newActiveState = !session.active;
+
+      if (newActiveState) {
+        await claimSessionStart(session.id);
+      }
 
       if (session.sessionType === 'standalone' && !newActiveState) {
         await endInstructorClassroom(session.teacherId, session.id);
@@ -326,7 +341,7 @@ export default function SessionPage({ params }: SessionPageProps) {
         active: newActiveState,
         ...(session.active ?
           { endedAt: Timestamp.now() } :
-          { startedAt: Timestamp.now(), lastActivityAt: Timestamp.now() }
+          { lastActivityAt: Timestamp.now() }
         )
       });
 
@@ -345,6 +360,32 @@ export default function SessionPage({ params }: SessionPageProps) {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const beginClass = () => {
+    if (!session || session.active) return void handleToggleSession();
+    setPendingParticipationMode(session.participationMode || 'course-record');
+    setParticipationDialogOpen(true);
+  };
+
+  const confirmParticipationMode = async () => {
+    if (!session) return;
+    const records = await getInstructorClassroomRecords(session.teacherId, session.id).catch(() => null);
+    const hasClassroomRecords = Boolean(records && (
+      Object.keys(records.attendance).length
+      || Object.values(records.responses).some((responsesForRun) => Object.keys(responsesForRun || {}).length)
+      || Object.values(records.studentQuestions).some((questionsForStudent) => Object.keys(questionsForStudent || {}).length)
+    ));
+    const existingMode = session.participationMode || 'course-record';
+    if (hasClassroomRecords && pendingParticipationMode !== existingMode) {
+      setParticipationDialogOpen(false);
+      setError('This session already has student activity, so its join mode cannot be changed. Create a new session to use a different mode without mixing records.');
+      return;
+    }
+    await updateSession(session.id, { participationMode: pendingParticipationMode });
+    setSession({ ...session, participationMode: pendingParticipationMode });
+    setParticipationDialogOpen(false);
+    await handleToggleSession();
   };
 
   const copyJoinUrl = async () => {
@@ -585,7 +626,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                   </Button>
                 </Link>}
                 {!isPreparedStandaloneSession && <Button
-                  onClick={handleToggleSession}
+                  onClick={session?.active ? handleToggleSession : beginClass}
                   loading={updating}
                   variant={session?.active ? 'destructive' : 'secondary'}
                   className="flex items-center"
@@ -660,7 +701,7 @@ export default function SessionPage({ params }: SessionPageProps) {
                   <h2 id="class-launch-title" className="seminar-display text-3xl leading-tight text-[#101a38] sm:text-[2.25rem]">Open the classroom, then invite students in.</h2>
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5e667b]">The instructor console is where you connect the classroom display, welcome students, and launch each activity.</p>
                 </div>
-                <Button onClick={handleToggleSession} loading={updating} size="lg" className="w-full gap-2 px-6 shadow-[0_3px_0_#342bb3,0_10px_24px_rgba(81,70,229,0.22)] active:translate-y-[2px] active:shadow-[0_1px_0_#342bb3,0_4px_10px_rgba(81,70,229,0.16)] sm:w-auto">
+                <Button onClick={beginClass} loading={updating} size="lg" className="w-full gap-2 px-6 shadow-[0_3px_0_#342bb3,0_10px_24px_rgba(81,70,229,0.22)] active:translate-y-[2px] active:shadow-[0_1px_0_#342bb3,0_4px_10px_rgba(81,70,229,0.16)] sm:w-auto">
                   <MonitorUp className="h-5 w-5" /> Open classroom
                 </Button>
               </div>
@@ -1029,6 +1070,10 @@ export default function SessionPage({ params }: SessionPageProps) {
                         {session?.active ? 'Live' : 'Prepared'}
                       </dd>
                     </div>
+                    {session?.sessionType === 'standalone' && <div className="flex items-start justify-between gap-4 py-3">
+                      <dt className="text-[#697087]">Student identity</dt>
+                      <dd className="max-w-[190px] text-right font-semibold text-[#101a38]">{session.participationMode === 'anonymous' ? 'Anonymous participation' : session.participationMode === 'session-name' ? 'Names for this session' : 'Course record'}</dd>
+                    </div>}
                     {session?.sessionType === 'standalone' ? (
                       <>
                         <div className="flex justify-between py-3"><dt className="text-[#697087]">Activities</dt><dd className="font-semibold tabular-nums text-[#101a38]">{session.interactions?.length || 0}</dd></div>
@@ -1062,6 +1107,58 @@ export default function SessionPage({ params }: SessionPageProps) {
             message={caseStudy && session ? `Students will immediately see Section ${(session.currentReleasedSection ?? 0) + 2}: ${caseStudy.sections[(session.currentReleasedSection ?? 0) + 1]?.title || ''}.` : 'Students will immediately see the next section.'}
             confirmText="Release section"
           />
+          <Dialog
+            isOpen={participationDialogOpen}
+            onClose={() => setParticipationDialogOpen(false)}
+            onConfirm={confirmParticipationMode}
+            title="Choose how students join"
+            message="Choose what this session needs. You can change the default before a future session."
+            confirmText="Open classroom"
+          >
+            <div id="dialog-message">
+              <p className="mb-4 text-sm leading-6 text-[#697087]">Most classes should use a course record. Choose another option when you need less student information.</p>
+              <div className="grid gap-3">
+              {([
+                {
+                  value: 'course-record',
+                  title: 'Course record',
+                  badge: 'Recommended',
+                  description: 'Students enter their student number.',
+                  outcome: 'Attendance, progress, points, and rewards carry forward.',
+                  outcomeTone: 'text-[#287a43]',
+                },
+                {
+                  value: 'session-name',
+                  title: 'Names for this session',
+                  badge: '',
+                  description: 'Students enter a name or nickname.',
+                  outcome: 'You can recognize students today, but nothing carries forward.',
+                  outcomeTone: 'text-[#9a6745]',
+                },
+                {
+                  value: 'anonymous',
+                  title: 'Anonymous participation',
+                  badge: '',
+                  description: 'Students join without a name or number.',
+                  outcome: 'You see class results only. Nothing carries forward.',
+                  outcomeTone: 'text-[#697087]',
+                },
+              ] as const).map((value) => (
+                <label key={value.value} className={`cursor-pointer rounded-2xl border p-4 transition ${pendingParticipationMode === value.value ? 'border-[#5146e5] bg-[#f5f3ff] shadow-[0_0_0_2px_#dedaff]' : 'border-[#e3e5ed] bg-white hover:border-[#c8c4ef]'}`}>
+                  <span className="flex items-start gap-3">
+                    <input type="radio" name="participation-mode" value={value.value} checked={pendingParticipationMode === value.value} onChange={() => setPendingParticipationMode(value.value)} className="mt-1 h-4 w-4 shrink-0 accent-[#5146e5]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-2"><strong className="text-sm text-[#101a38]">{value.title}</strong>{value.badge && <small className="rounded-full bg-white px-2 py-1 text-[9px] font-bold uppercase tracking-[0.06em] text-[#5146e5]">{value.badge}</small>}</span>
+                      <small className="mt-1 block text-xs leading-5 text-[#697087]">{value.description}</small>
+                      <small className={`mt-2 block text-xs font-semibold leading-5 ${value.outcomeTone}`}>{value.outcome}</small>
+                    </span>
+                  </span>
+                </label>
+              ))}
+              </div>
+              {pendingParticipationMode !== 'course-record' && <p className="mt-4 rounded-xl bg-[#fff8e7] px-3 py-2.5 text-xs leading-5 text-[#6e5a27]">This session will not count toward attendance, student progress, standings, or rewards.</p>}
+            </div>
+          </Dialog>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

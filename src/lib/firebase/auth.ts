@@ -85,6 +85,7 @@ export const signInTeacherWithGoogle = async (): Promise<AuthUser> => {
     name,
     courseIds: [],
     timeZone: getBrowserTimeZone(),
+    billing: { plan: 'pilot', status: 'pilot', pilotSessionsUsed: 0 },
     createdAt: new Date(),
     ...(user.photoURL ? { photoURL: user.photoURL } : {}),
   };
@@ -165,6 +166,7 @@ export const signUpTeacher = async (
       name,
       courseIds: [],
       timeZone: getBrowserTimeZone(),
+      billing: { plan: 'pilot', status: 'pilot', pilotSessionsUsed: 0 },
       createdAt: new Date()
     });
   } catch (error: unknown) {

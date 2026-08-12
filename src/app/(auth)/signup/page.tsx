@@ -27,13 +27,18 @@ export default function SignUpPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const afterSignUp = () => {
+    const selectedPlan = new URLSearchParams(window.location.search).get('plan');
+    router.push(selectedPlan ? `/dashboard/settings?plan=${encodeURIComponent(selectedPlan)}#billing` : '/dashboard');
+  };
+
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     setError('');
 
     try {
       await signInTeacherWithGoogle();
-      router.push('/dashboard');
+      afterSignUp();
     } catch (error: unknown) {
       setError(getGoogleSignInErrorMessage(error));
     } finally {
@@ -60,7 +65,7 @@ export default function SignUpPage() {
 
     try {
       await signUpTeacher(formData.email, formData.password, formData.name);
-      router.push('/dashboard');
+      afterSignUp();
     } catch (error: unknown) {
       setError(getUserFacingError(error, 'We could not create your account. Check the details and try again.'));
     } finally {

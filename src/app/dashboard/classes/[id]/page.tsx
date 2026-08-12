@@ -4,7 +4,8 @@ import { use, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { createCourse, deleteSession, getCourse, getCoursesByTeacher, getSessionsByTeacher, updateCourse, updateCourseIdentity } from '@/lib/firebase/firestore';
+import { deleteSession, getCourse, getCoursesByTeacher, getSessionsByTeacher, updateCourse, updateCourseIdentity } from '@/lib/firebase/firestore';
+import { createCourseWithEntitlement } from '@/lib/firebase/billing';
 import { deleteInstructorClassroomData } from '@/lib/firebase/live-classroom';
 import { TEAM_COLORS, addInstructorTeamMember, createInstructorCourseTeam, deleteInstructorCourseTeam, ensureTeamModule, normalizeTeamName, normalizeTeamStudentNumber, removeInstructorTeamMember, subscribeInstructorTeamRoster, updateInstructorCourseTeam, type CourseTeamWithMembers, type TeamColorId } from '@/lib/firebase/course-teams';
 import { COURSE_SOURCE_KINDS, MAX_COURSE_SOURCES, MAX_COURSE_SOURCE_CHARS, courseSourceWordCount, removeCourseSource, upsertCourseSource } from '@/lib/course-sources';
@@ -670,15 +671,12 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
         setRollingOver(false);
         return;
       }
-      const nextCourseId = await createCourse({
+      const nextCourseId = await createCourseWithEntitlement({
         name: course.name,
         code: normalizedNextCode,
         term: nextTerm.trim(),
-        teacherId: user.uid,
-        studentIds: [],
-        interactionTemplates: templates.map((template) => ({ ...template, id: `${template.type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` })),
-        archived: false,
         sourceCourseId: course.id,
+        interactionTemplates: templates.map((template) => ({ ...template, id: `${template.type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` })),
       });
       if (archiveAfterRollover) {
         await updateCourse(course.id, { archived: true, archivedAt: Timestamp.now() });
@@ -686,7 +684,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
       router.push(`/dashboard/classes/${nextCourseId}`);
     } catch (rolloverError) {
       console.error('Could not create next term:', rolloverError);
-      setError('The next term could not be created. Check the details and try again.');
+      setError(getUserFacingError(rolloverError, 'The next term could not be created. Check the details and try again.'));
       setRollingOver(false);
     }
   };

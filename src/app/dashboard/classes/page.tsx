@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { createCourse, getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { createCourseWithEntitlement } from '@/lib/firebase/billing';
+import { getUserFacingError } from '@/lib/user-facing-error';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
@@ -114,12 +116,10 @@ export default function ClassesPage() {
     setCreating(true);
     setError('');
     try {
-      await createCourse({
+      await createCourseWithEntitlement({
         code: normalizedCode,
         name: name.trim(),
         term: term.trim() || undefined,
-        teacherId: user.uid,
-        studentIds: [],
         interactionTemplates: starterInteractions,
       });
       setCode('');
@@ -129,7 +129,7 @@ export default function ClassesPage() {
       await loadClasses();
     } catch (createError) {
       console.error('Could not create class:', createError);
-      setError('The class could not be saved. Check the details and try again.');
+      setError(getUserFacingError(createError, 'The class could not be saved. Check the details and try again.'));
     } finally {
       setCreating(false);
     }
