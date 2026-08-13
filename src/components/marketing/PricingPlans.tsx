@@ -1,9 +1,12 @@
-import Link from 'next/link';
 import { ArrowRight, Check, ChalkboardTeacher, GraduationCap, UsersThree } from '@phosphor-icons/react/ssr';
+import PricingPlanCta from './PricingPlanCta';
+import type { PlanId } from '@/lib/analytics/events';
 
 const plans = [
   {
     name: 'Pilot',
+    planId: 'pilot' as PlanId,
+    priceUsd: 0,
     eyebrow: 'Try it with a real class',
     price: '$0',
     cadence: 'No card required',
@@ -21,6 +24,8 @@ const plans = [
   },
   {
     name: 'Instructor',
+    planId: 'instructor_term' as PlanId,
+    priceUsd: 69,
     eyebrow: 'For the full teaching term',
     price: '$69',
     cadence: 'per 4-month teaching term',
@@ -41,6 +46,8 @@ const plans = [
   },
   {
     name: 'Institution',
+    planId: 'institution' as PlanId,
+    priceUsd: 0,
     eyebrow: 'For departments and universities',
     price: 'Let’s talk',
     cadence: 'Priced by active instructors, not students',
@@ -81,9 +88,14 @@ export default function PricingPlans() {
             <ul>
               {plan.features.map((feature) => <li key={feature}><Check aria-hidden="true" />{feature}</li>)}
             </ul>
-            <Link href={plan.href} className={`marketing-button seminar-focus ${'featured' in plan && plan.featured ? 'marketing-button-primary' : 'marketing-button-secondary'}`}>
+            <PricingPlanCta
+              planId={plan.planId}
+              priceUsd={plan.priceUsd}
+              href={plan.href}
+              className={`marketing-button seminar-focus ${'featured' in plan && plan.featured ? 'marketing-button-primary' : 'marketing-button-secondary'}`}
+            >
               {plan.cta} <ArrowRight aria-hidden="true" />
-            </Link>
+            </PricingPlanCta>
           </article>
         ))}
       </div>

@@ -16,6 +16,7 @@ import InlineMessage from '@/components/ui/InlineMessage';
 import type { Section, Question, SectionType } from '@/types';
 import { Plus, Trash2, Save, BookOpen, MessageSquare, Activity } from 'lucide-react';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { track } from '@/lib/analytics/events';
 
 export default function NewCaseStudyPage() {
   const { user } = useAuth();
@@ -235,6 +236,7 @@ export default function NewCaseStudyPage() {
       };
 
       await createCaseStudy(caseStudyData);
+      track('case_study_created', { content_source: 'manual' });
       router.push(formData.courseId === 'default' ? '/dashboard/case-studies' : `/dashboard/classes/${formData.courseId}?view=kit`);
     } catch (error: unknown) {
       setError(getUserFacingError(error, 'The case study could not be saved. Your draft is still here, so you can try again.'));

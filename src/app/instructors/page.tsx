@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import TrackedCta from '@/components/analytics/TrackedCta';
 import { ArrowRight, Check, Laptop, MonitorPlay as MonitorUp, Presentation, DeviceMobile as Smartphone, UsersThree as Users } from '@phosphor-icons/react/ssr';
 import MarketingPage from '@/components/marketing/MarketingPage';
 import { createPageMetadata } from '@/lib/metadata';
@@ -27,7 +28,7 @@ export default function InstructorsPage() {
           </div>
           <div>
             <p className="text-lg leading-8 text-[var(--seminar-muted)]">Classfully stays beside your existing lesson materials. It gives you a private teaching console, a classroom display, and a course record that grows with every session.</p>
-            <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus mt-7">Create an instructor account <ArrowRight className="h-4 w-4" /></Link>
+            <TrackedCta href="/signup" ctaLocation="instructors_page" ctaLabel="create_instructor_account" className="marketing-button marketing-button-primary marketing-button-large seminar-focus mt-7">Create an instructor account <ArrowRight className="h-4 w-4" /></TrackedCta>
           </div>
         </div>
       </section>
@@ -87,7 +88,7 @@ export default function InstructorsPage() {
           <h2 className="seminar-display text-4xl text-[var(--seminar-ink)] sm:text-5xl">Prepare the next class.</h2>
           <p className="mt-5 text-lg text-[var(--seminar-muted)]">Start with one question you genuinely need the room to answer.</p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create a class <ArrowRight className="h-4 w-4" /></Link>
+            <TrackedCta href="/signup" ctaLocation="instructors_page" ctaLabel="create_a_class" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create a class <ArrowRight className="h-4 w-4" /></TrackedCta>
             <Link href="/resources" className="marketing-button marketing-button-secondary marketing-button-large seminar-focus">Open instructor resources</Link>
           </div>
         </div>

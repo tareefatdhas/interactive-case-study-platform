@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { createSession, generateSessionCode, getCaseStudiesByTeacher, getCourse, getSession, updateSession } from '@/lib/firebase/firestore';
 import { auth } from '@/lib/firebase/config';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { track } from '@/lib/analytics/events';
 import { buildLessonMaterial, courseSourceWordCount } from '@/lib/course-sources';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
@@ -457,6 +458,7 @@ function NewSessionContent() {
       setExpandedInteractionId(drafts[0]?.id || null);
       if (drafts[0]) window.setTimeout(() => document.getElementById(`activity-${drafts[0].id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
       setGenerationNotice('Four drafts were added below. Review the wording, choices, and correct answer before saving.');
+      track('session_interactions_generated', { interaction_count: drafts.length });
     } catch (generationIssue: unknown) {
       setGenerationError(getUserFacingError(generationIssue, 'The question drafts could not be generated. Check your connection and try again.'));
     } finally {
@@ -510,6 +512,7 @@ function NewSessionContent() {
         sections: [],
       });
 
+      track('session_created', { session_type: 'standalone', interaction_count: normalizedInteractions.length });
       router.push(`/dashboard/sessions/${sessionId}`);
     } catch (createError: unknown) {
       setError(getUserFacingError(createError, 'The session flow could not be saved. Your work is still here, so you can try again.'));

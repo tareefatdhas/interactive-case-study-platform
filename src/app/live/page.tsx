@@ -47,6 +47,7 @@ import { Timestamp } from 'firebase/firestore';
 import type { SessionInteractionRun } from '@/types';
 import { interactionRunSummariesDiffer, reconcileInteractionRuns } from '@/lib/session-response-summary';
 import { claimSessionStart } from '@/lib/firebase/billing';
+import { bucketDuration, bucketParticipants, setInstructorPlan, track } from '@/lib/analytics/events';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import {
   Activity,
@@ -687,6 +688,8 @@ export default function LiveLessonPrototype() {
   const activeInteractionRef = useRef<LiveInteraction | null>(null);
   const interactionResultsRef = useRef<InteractionResults | null>(null);
   const attendanceClaimsRef = useRef<StoredAttendanceClaim[]>([]);
+  /** When this class actually began, for the analytics duration band. */
+  const classStartedAtRef = useRef<number | null>(null);
   const formedTeamsRef = useRef<import('./live-data').LiveTeam[]>([]);
   const sessionPlanRef = useRef(sessionPlan);
   const interactionRunsRef = useRef<SessionInteractionRun[]>([]);
@@ -865,8 +868,20 @@ export default function LiveLessonPrototype() {
       }
 
       if (!session.active) {
-        await claimSessionStart(sessionId);
+        const claim = await claimSessionStart(sessionId);
+        setInstructorPlan(claim.billing.effectivePlan);
+        // `alreadyCounted` means this session had already been started once.
+        // Skipping it there keeps the count at "classes taught" rather than
+        // "times the console was opened".
+        if (!claim.alreadyCounted) {
+          track('live_classroom_started', {
+            session_type: session.sessionType || 'standalone',
+            interaction_count: session.interactions?.length || 0,
+            pilot_sessions_used: claim.billing.pilotSessionsUsed,
+          });
+        }
       }
+      classStartedAtRef.current = session.startedAt?.toMillis?.() || Date.now();
 
       if (session.teacherId !== user.uid) {
         setClassroomStateError('This session belongs to another instructor.');
@@ -1841,6 +1856,13 @@ export default function LiveLessonPrototype() {
         console.warn('Activity round history could not be finalized before ending:', runError);
       });
       await endInstructorClassroom(sessionContext.ownerUid, sessionContext.sessionId);
+      // Buckets rather than raw values: a small class should not be
+      // identifiable from an analytics report, and the band is what gets read.
+      track('live_classroom_ended', {
+        duration_bucket: bucketDuration(completedAt - (classStartedAtRef.current || completedAt)),
+        participant_bucket: bucketParticipants(attendanceClaimsRef.current.length),
+        interactions_run: completedRuns.length,
+      });
       const { updateSession } = await import('@/lib/firebase/firestore');
       await updateSession(sessionContext.sessionId, { active: false, endedAt: Timestamp.now() });
       window.location.assign(`/dashboard/sessions/${sessionContext.sessionId}`);

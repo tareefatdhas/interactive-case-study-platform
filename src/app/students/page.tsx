@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import TrackedCta from '@/components/analytics/TrackedCta';
 import { ArrowRight, Medal as Award, Check, Eye, Fire as Flame, LockKey as Lock, DeviceMobile as Smartphone, Target } from '@phosphor-icons/react/ssr';
 import MarketingPage from '@/components/marketing/MarketingPage';
 import { createPageMetadata } from '@/lib/metadata';
@@ -18,7 +19,7 @@ export default function StudentsPage() {
             <p className="seminar-eyebrow mb-5">For students</p>
             <h1 className="seminar-display max-w-4xl text-5xl leading-[0.98] text-[var(--seminar-ink)] sm:text-7xl">Your participation should add up to something.</h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--seminar-muted)]">Join from your phone to answer, ask, predict, and reflect. Each class can add to your own record of attendance, progress, and contribution.</p>
-            <Link href="/join" className="marketing-button marketing-button-primary marketing-button-large seminar-focus mt-8">Join with a class code <ArrowRight className="h-4 w-4" /></Link>
+            <TrackedCta href="/join" ctaLocation="students_page" ctaLabel="join_with_class_code" className="marketing-button marketing-button-primary marketing-button-large seminar-focus mt-8">Join with a class code <ArrowRight className="h-4 w-4" /></TrackedCta>
           </div>
           <div className="student-phone-preview" aria-hidden="true">
             <div className="student-phone-top"><span>Classfully</span><i /></div>

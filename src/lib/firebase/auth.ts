@@ -61,7 +61,13 @@ export const signInTeacher = async (email: string, password: string): Promise<Au
   return toTeacherAuthUser(user, teacherData);
 };
 
-export const signInTeacherWithGoogle = async (): Promise<AuthUser> => {
+/**
+ * Google is one button for two intents. `createdAccount` reports which one
+ * happened so signup and returning sign-in are not counted as the same thing.
+ */
+export type GoogleSignInResult = AuthUser & { createdAccount: boolean };
+
+export const signInTeacherWithGoogle = async (): Promise<GoogleSignInResult> => {
   const userCredential = await signInWithPopup(auth, googleProvider);
   const user = userCredential.user;
 
@@ -76,7 +82,7 @@ export const signInTeacherWithGoogle = async (): Promise<AuthUser> => {
   if (teacherSnapshot.exists()) {
     const teacher = teacherSnapshot.data() as Teacher;
     await saveMissingTeacherTimeZone(teacherRef, teacher);
-    return toTeacherAuthUser(user, teacher);
+    return { ...toTeacherAuthUser(user, teacher), createdAccount: false };
   }
 
   const name = user.displayName?.trim() || user.email.split('@')[0];
@@ -114,6 +120,7 @@ export const signInTeacherWithGoogle = async (): Promise<AuthUser> => {
     role: 'teacher',
     name,
     photoURL: user.photoURL || undefined,
+    createdAccount: true,
   };
 };
 

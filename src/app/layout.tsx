@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
 import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/metadata";
 import InputModality from "@/components/ui/InputModality";
+import Analytics from "@/components/analytics/Analytics";
 
 const plexSans = IBM_Plex_Sans({
   subsets: ["latin"],
@@ -110,6 +111,7 @@ export default function RootLayout({
       <body className={`${inter.variable} ${fraunces.variable} ${plexSans.variable} ${newsreader.variable} antialiased`}>
         <InputModality />
         <AuthProvider>
+          <Analytics />
           {children}
         </AuthProvider>
       </body>

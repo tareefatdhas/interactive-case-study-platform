@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import TrackedCta from '@/components/analytics/TrackedCta';
 import { ArrowRight, CalendarDots, Check, ShieldCheck } from '@phosphor-icons/react/ssr';
 import MarketingPage from '@/components/marketing/MarketingPage';
 import PricingPlans from '@/components/marketing/PricingPlans';
@@ -26,7 +26,7 @@ export default function PricingPage() {
             <h1 className="seminar-display text-5xl leading-[0.98] text-[var(--seminar-ink)] sm:text-7xl">Pay for the teaching term. Bring the whole class.</h1>
             <p className="mt-7 max-w-2xl text-lg leading-8 text-[var(--seminar-muted)]">Start with six live sessions at no cost. When Classfully becomes part of the course, choose one price for the term instead of counting students, answers, or live moments.</p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Start your classroom pilot <ArrowRight aria-hidden="true" /></Link>
+              <TrackedCta href="/signup" ctaLocation="pricing_plans" ctaLabel="start_pilot_hero" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Start your classroom pilot <ArrowRight aria-hidden="true" /></TrackedCta>
               <a href="#plans" className="marketing-button marketing-button-secondary marketing-button-large seminar-focus">See the plans</a>
             </div>
           </div>
@@ -97,7 +97,7 @@ export default function PricingPage() {
         <div className="mx-auto max-w-3xl px-5 py-20 text-center sm:px-8 sm:py-24">
           <h2 className="seminar-display text-4xl text-[var(--seminar-ink)] sm:text-5xl">Let six classes answer the pricing question.</h2>
           <p className="mt-5 text-lg text-[var(--seminar-muted)]">Start free. See whether Classfully earns a place in the rest of the course.</p>
-          <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus mt-8">Start your classroom pilot <ArrowRight aria-hidden="true" /></Link>
+          <TrackedCta href="/signup" ctaLocation="pricing_plans" ctaLabel="start_pilot_footer" className="marketing-button marketing-button-primary marketing-button-large seminar-focus mt-8">Start your classroom pilot <ArrowRight aria-hidden="true" /></TrackedCta>
         </div>
       </section>
     </MarketingPage>

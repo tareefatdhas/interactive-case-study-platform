@@ -14,6 +14,7 @@ import Input from '@/components/ui/Input';
 import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
 import InlineMessage from '@/components/ui/InlineMessage';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { failureReason, track } from '@/lib/analytics/events';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -27,8 +28,11 @@ export default function SignUpPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const afterSignUp = () => {
+  const afterSignUp = (method: 'email' | 'google') => {
     const selectedPlan = new URLSearchParams(window.location.search).get('plan');
+    // `plan_intent` carries the plan card the visitor came from, so paid
+    // intent at signup can be compared against who actually checks out.
+    track('sign_up', { method, plan_intent: selectedPlan ?? undefined });
     router.push(selectedPlan ? `/dashboard/settings?plan=${encodeURIComponent(selectedPlan)}#billing` : '/dashboard');
   };
 
@@ -37,9 +41,16 @@ export default function SignUpPage() {
     setError('');
 
     try {
-      await signInTeacherWithGoogle();
-      afterSignUp();
+      const result = await signInTeacherWithGoogle();
+      // The same Google button signs existing instructors back in. Only a
+      // genuinely new account is a signup.
+      if (result.createdAccount) afterSignUp('google');
+      else {
+        track('login', { method: 'google' });
+        router.push('/dashboard');
+      }
     } catch (error: unknown) {
+      track('signup_failed', { method: 'google', failure_reason: failureReason(error) });
       setError(getGoogleSignInErrorMessage(error));
     } finally {
       setGoogleLoading(false);
@@ -52,12 +63,14 @@ export default function SignUpPage() {
     setError('');
 
     if (formData.password !== formData.confirmPassword) {
+      track('signup_failed', { method: 'email', failure_reason: 'password_mismatch' });
       setError('The passwords do not match.');
       setLoading(false);
       return;
     }
 
     if (formData.password.length < 6) {
+      track('signup_failed', { method: 'email', failure_reason: 'password_too_short' });
       setError('Use at least 6 characters for your password.');
       setLoading(false);
       return;
@@ -65,8 +78,9 @@ export default function SignUpPage() {
 
     try {
       await signUpTeacher(formData.email, formData.password, formData.name);
-      afterSignUp();
+      afterSignUp('email');
     } catch (error: unknown) {
+      track('signup_failed', { method: 'email', failure_reason: failureReason(error) });
       setError(getUserFacingError(error, 'We could not create your account. Check the details and try again.'));
     } finally {
       setLoading(false);

@@ -14,6 +14,7 @@ import Input from '@/components/ui/Input';
 import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
 import InlineMessage from '@/components/ui/InlineMessage';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { track } from '@/lib/analytics/events';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,7 +31,11 @@ export default function LoginPage() {
     setError('');
 
     try {
-      await signInTeacherWithGoogle();
+      const result = await signInTeacherWithGoogle();
+      // Google on the sign-in page can still create an account for someone who
+      // never registered, so it is recorded as the signup it really is.
+      if (result.createdAccount) track('sign_up', { method: 'google' });
+      else track('login', { method: 'google' });
       router.push('/dashboard');
     } catch (error: unknown) {
       setError(getGoogleSignInErrorMessage(error, 'We could not sign you in with Google. Please try again.'));
@@ -46,6 +51,7 @@ export default function LoginPage() {
 
     try {
       await signInTeacher(formData.email, formData.password);
+      track('login', { method: 'email' });
       router.push('/dashboard');
     } catch (error: unknown) {
       setError(getUserFacingError(error, 'We could not sign you in. Check your email and password, then try again.'));

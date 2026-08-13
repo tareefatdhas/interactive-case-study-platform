@@ -14,6 +14,7 @@ const { collectSessionMetrics, collectWeeklyMetrics } = require('./reporting');
 const { isWeeklyDigestSendTime, localPeriodKey } = require('./scheduling');
 const { RETENTION_DAYS, collectExpiredRooms } = require('./retention');
 const { accessSnapshot, canCreateCourse } = require('./billing');
+const { sendPurchase } = require('./analytics');
 
 initializeApp();
 
@@ -23,6 +24,10 @@ const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
 const stripeTermPriceId = defineSecret('STRIPE_TERM_PRICE_ID');
 const stripeAnnualPriceId = defineSecret('STRIPE_ANNUAL_PRICE_ID');
 const stripeBillingEnabled = defineString('STRIPE_BILLING_ENABLED', { default: 'false' });
+// Server-side purchase reporting. Both must be set or the webhook simply skips
+// it; see docs/analytics-tracking-plan.md for creating the API secret.
+const ga4ApiSecret = defineSecret('GA4_API_SECRET');
+const ga4MeasurementId = defineString('GA4_MEASUREMENT_ID', { default: '' });
 const FUNCTION_REGION = 'asia-southeast1';
 const EMAIL_FROM = 'Classfully <no-reply@classfully.com>';
 const EMAIL_REPLY_TO = 'tareef@happily.ai';
@@ -243,6 +248,11 @@ exports.createBillingCheckout = onCall(
     if (!['instructor_term', 'instructor_annual'].includes(requestedPlan)) {
       throw new HttpsError('invalid-argument', 'Choose a teaching term or annual plan.');
     }
+    // Carried through Stripe so the webhook can report the purchase against the
+    // visit that earned it. Absent whenever analytics is off or blocked, which
+    // must never stop a checkout.
+    const gaClientId = cleanString(request.data?.gaClientId, 64);
+    const gaSessionId = cleanString(request.data?.gaSessionId, 32);
     const priceId = requestedPlan === 'instructor_term' ? stripeTermPriceId.value() : stripeAnnualPriceId.value();
     if (!priceId) throw new HttpsError('failed-precondition', 'That plan has not been connected to Stripe yet.');
 
@@ -281,7 +291,12 @@ exports.createBillingCheckout = onCall(
       allow_promotion_codes: true,
       billing_address_collection: 'auto',
       client_reference_id: teacherId,
-      metadata: { firebaseUid: teacherId, classfullyPlan: requestedPlan },
+      metadata: {
+        firebaseUid: teacherId,
+        classfullyPlan: requestedPlan,
+        ...(gaClientId ? { gaClientId } : {}),
+        ...(gaSessionId ? { gaSessionId } : {}),
+      },
       subscription_data: { metadata: { firebaseUid: teacherId, classfullyPlan: requestedPlan } },
       success_url: `${APP_URL}/dashboard/settings?billing=success#billing`,
       cancel_url: `${APP_URL}/dashboard/settings?billing=cancelled#billing`,
@@ -538,7 +553,7 @@ async function applyStripeSubscription(subscription, eventCreatedAt = 0) {
 }
 
 exports.stripeBillingWebhook = onRequest(
-  { region: FUNCTION_REGION, secrets: [stripeRestrictedKey, stripeWebhookSecret, stripeTermPriceId, stripeAnnualPriceId], cors: false },
+  { region: FUNCTION_REGION, secrets: [stripeRestrictedKey, stripeWebhookSecret, stripeTermPriceId, stripeAnnualPriceId, ga4ApiSecret], cors: false },
   async (request, response) => {
     if (request.method !== 'POST') {
       response.status(405).send('Method not allowed');
@@ -581,6 +596,12 @@ exports.stripeBillingWebhook = onRequest(
           ? await stripeClient().subscriptions.retrieve(event.data.object.subscription)
           : event.data.object.subscription;
         await applyStripeSubscription(subscription, event.created);
+        // After the subscription is applied, and never allowed to fail the
+        // webhook: a retry would re-run the write that already succeeded.
+        await sendPurchase(event.data.object, {
+          measurementId: ga4MeasurementId.value(),
+          apiSecret: ga4ApiSecret.value(),
+        });
       }
       await eventRef.set({ status: 'processed', processedAt: Timestamp.now(), updatedAt: Timestamp.now() }, { merge: true });
       response.status(200).json({ received: true });

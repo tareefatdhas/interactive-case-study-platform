@@ -13,6 +13,8 @@ import WaitingStateVisual from '@/components/marketing/WaitingStateVisual';
 import ClassTrendVisual from '@/components/marketing/ClassTrendVisual';
 import CourseContinuityVisual from '@/components/marketing/CourseContinuityVisual';
 import HomeJsonLd from '@/components/seo/HomeJsonLd';
+import TrackedCta from '@/components/analytics/TrackedCta';
+import { track } from '@/lib/analytics/events';
 
 const classroomMoves = [
   { icon: Radio, label: 'Class Pulse', question: 'Do we need to slow down?', answer: 'Check pace, confidence, agreement, or how the room feels in under a minute.' },
@@ -51,8 +53,12 @@ export default function Home() {
               Run live questions, check-ins, quizzes, and discussions beside your slides. Every response adds to a course-long record of participation, understanding, and progress.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first interactive class <ArrowRight className="h-4 w-4" /></Link>
-              <a href="#how-it-fits" className="marketing-button marketing-button-secondary marketing-button-large seminar-focus">See the classroom flow</a>
+              <TrackedCta href="/signup" ctaLocation="home_hero" ctaLabel="create_first_class" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first interactive class <ArrowRight className="h-4 w-4" /></TrackedCta>
+              <a
+                href="#how-it-fits"
+                className="marketing-button marketing-button-secondary marketing-button-large seminar-focus"
+                onClick={() => track('cta_clicked', { cta_location: 'home_hero', cta_label: 'see_classroom_flow', cta_destination: '#how-it-fits' })}
+              >See the classroom flow</a>
             </div>
           </div>
         </div>
@@ -219,7 +225,7 @@ export default function Home() {
               <article><div className="course-action-icon lesson"><BookOpen weight="fill" /></div><p><b>Revisit indirect network effects</b><small>Confidence dipped after Session 2. Reinforce the concept.</small></p><ArrowRight /></article>
               <article><div className="course-action-icon streak"><Users weight="fill" /></div><p><b>Keep the attendance streak going</b><small>102 students have attended 5 of 6 sessions. Recognize the consistency before next class.</small></p><ArrowRight /></article>
             </div>
-            <Link href="/instructors" className="marketing-text-link seminar-focus mt-7">Explore the instructor workflow <ArrowRight /></Link>
+            <TrackedCta href="/instructors" ctaLocation="home_body" ctaLabel="explore_instructor_workflow" className="marketing-text-link seminar-focus mt-7">Explore the instructor workflow <ArrowRight /></TrackedCta>
           </div>
           <ClassTrendVisual />
         </div>
@@ -282,7 +288,7 @@ export default function Home() {
             <p>No student licenses and no charge for every answer. The full classroom can participate without making the price harder to predict.</p>
           </div>
           <PricingPlans />
-          <div className="mt-8 text-center"><Link href="/pricing" className="marketing-text-link seminar-focus">Read the pricing details <ArrowRight /></Link></div>
+          <div className="mt-8 text-center"><TrackedCta href="/pricing" ctaLocation="home_body" ctaLabel="read_pricing_details" className="marketing-text-link seminar-focus">Read the pricing details <ArrowRight /></TrackedCta></div>
         </div>
       </section>
 
@@ -332,8 +338,8 @@ export default function Home() {
           <h2 className="seminar-display mt-6 text-5xl leading-[0.98] text-[var(--seminar-ink)] sm:text-7xl">Your classroom just got an upgrade</h2>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[var(--seminar-muted)]">Prepare a session, open the display, and invite every student in. The value grows each time the class returns.</p>
           <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href="/signup" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first interactive class <ArrowRight className="h-4 w-4" /></Link>
-            <Link href="/resources" className="marketing-button marketing-button-secondary marketing-button-large seminar-focus">Open the classroom checklist</Link>
+            <TrackedCta href="/signup" ctaLocation="home_final" ctaLabel="create_first_class" className="marketing-button marketing-button-primary marketing-button-large seminar-focus">Create your first interactive class <ArrowRight className="h-4 w-4" /></TrackedCta>
+            <TrackedCta href="/resources" ctaLocation="home_final" ctaLabel="open_classroom_checklist" className="marketing-button marketing-button-secondary marketing-button-large seminar-focus">Open the classroom checklist</TrackedCta>
           </div>
           <p className="world-final-reassurance">Keep your slides. Students join in a browser. Every session stays connected.</p>
         </div>

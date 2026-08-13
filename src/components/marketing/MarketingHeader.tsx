@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { List as Menu } from '@phosphor-icons/react/ssr';
 import ClassfullyBrand from './ClassfullyBrand';
+import TrackedCta from '@/components/analytics/TrackedCta';
 
 const links = [
   { href: '/instructors', label: 'For instructors' },
@@ -23,18 +24,18 @@ export default function MarketingHeader() {
         </nav>
 
         <div className="hidden items-center gap-2 sm:flex">
-          <Link href="/join" className="marketing-nav-link seminar-focus">Join a class</Link>
-          <Link href="/login" className="marketing-button marketing-button-secondary seminar-focus">Sign in</Link>
-          <Link href="/signup" className="marketing-button marketing-button-primary seminar-focus">Create a class</Link>
+          <TrackedCta href="/join" ctaLocation="header" ctaLabel="join_a_class" className="marketing-nav-link seminar-focus">Join a class</TrackedCta>
+          <TrackedCta href="/login" ctaLocation="header" ctaLabel="sign_in" className="marketing-button marketing-button-secondary seminar-focus">Sign in</TrackedCta>
+          <TrackedCta href="/signup" ctaLocation="header" ctaLabel="create_a_class" className="marketing-button marketing-button-primary seminar-focus">Create a class</TrackedCta>
         </div>
 
         <details className="marketing-menu sm:hidden">
           <summary className="seminar-focus" aria-label="Open navigation"><Menu className="h-5 w-5" aria-hidden="true" /></summary>
           <div className="marketing-menu-panel">
             {links.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}
-            <Link href="/join">Join a class</Link>
-            <Link href="/login">Instructor sign in</Link>
-            <Link href="/signup" className="marketing-menu-primary">Create a class</Link>
+            <TrackedCta href="/join" ctaLocation="header" ctaLabel="join_a_class_mobile">Join a class</TrackedCta>
+            <TrackedCta href="/login" ctaLocation="header" ctaLabel="sign_in_mobile">Instructor sign in</TrackedCta>
+            <TrackedCta href="/signup" ctaLocation="header" ctaLabel="create_a_class_mobile" className="marketing-menu-primary">Create a class</TrackedCta>
           </div>
         </details>
       </div>

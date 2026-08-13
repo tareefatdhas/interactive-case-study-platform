@@ -16,6 +16,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ClassfullyBrand from '@/components/marketing/ClassfullyBrand';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { failureReason, track } from '@/lib/analytics/events';
 import { ArrowRight, CheckCircle2, EyeOff, Smartphone, UserRound, Users } from 'lucide-react';
 import type { SessionParticipationMode } from '@/types';
 
@@ -36,6 +37,13 @@ function maskStudentNumber(studentNumber: string) {
 function formatJoinCode(sessionCode: string) {
   return sessionCode.length > 3 ? `${sessionCode.slice(0, 3)} ${sessionCode.slice(3)}` : sessionCode;
 }
+
+/**
+ * Tags an expected join failure with a stable code, so the analytics reason is
+ * `class_not_found` rather than the generic `error` a bare Error would give,
+ * and the student still sees the readable message.
+ */
+const joinFailure = (code: string, message: string) => Object.assign(new Error(message), { code });
 
 export default function JoinPage() {
   const router = useRouter();
@@ -132,10 +140,19 @@ export default function JoinPage() {
 
   const handleJoinSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sessionCode.trim()) return setError('Enter the class code shown by your instructor.');
+    // How the code arrived is the one thing worth measuring here: it answers
+    // whether the projector QR code is doing its job. No code, number, or name
+    // is ever sent with these events.
+    const entryMethod = codeFromLink ? 'qr_link' as const : 'manual_code' as const;
+
+    if (!sessionCode.trim()) {
+      track('join_failed', { failure_reason: 'missing_code', entry_method: entryMethod });
+      return setError('Enter the class code shown by your instructor.');
+    }
 
     setLoading(true);
     setError('');
+    track('join_started', { entry_method: entryMethod });
 
     try {
       await ensureStudentAnonymousAuth();
@@ -145,29 +162,42 @@ export default function JoinPage() {
       const liveClassroom = await getLiveClassroomByCode(normalizedCode);
       if (liveClassroom) {
         const participationMode: SessionParticipationMode = liveClassroom.participationMode || 'course-record';
-        if (participationMode === 'course-record' && normalizedStudentNumber.length < 3) return setError('Enter your student number so this session can join your course record.');
-        if (participationMode === 'session-name' && normalizedDisplayName.length < 2) return setError('Enter a name or nickname for this session.');
-        if (participationMode !== 'anonymous' && !privacyAcknowledged) return setError('Review the privacy notice before joining.');
+        if (participationMode === 'course-record' && normalizedStudentNumber.length < 3) {
+          track('join_failed', { failure_reason: 'missing_student_number', entry_method: entryMethod });
+          return setError('Enter your student number so this session can join your course record.');
+        }
+        if (participationMode === 'session-name' && normalizedDisplayName.length < 2) {
+          track('join_failed', { failure_reason: 'missing_display_name', entry_method: entryMethod });
+          return setError('Enter a name or nickname for this session.');
+        }
+        if (participationMode !== 'anonymous' && !privacyAcknowledged) {
+          track('join_failed', { failure_reason: 'privacy_not_acknowledged', entry_method: entryMethod });
+          return setError('Review the privacy notice before joining.');
+        }
         await claimStudentAttendance(liveClassroom.ownerUid, liveClassroom.sessionId, normalizedStudentNumber, normalizedDisplayName, participationMode);
         if (participationMode === 'course-record') saveRememberedStudent(normalizedStudentNumber, normalizedDisplayName);
+        track('join_succeeded', { join_mode: participationMode, entry_method: entryMethod, classroom_kind: 'live' });
         router.push(`/live/student?sessionId=${encodeURIComponent(liveClassroom.sessionId)}&ownerUid=${encodeURIComponent(liveClassroom.ownerUid)}`);
         return;
       }
       const session = await getSessionByCodeStudent(normalizedCode);
       
       if (!session) {
-        throw new Error('We could not find that class. Check the code on the projector and try again.');
+        throw joinFailure('class_not_found', 'We could not find that class. Check the code on the projector and try again.');
       }
 
       if (!session.active) {
-        throw new Error('This class session has ended. Ask your instructor for the current code.');
+        throw joinFailure('session_ended', 'This class session has ended. Ask your instructor for the current code.');
       }
 
       saveRememberedStudent(normalizedStudentNumber, normalizedDisplayName);
       window.sessionStorage.setItem('living-seminar-pending-student-number', normalizedStudentNumber);
       window.sessionStorage.setItem('classfully-pending-student-display-name', normalizedDisplayName);
+      track('join_succeeded', { join_mode: 'course-record', entry_method: entryMethod, classroom_kind: 'case_study' });
       router.push(`/session/${session.sessionCode}`);
     } catch (joinError: unknown) {
+      // A spike here during teaching hours is an incident, not a statistic.
+      track('join_failed', { failure_reason: failureReason(joinError), entry_method: entryMethod });
       setError(getUserFacingError(joinError, 'We could not join the class. Check the code and try again.'));
     } finally {
       setLoading(false);

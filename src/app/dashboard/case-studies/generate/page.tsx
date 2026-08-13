@@ -15,6 +15,7 @@ import InlineMessage from '@/components/ui/InlineMessage';
 import type { CaseStudy } from '@/types';
 import { Sparkles, ArrowLeft, Save, Loader2, BookOpen, MessageSquare, Activity, HelpCircle, Award } from 'lucide-react';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { track } from '@/lib/analytics/events';
 
 export default function GenerateCaseStudyPage() {
   const { user } = useAuth();
@@ -50,6 +51,7 @@ export default function GenerateCaseStudyPage() {
     setError('');
     setGeneratedCaseStudy(null);
     setLoadingProgress('Initializing AI generation...');
+    const startedAt = Date.now();
 
     try {
       if (!formData.prompt.trim() || !formData.learningObjectives.trim()) {
@@ -89,6 +91,9 @@ export default function GenerateCaseStudyPage() {
       setLoadingProgress('Finalizing case study...');
       setGeneratedCaseStudy(data.caseStudy);
       setLoadingProgress('');
+      // Duration matters as much as usage here: a draft nobody waits for is a
+      // feature nobody uses. No prompt or objective text is sent.
+      track('case_study_generated', { generation_seconds: Math.round((Date.now() - startedAt) / 1000) });
     } catch (error: any) {
       console.error('Generation error:', error);
       
@@ -119,6 +124,7 @@ export default function GenerateCaseStudyPage() {
 
     try {
       await createCaseStudy(generatedCaseStudy);
+      track('case_study_created', { content_source: 'ai' });
       router.push('/dashboard/case-studies');
     } catch (error: any) {
       setError(getUserFacingError(error, 'The case study could not be saved. The generated draft is still here, so you can try again.'));

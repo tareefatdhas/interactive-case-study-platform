@@ -16,6 +16,7 @@
     "test:session-response-summary": "tsx scripts/verify-session-response-summary.ts",
     "test:student-progress": "tsx scripts/verify-student-progress-metrics.ts",
     "test:knowledge-check-scoring": "tsx scripts/verify-knowledge-check-scoring.ts",
+    "test:analytics-paths": "tsx scripts/verify-analytics-paths.ts",
     "test:course-sources": "node scripts/verify-course-source-contract.mjs",
     "test:course-source-api": "node scripts/verify-course-source-api.mjs",
     "check": "npm run typecheck && npm run lint && npm run build && npm run test:e2e",

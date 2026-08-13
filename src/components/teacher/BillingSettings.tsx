@@ -9,6 +9,13 @@ import InlineMessage from '@/components/ui/InlineMessage';
 import { getInstructorBilling, openBillingCheckout, openBillingPortal } from '@/lib/firebase/billing';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import type { BillingPlan, InstructorBillingSummary } from '@/types';
+import { setInstructorPlan, track } from '@/lib/analytics/events';
+
+/** List prices, so `begin_checkout` and `purchase` report the same number. */
+const planPricesUsd: Record<'instructor_term' | 'instructor_annual', number> = {
+  instructor_term: 69,
+  instructor_annual: 119,
+};
 
 const planNames: Record<BillingPlan, string> = {
   pilot: 'Classroom pilot',
@@ -33,10 +40,21 @@ export default function BillingSettings() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('billing') === 'success') setNotice('Payment received. Your plan will update as soon as Stripe confirms it.');
-    if (params.get('billing') === 'cancelled') setNotice('No changes were made to your plan.');
+    if (params.get('billing') === 'success') {
+      setNotice('Payment received. Your plan will update as soon as Stripe confirms it.');
+      // Funnel signal only. The revenue record is the `purchase` event the
+      // Stripe webhook sends, which is the only confirmed source of the amount.
+      track('checkout_completed', {});
+    }
+    if (params.get('billing') === 'cancelled') {
+      setNotice('No changes were made to your plan.');
+      track('checkout_abandoned', {});
+    }
     getInstructorBilling()
-      .then(setBilling)
+      .then((summary) => {
+        setBilling(summary);
+        setInstructorPlan(summary.effectivePlan);
+      })
       .catch((loadError) => setError(getUserFacingError(loadError, 'Billing details are not available yet. Try again shortly.')))
       .finally(() => setLoading(false));
   }, []);
@@ -44,6 +62,7 @@ export default function BillingSettings() {
   const startCheckout = async (plan: Extract<BillingPlan, 'instructor_term' | 'instructor_annual'>) => {
     setAction(plan === 'instructor_term' ? 'term' : 'annual');
     setError('');
+    track('begin_checkout', { currency: 'USD', value: planPricesUsd[plan], plan_id: plan });
     try {
       await openBillingCheckout(plan);
     } catch (checkoutError) {
@@ -55,6 +74,7 @@ export default function BillingSettings() {
   const manageBilling = async () => {
     setAction('portal');
     setError('');
+    track('billing_portal_opened', {});
     try {
       await openBillingPortal();
     } catch (portalError) {
