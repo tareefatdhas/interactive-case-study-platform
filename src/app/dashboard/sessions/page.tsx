@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { createSession, generateSessionCode, getCaseStudiesByTeacher, getSessionsByTeacher, checkAndTimeoutInactiveSessions, endSession, deleteSession, updateSession } from '@/lib/firebase/firestore';
+import { createSession, generateSessionCode, getCaseStudiesByTeacher, getAccessibleSessions, checkAndTimeoutInactiveSessions, endSession, deleteSession, updateSession } from '@/lib/firebase/firestore';
 import { deleteInstructorClassroomData, endInstructorClassroom } from '@/lib/firebase/live-classroom';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
@@ -36,7 +36,7 @@ export default function SessionsPage() {
             getCaseStudiesByTeacher(user.uid, true), // Include archived for session references
             checkAndTimeoutInactiveSessions(user.uid),
           ]);
-          const sessionsData = await getSessionsByTeacher(user.uid);
+          const sessionsData = await getAccessibleSessions(user.uid);
           
           setCaseStudies(studies);
           setSessions(sessionsData);
@@ -113,7 +113,7 @@ export default function SessionsPage() {
         await checkAndTimeoutInactiveSessions(user.uid);
         
         // Then refresh the sessions list
-        const sessionsData = await getSessionsByTeacher(user.uid);
+        const sessionsData = await getAccessibleSessions(user.uid);
         setSessions(sessionsData);
       } catch (error) {
         console.error('Error refreshing sessions:', error);
@@ -143,7 +143,7 @@ export default function SessionsPage() {
       await endSession(sessionId);
       // Refresh sessions list
       if (user) {
-        const sessionsData = await getSessionsByTeacher(user.uid);
+        const sessionsData = await getAccessibleSessions(user.uid);
         setSessions(sessionsData);
       }
     } catch (error) {
@@ -170,7 +170,7 @@ export default function SessionsPage() {
       await deleteSession(sessionId);
       // Refresh sessions list
       if (user) {
-        const sessionsData = await getSessionsByTeacher(user.uid);
+        const sessionsData = await getAccessibleSessions(user.uid);
         setSessions(sessionsData);
       }
     } catch (error) {
@@ -191,7 +191,7 @@ export default function SessionsPage() {
         sessionType: session.sessionType,
         caseStudyId: session.caseStudyId,
         caseStudyTitle: session.caseStudyTitle,
-        teacherId: user.uid,
+        teacherId: session.teacherId,
         courseId: session.courseId,
         courseCode: session.courseCode,
         rewardScopeId: session.rewardScopeId || session.courseCode,
@@ -249,7 +249,7 @@ export default function SessionsPage() {
       }));
       // Refresh sessions list
       if (user) {
-        const sessionsData = await getSessionsByTeacher(user.uid);
+        const sessionsData = await getAccessibleSessions(user.uid);
         setSessions(sessionsData);
       }
     } catch (error) {

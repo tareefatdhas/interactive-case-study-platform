@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'react-qr-code';
-import { Activity, CheckCircle2, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
+import { Activity, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
 import LivingMoodField from '@/components/live/LivingMoodField';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
@@ -501,6 +501,11 @@ export default function ClassroomDisplayPage() {
   const [remoteUnavailable, setRemoteUnavailable] = useState(false);
   const [joinUrl, setJoinUrl] = useState('https://classfully.com/join');
   const [projectorFlights, setProjectorFlights] = useState<ProjectorFlight[]>([]);
+  const [presenterControlsAvailable, setPresenterControlsAvailable] = useState(false);
+  const [presenterControlsVisible, setPresenterControlsVisible] = useState(false);
+  const presenterChannelRef = useRef<BroadcastChannel | null>(null);
+  const presenterHideTimerRef = useRef<number | null>(null);
+  const presenterLastSeenRef = useRef(0);
   const arrivalSequenceRef = useRef(0);
   const priorArrivalStateRef = useRef<{
     runId: string | null;
@@ -599,6 +604,66 @@ export default function ClassroomDisplayPage() {
     window.addEventListener('offline', handleOffline);
     return () => window.removeEventListener('offline', handleOffline);
   }, []);
+
+  useEffect(() => {
+    const channel = new BroadcastChannel(LESSON_CHANNEL);
+    presenterChannelRef.current = channel;
+    const announce = () => channel.postMessage({ type: 'presentation-controller-ready' });
+    channel.onmessage = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data?.type !== 'presentation-controller-available') return;
+      presenterLastSeenRef.current = Date.now();
+      setPresenterControlsAvailable(true);
+    };
+    announce();
+    const retry = window.setInterval(announce, 1800);
+    const connectionCheck = window.setInterval(() => {
+      if (presenterLastSeenRef.current && Date.now() - presenterLastSeenRef.current > 5200) {
+        setPresenterControlsAvailable(false);
+        setPresenterControlsVisible(false);
+      }
+    }, 1800);
+    return () => {
+      window.clearInterval(retry);
+      window.clearInterval(connectionCheck);
+      if (presenterHideTimerRef.current) window.clearTimeout(presenterHideTimerRef.current);
+      presenterChannelRef.current = null;
+      channel.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!presenterControlsAvailable) return;
+    const revealControls = (event?: PointerEvent) => {
+      if (event && event.clientY < window.innerHeight - 120) return;
+      setPresenterControlsVisible(true);
+      if (presenterHideTimerRef.current) window.clearTimeout(presenterHideTimerRef.current);
+      presenterHideTimerRef.current = window.setTimeout(() => setPresenterControlsVisible(false), 3200);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        presenterChannelRef.current?.postMessage({
+          type: 'instructor-remote-command',
+          command: event.key === 'ArrowLeft' ? 'previous' : 'next',
+        });
+        revealControls();
+      }
+    };
+    window.addEventListener('pointermove', revealControls);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointermove', revealControls);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [presenterControlsAvailable]);
+
+  const navigateFromPresentation = (direction: 'previous' | 'next') => {
+    presenterChannelRef.current?.postMessage({ type: 'instructor-remote-command', command: direction });
+    setPresenterControlsVisible(true);
+    if (presenterHideTimerRef.current) window.clearTimeout(presenterHideTimerRef.current);
+    presenterHideTimerRef.current = window.setTimeout(() => setPresenterControlsVisible(false), 3200);
+  };
 
   useEffect(() => {
     setJoinUrl(`${window.location.origin}/join`);
@@ -735,6 +800,13 @@ export default function ClassroomDisplayPage() {
       </header>
 
       {projectorFlights.map((flight) => <ProjectorTransportFlight key={flight.id} flight={flight} />)}
+      {presenterControlsAvailable && (
+        <nav className={`presentation-navigator ${presenterControlsVisible ? 'is-visible' : ''}`} aria-label="Presenter activity controls">
+          <button type="button" onClick={() => navigateFromPresentation('previous')} aria-label="Show previous interaction" title="Previous interaction (Left arrow)"><ChevronLeft size={20} /></button>
+          <span><small>Presenter controls</small><strong>{lessonState.activeInteraction?.title || 'Class view'}</strong></span>
+          <button type="button" onClick={() => navigateFromPresentation('next')} aria-label="Show next interaction" title="Next interaction (Right arrow)"><ChevronRight size={20} /></button>
+        </nav>
+      )}
       {lessonState.timer && lessonState.activeInteraction?.type !== 'timer' && <ProjectorTimer timer={lessonState.timer} />}
 
       {remoteUnavailable ? (

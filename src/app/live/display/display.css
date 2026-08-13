@@ -24,6 +24,59 @@ body:has(.classroom-display) {
   background: var(--display-paper);
 }
 
+.presentation-navigator {
+  position: fixed;
+  z-index: 80;
+  bottom: 14px;
+  left: 50%;
+  display: grid;
+  grid-template-columns: 42px minmax(150px, auto) 42px;
+  align-items: center;
+  gap: 7px;
+  min-width: 286px;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  color: white;
+  background: rgba(16, 26, 56, 0.91);
+  box-shadow: 0 18px 54px rgba(16, 26, 56, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 18px) scale(0.97);
+  transition: opacity 180ms ease, transform 240ms cubic-bezier(.16, 1, .3, 1);
+  backdrop-filter: blur(18px);
+}
+
+.presentation-navigator.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.presentation-navigator > span { min-width: 0; display: grid; gap: 2px; text-align: center; }
+.presentation-navigator small { color: #aaa4f5; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.presentation-navigator strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.presentation-navigator button {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 12px;
+  color: white;
+  background: rgba(255,255,255,.08);
+  cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease;
+}
+.presentation-navigator button:hover { background: rgba(255,255,255,.17); transform: translateY(-1px); }
+.presentation-navigator button:active { transform: translateY(1px) scale(.97); }
+html[data-input-modality="keyboard"] .presentation-navigator button:focus-visible { outline: 2px solid #aaa4f5; outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .presentation-navigator,
+  .presentation-navigator button { transition: none; }
+}
+
 .projector-timer {
   position: fixed;
   z-index: 45;

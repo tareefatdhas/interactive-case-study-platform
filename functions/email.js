@@ -120,6 +120,42 @@ function renderWelcomeEmail(input) {
   });
 }
 
+function renderTeachingTeamWelcomeEmail(input) {
+  const isProgressViewer = input.role === 'progress-viewer';
+  const isCourseScope = input.scope === 'course';
+  const sharedSpace = isCourseScope ? input.courseName || 'the shared course' : 'the shared teaching workspace';
+  return renderEmail({
+    subject: isCourseScope ? `Welcome to ${input.courseName || 'the teaching team'}` : 'Welcome to the teaching team',
+    previewText: isProgressViewer
+      ? `Student progress for ${sharedSpace} is ready to review.`
+      : `${sharedSpace} is ready in your Classfully account.`,
+    eyebrow: 'Shared teaching',
+    title: isProgressViewer ? 'Your progress view is ready.' : 'You are on the teaching team.',
+    intro: isProgressViewer
+      ? `you can now review attendance and student progress for ${sharedSpace}.`
+      : `you can now plan sessions, run class, and review student progress for ${sharedSpace}.`,
+    recipientName: input.recipientName,
+    periodLabel: isCourseScope ? 'Course access' : 'Workspace access',
+    contextCode: isCourseScope ? input.courseCode || '' : '',
+    contextTitle: isCourseScope ? input.courseName || '' : '',
+    metrics: [],
+    insightLabel: 'Your access',
+    insightTitle: isProgressViewer ? 'Review without changing the class.' : 'Teach from your own account.',
+    insightBody: isProgressViewer
+      ? 'You can see attendance and progress, while teaching controls stay with the instructors running the course.'
+      : 'Use your own sign-in to prepare activities, open sessions, and support the class alongside the teaching team.',
+    actions: [
+      isProgressViewer
+        ? { title: 'Open student progress', body: 'See the shared course record and participation history.' }
+        : { title: 'Open the shared course', body: 'Review the session flow before you teach or make changes.' },
+    ],
+    ctaLabel: isProgressViewer ? 'Review student progress' : isCourseScope ? 'Open the shared course' : 'View shared classes',
+    ctaUrl: input.ctaUrl,
+    closingNote: 'You can return to the shared space whenever you sign in to Classfully.',
+    privacyNote: 'This is a service email for your Classfully teaching-team access.',
+  });
+}
+
 function renderAfterClassReportEmail(input) {
   return renderEmail({
     subject: `${input.courseCode}: your class, at a glance`,
@@ -162,6 +198,7 @@ function renderWeeklyDigestEmail(input) {
 
 module.exports = {
   renderWelcomeEmail,
+  renderTeachingTeamWelcomeEmail,
   renderAfterClassReportEmail,
   renderWeeklyDigestEmail,
 };

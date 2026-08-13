@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { renderWelcomeEmail, renderAfterClassReportEmail, renderWeeklyDigestEmail } = require('./email');
+const { renderWelcomeEmail, renderTeachingTeamWelcomeEmail, renderAfterClassReportEmail, renderWeeklyDigestEmail } = require('./email');
 
 test('welcome email has one clear first-class action', () => {
   const email = renderWelcomeEmail({ recipientName: 'Tareef' });
@@ -10,6 +10,33 @@ test('welcome email has one clear first-class action', () => {
   assert.match(email.html, /Create your first class/);
   assert.match(email.text, /Plan one useful moment/);
   assert.doesNotMatch(email.text, /Worth carrying forward/);
+});
+
+test('co-instructor welcome opens the shared course instead of creating one', () => {
+  const email = renderTeachingTeamWelcomeEmail({
+    recipientName: 'Ari',
+    role: 'co-instructor',
+    scope: 'course',
+    courseName: 'Platform Strategy',
+    courseCode: 'ECON 302',
+    ctaUrl: 'https://classfully.com/dashboard/classes/course-1',
+  });
+  assert.equal(email.subject, 'Welcome to Platform Strategy');
+  assert.match(email.text, /Open the shared course/);
+  assert.match(email.text, /plan sessions, run class, and review student progress/i);
+  assert.doesNotMatch(email.text, /Create your first class/);
+});
+
+test('progress-viewer welcome only promises review access', () => {
+  const email = renderTeachingTeamWelcomeEmail({
+    recipientName: 'Sam',
+    role: 'progress-viewer',
+    scope: 'workspace',
+    ctaUrl: 'https://classfully.com/dashboard/progress',
+  });
+  assert.match(email.text, /Review student progress/);
+  assert.match(email.text, /teaching controls stay with the instructors/i);
+  assert.doesNotMatch(email.text, /run class/i);
 });
 
 test('after-class report renders only collected metrics', () => {

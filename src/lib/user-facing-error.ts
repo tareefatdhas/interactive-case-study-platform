@@ -20,6 +20,7 @@ const technicalMessagePatterns = [
   /json/i,
   /status\s?\d{3}/i,
   /internal server error/i,
+  /^internal$/i,
 ];
 
 const extractError = (error: unknown): { code: string; message: string } => {
@@ -56,6 +57,7 @@ const messageForCode = (code: string): string | null => {
   if (code === 'functions/resource-exhausted') return 'Your current plan has reached its limit. Review your plan in Settings to continue.';
   if (code === 'functions/failed-precondition') return 'This part of billing is not ready yet. Your existing work is safe.';
   if (code === 'functions/unauthenticated') return 'Your sign-in has expired. Sign in again to continue.';
+  if (code === 'functions/internal') return 'This part of Classfully is not available yet. Refresh in a moment and try again.';
   if (code === 'functions/permission-denied') return 'You do not have access to make this change.';
   if (code === 'functions/already-exists') return 'That item already exists. Try a different name or code.';
   if (code === 'unauthenticated') return 'Your sign-in has expired. Sign in again to continue.';

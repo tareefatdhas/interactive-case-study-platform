@@ -20,6 +20,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import InstructorAvatar from '@/components/teacher/InstructorAvatar';
 import BillingSettings from '@/components/teacher/BillingSettings';
+import TeachingTeamPanel from '@/components/teacher/TeachingTeamPanel';
 import { 
   User, 
   Lock, 
@@ -320,6 +321,8 @@ export default function SettingsPage() {
             </Card>
 
             <BillingSettings />
+
+            <TeachingTeamPanel ownerUid={user?.uid} />
 
             {/* Security Settings */}
             <Card>

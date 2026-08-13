@@ -177,9 +177,23 @@ export async function getCurrentStudentAttendance(ownerUid: string, sessionId: s
   return snapshot.val() as StoredAttendanceClaim | null;
 }
 
-export async function deleteInstructorClassroomData(ownerUid: string, sessionId: string) {
+async function requireInstructorRoomAccess(ownerUid: string, sessionId?: string, courseId?: string, write = false) {
   const instructor = auth.currentUser;
-  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) throw new Error('Instructor sign-in required.');
+  if (!instructor || instructor.isAnonymous) throw new Error('Instructor sign-in required.');
+  if (instructor.uid === ownerUid) return instructor;
+  const [accessSnapshot, metaSnapshot] = await Promise.all([
+    get(ref(realtimeDb, `instructorAccess/${ownerUid}/${instructor.uid}`)),
+    sessionId ? get(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/meta`)).catch(() => null) : Promise.resolve(null),
+  ]);
+  const access = accessSnapshot.val() as { workspaceRole?: string; courses?: Record<string, string> } | null;
+  const roomCourseId = courseId || (metaSnapshot?.val() as LiveClassroomMeta | null)?.courseId;
+  const role = access?.workspaceRole || (roomCourseId ? access?.courses?.[roomCourseId] : undefined);
+  if (!role || (write && role !== 'co-instructor')) throw new Error(write ? 'You do not have permission to control this class.' : 'You do not have access to this class.');
+  return instructor;
+}
+
+export async function deleteInstructorClassroomData(ownerUid: string, sessionId: string) {
+  await requireInstructorRoomAccess(ownerUid, sessionId, undefined, true);
 
   const metaSnapshot = await get(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/meta`));
   const meta = metaSnapshot.val() as LiveClassroomMeta | null;
@@ -212,19 +226,20 @@ export async function initializeInstructorClassroom(
   session: LiveSessionContext,
   initialState: LessonDisplayState,
 ) {
-  const instructor = auth.currentUser;
-  if (!instructor || instructor.isAnonymous) throw new Error('Instructor sign-in required.');
+  const ownerUid = session.ownerUid;
+  if (!ownerUid) throw new Error('This classroom is missing its owner.');
+  await requireInstructorRoomAccess(ownerUid, sessionId, session.courseId, true);
 
-  const metaRef = ref(realtimeDb, `${roomPath(instructor.uid, sessionId)}/meta`);
+  const metaRef = ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/meta`);
   const priorMetaSnapshot = await get(metaRef);
   const priorMeta = priorMetaSnapshot.val() as LiveClassroomMeta | null;
   const result = await runTransaction(metaRef, (current: LiveClassroomMeta | null) => {
-    if (current && current.ownerUid !== instructor.uid) return;
+    if (current && current.ownerUid !== ownerUid) return;
     const now = Date.now();
     return {
       ...(current || {}),
       ...session,
-      ownerUid: instructor.uid,
+      ownerUid,
       status: 'live',
       createdAt: current?.createdAt || now,
       updatedAt: now,
@@ -233,14 +248,14 @@ export async function initializeInstructorClassroom(
   }, { applyLocally: false });
 
   const meta = result.snapshot.val() as LiveClassroomMeta | null;
-  if (!result.committed || meta?.ownerUid !== instructor.uid) {
+  if (!result.committed || !meta || meta.ownerUid !== ownerUid) {
     throw new Error('This classroom belongs to another instructor.');
   }
 
   const joinRecord: LiveJoinRecord = {
     sessionId,
     ...(session.courseId ? { courseId: session.courseId } : {}),
-    ownerUid: instructor.uid,
+    ownerUid,
     sessionCode: session.sessionCode,
     courseCode: session.courseCode,
     ...(session.rewardScopeId ? { rewardScopeId: session.rewardScopeId } : {}),
@@ -253,19 +268,18 @@ export async function initializeInstructorClassroom(
   };
   await set(ref(realtimeDb, joinCodePath(session.sessionCode)), joinRecord);
 
-  const publicStateRef = ref(realtimeDb, `${roomPath(instructor.uid, sessionId)}/publicState`);
+  const publicStateRef = ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/publicState`);
   const publicStateSnapshot = await get(publicStateRef);
   if (priorMeta?.status === 'live' && priorMeta.expiresAt > Date.now() && publicStateSnapshot.exists()) {
     return normalizePublicState(publicStateSnapshot.val() as LessonDisplayState);
   }
 
-  await publishInstructorState(instructor.uid, sessionId, initialState);
+  await publishInstructorState(ownerUid, sessionId, initialState);
   return initialState;
 }
 
 export async function endInstructorClassroom(ownerUid: string, sessionId: string) {
-  const instructor = auth.currentUser;
-  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) throw new Error('Instructor sign-in required.');
+  await requireInstructorRoomAccess(ownerUid, sessionId, undefined, true);
   await settleQuestionPointClaims(ownerUid, sessionId).catch((error) => {
     const reason = error instanceof Error ? error.message : 'Unknown database response';
     console.warn(`Final question points were not settled. Class ending will continue. ${reason}`);
@@ -348,61 +362,60 @@ export async function resetInstructorClassroom(
   sessionId: string,
   resetState: LessonDisplayState,
 ) {
-  const instructor = auth.currentUser;
-  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) {
-    throw new Error('Instructor sign-in required.');
-  }
+  await requireInstructorRoomAccess(ownerUid, sessionId, undefined, true);
 
   const basePath = roomPath(ownerUid, sessionId);
   const now = Date.now();
   const archiveId = `reset-${now}`;
-  const resetResult = await runTransaction(ref(realtimeDb, basePath), (currentValue) => {
-    const current = currentValue as (Record<string, unknown> & {
-      meta?: LiveClassroomMeta;
-      archives?: Record<string, InstructorClassroomArchive>;
-      responses?: InstructorClassroomArchive['responses'];
-      welcomeResponses?: InstructorClassroomArchive['welcomeResponses'];
-      studentQuestions?: InstructorClassroomArchive['studentQuestions'];
-      questionVotes?: InstructorClassroomArchive['questionVotes'];
-      dismissedQuestions?: InstructorClassroomArchive['dismissedQuestions'];
-      questionPointClaims?: InstructorClassroomArchive['questionPointClaims'];
-      recognizedQuestions?: InstructorClassroomArchive['recognizedQuestions'];
-    }) | null;
-    if (!current?.meta || current.meta.ownerUid !== ownerUid) return;
+  const [metaSnapshot, responsesSnapshot, welcomeSnapshot, questionsSnapshot, votesSnapshot, dismissedSnapshot, pointClaimsSnapshot, recognizedSnapshot] = await Promise.all([
+    get(ref(realtimeDb, `${basePath}/meta`)),
+    get(ref(realtimeDb, `${basePath}/responses`)),
+    get(ref(realtimeDb, `${basePath}/welcomeResponses`)),
+    get(ref(realtimeDb, `${basePath}/studentQuestions`)),
+    get(ref(realtimeDb, `${basePath}/questionVotes`)),
+    get(ref(realtimeDb, `${basePath}/dismissedQuestions`)),
+    get(ref(realtimeDb, `${basePath}/questionPointClaims`)),
+    get(ref(realtimeDb, `${basePath}/recognizedQuestions`)),
+  ]);
+  const currentMeta = metaSnapshot.val() as LiveClassroomMeta | null;
+  if (!currentMeta || currentMeta.ownerUid !== ownerUid) {
+    throw new Error('The live classroom record could not be found.');
+  }
 
-    const expiresAt = Math.max(current.meta.expiresAt || 0, now + 12 * 60 * 60 * 1000);
-    const {
-      responses,
-      welcomeResponses,
-      studentQuestions,
-      questionVotes,
-      dismissedQuestions,
-      questionPointClaims,
-      recognizedQuestions,
-      ...roomWithoutCollectedData
-    } = current;
-    const archive = cleanFirebaseValue({
-      createdAt: now,
-      reason: 'session-reset',
-      responses: responses || {},
-      welcomeResponses: welcomeResponses || {},
-      studentQuestions: studentQuestions || {},
-      questionVotes: questionVotes || {},
-      dismissedQuestions: dismissedQuestions || {},
-      questionPointClaims: questionPointClaims || {},
-      recognizedQuestions: recognizedQuestions || {},
-    } satisfies InstructorClassroomArchive);
+  const expiresAt = Math.max(currentMeta.expiresAt || 0, now + 12 * 60 * 60 * 1000);
+  const archive = cleanFirebaseValue({
+    createdAt: now,
+    reason: 'session-reset',
+    responses: responsesSnapshot.val() || {},
+    welcomeResponses: welcomeSnapshot.val() || {},
+    studentQuestions: questionsSnapshot.val() || {},
+    questionVotes: votesSnapshot.val() || {},
+    dismissedQuestions: dismissedSnapshot.val() || {},
+    questionPointClaims: pointClaimsSnapshot.val() || {},
+    recognizedQuestions: recognizedSnapshot.val() || {},
+  } satisfies InstructorClassroomArchive);
+  const meta: LiveClassroomMeta = {
+    ...currentMeta,
+    status: 'live',
+    updatedAt: now,
+    expiresAt,
+  };
 
-    return {
-      ...roomWithoutCollectedData,
-      archives: { ...(current.archives || {}), [archiveId]: archive },
-      publicState: cleanFirebaseValue({ ...resetState, updatedAt: now }),
-      meta: { ...current.meta, status: 'live', updatedAt: now, expiresAt },
-    };
-  }, { applyLocally: false });
+  // Archive and clear the collected classroom data in one atomic update. Read
+  // each protected branch directly so its least-privilege rule still applies.
+  await update(ref(realtimeDb), {
+    [`${basePath}/archives/${archiveId}`]: archive,
+    [`${basePath}/responses`]: null,
+    [`${basePath}/welcomeResponses`]: null,
+    [`${basePath}/studentQuestions`]: null,
+    [`${basePath}/questionVotes`]: null,
+    [`${basePath}/dismissedQuestions`]: null,
+    [`${basePath}/questionPointClaims`]: null,
+    [`${basePath}/recognizedQuestions`]: null,
+    [`${basePath}/publicState`]: cleanFirebaseValue({ ...resetState, updatedAt: now }),
+    [`${basePath}/meta`]: meta,
+  });
 
-  if (!resetResult.committed) throw new Error('The live classroom record could not be found.');
-  const meta = resetResult.snapshot.child('meta').val() as LiveClassroomMeta | null;
   if (meta?.sessionCode) {
     await update(ref(realtimeDb, joinCodePath(meta.sessionCode)), {
       status: 'live',
@@ -417,10 +430,7 @@ export async function getInstructorClassroomRecords(
   sessionId: string,
   options: { includeDiscussion?: boolean } = {},
 ): Promise<InstructorClassroomRecords> {
-  const instructor = auth.currentUser;
-  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) {
-    throw new Error('Instructor sign-in required.');
-  }
+  await requireInstructorRoomAccess(ownerUid, sessionId);
   // Read the protected branches directly. Realtime Database rules are not
   // filters, so reading their parent room is denied even when the instructor
   // is allowed to read each branch.
@@ -470,8 +480,7 @@ export async function getInstructorClassroomRecords(
 }
 
 export async function publishInstructorState(ownerUid: string, sessionId: string, state: LessonDisplayState) {
-  const instructor = auth.currentUser;
-  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) throw new Error('Instructor sign-in required.');
+  await requireInstructorRoomAccess(ownerUid, sessionId, undefined, true);
   await set(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/publicState`), cleanFirebaseValue(state));
 }
 
@@ -714,8 +723,7 @@ export function subscribeToStudentQuestionPointClaims(
 }
 
 export async function setInstructorQuestionRecognized(ownerUid: string, sessionId: string, questionId: number) {
-  const instructor = auth.currentUser;
-  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) throw new Error('Instructor sign-in required.');
+  await requireInstructorRoomAccess(ownerUid, sessionId, undefined, true);
   await set(ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/recognizedQuestions/${questionId}`), true);
 }
 
@@ -771,10 +779,7 @@ export async function setInstructorQuestionDismissed(
   questionId: number,
   dismissed: boolean,
 ) {
-  const instructor = auth.currentUser;
-  if (!instructor || instructor.isAnonymous || instructor.uid !== ownerUid) {
-    throw new Error('Instructor sign-in required.');
-  }
+  await requireInstructorRoomAccess(ownerUid, sessionId, undefined, true);
   await set(
     ref(realtimeDb, `${roomPath(ownerUid, sessionId)}/dismissedQuestions/${questionId}`),
     dismissed ? true : null,

@@ -113,11 +113,6 @@ export default function SessionPage({ params }: SessionPageProps) {
           return;
         }
 
-        if (sessionData.teacherId !== user?.uid) {
-          setError('This session belongs to another instructor account. Sign in with the account that created it.');
-          return;
-        }
-
         let hydratedSession = sessionData;
         if (sessionData.sessionType === 'standalone') {
           try {

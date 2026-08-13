@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { getAccessibleCourses, getAccessibleSessions } from '@/lib/firebase/firestore';
 import { createCourseWithEntitlement } from '@/lib/firebase/billing';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
@@ -74,8 +74,8 @@ export default function ClassesPage() {
     if (!user) return;
     try {
       const [courseData, sessionData] = await Promise.all([
-        getCoursesByTeacher(user.uid, true),
-        getSessionsByTeacher(user.uid),
+        getAccessibleCourses(user.uid, true),
+        getAccessibleSessions(user.uid),
       ]);
       setCourses(courseData);
       setSessions(sessionData);

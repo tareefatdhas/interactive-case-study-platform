@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { checkAndTimeoutInactiveSessions, getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { checkAndTimeoutInactiveSessions, getAccessibleCourses, getAccessibleSessions } from '@/lib/firebase/firestore';
 import ProtectedRoute from '@/components/teacher/ProtectedRoute';
 import DashboardLayout from '@/components/teacher/DashboardLayout';
 import Button from '@/components/ui/Button';
@@ -46,9 +46,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([getCoursesByTeacher(user.uid), checkAndTimeoutInactiveSessions(user.uid)])
+    Promise.all([getAccessibleCourses(user.uid), checkAndTimeoutInactiveSessions(user.uid)])
       .then(async ([teacherCourses]) => {
-        const teacherSessions = await getSessionsByTeacher(user.uid);
+        const teacherSessions = await getAccessibleSessions(user.uid);
         setCourses(teacherCourses.filter((course) => !course.archived));
         setSessions(teacherSessions);
       })

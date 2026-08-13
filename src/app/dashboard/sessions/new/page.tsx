@@ -193,7 +193,7 @@ function NewSessionContent() {
           getCaseStudiesByTeacher(user.uid),
           editingSessionId ? getSession(editingSessionId) : Promise.resolve(null),
         ]);
-        if (editingSessionId && (!session || session.teacherId !== user.uid)) {
+        if (editingSessionId && !session) {
           setError('This session could not be found.');
           return;
         }
@@ -202,7 +202,7 @@ function NewSessionContent() {
         const course = courseId ? await getCourse(courseId) : null;
         setCaseStudies(studies);
 
-        if (course && course.teacherId === user.uid) {
+        if (course) {
           setSelectedCourse(course);
           setCourseCode(course.code);
           setCourseName(course.name);
@@ -504,7 +504,7 @@ function NewSessionContent() {
         presentationMode: 'external',
         interactions: normalizedInteractions,
         courseSourceIds: selectedCourseSourceIds,
-        teacherId: user.uid,
+        teacherId: selectedCourse?.teacherId || user.uid,
         active: false,
         studentsJoined: [],
         releasedSections: [],

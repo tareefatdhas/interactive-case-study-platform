@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -15,9 +15,11 @@ import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
 import InlineMessage from '@/components/ui/InlineMessage';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { track } from '@/lib/analytics/events';
+import { authHref, invitationTokenFromDestination, safeAuthDestination } from '@/lib/auth-destination';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [signupHref, setSignupHref] = useState('/signup');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -26,17 +28,24 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    setSignupHref(authHref('/signup', window.location.search));
+  }, []);
+
+  const requestedDestination = () => safeAuthDestination(window.location.search) || '/dashboard';
+  const invitationToken = () => invitationTokenFromDestination(requestedDestination());
+
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     setError('');
 
     try {
-      const result = await signInTeacherWithGoogle();
+      const result = await signInTeacherWithGoogle(invitationToken());
       // Google on the sign-in page can still create an account for someone who
       // never registered, so it is recorded as the signup it really is.
       if (result.createdAccount) track('sign_up', { method: 'google' });
       else track('login', { method: 'google' });
-      router.push('/dashboard');
+      router.push(requestedDestination());
     } catch (error: unknown) {
       setError(getGoogleSignInErrorMessage(error, 'We could not sign you in with Google. Please try again.'));
     } finally {
@@ -52,7 +61,7 @@ export default function LoginPage() {
     try {
       await signInTeacher(formData.email, formData.password);
       track('login', { method: 'email' });
-      router.push('/dashboard');
+      router.push(requestedDestination());
     } catch (error: unknown) {
       setError(getUserFacingError(error, 'We could not sign you in. Check your email and password, then try again.'));
     } finally {
@@ -116,7 +125,7 @@ export default function LoginPage() {
               <p className="text-sm text-gray-600">
                 Don&apos;t have an account?{' '}
                 <Link
-                  href="/signup"
+                  href={signupHref}
                   className="font-semibold text-[#5146e5] hover:text-[#4137c7]"
                 >
                   Create one

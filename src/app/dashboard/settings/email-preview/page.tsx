@@ -17,6 +17,12 @@ const previewOptions: Array<{ id: PreviewType; label: string; description: strin
     delivery: 'After sign-up',
   },
   {
+    id: 'teachingTeamWelcome',
+    label: 'Teaching-team welcome',
+    description: 'Opens the course or workspace an invited instructor joined.',
+    delivery: 'After accepting an invitation',
+  },
+  {
     id: 'afterClass',
     label: 'After-class summary',
     description: 'Shows what happened in a finished class.',
@@ -68,7 +74,7 @@ export default function EmailPreviewPage() {
                 </p>
               </header>
 
-                <div className="mt-6 grid gap-2 sm:grid-cols-2 md:grid-cols-5" role="radiogroup" aria-label="Email to preview">
+                <div className="mt-6 grid gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6" role="radiogroup" aria-label="Email to preview">
                   {previewOptions.map((option) => {
                     const selected = option.id === previewType;
                     return (

@@ -1,0 +1,165 @@
+{
+  "generatedAt": "2026-08-12T06:02:19.902Z",
+  "assets": [
+    {
+      "file": "logos/classfully-app-icon-1024.png",
+      "bytes": 14030,
+      "width": 1024,
+      "height": 1024,
+      "format": "png",
+      "alpha": true
+    },
+    {
+      "file": "logos/classfully-app-icon.svg",
+      "bytes": 920,
+      "format": "svg",
+      "scalable": true
+    },
+    {
+      "file": "logos/classfully-apple-app-icon-1024.png",
+      "bytes": 10646,
+      "width": 1024,
+      "height": 1024,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "logos/classfully-google-play-icon-512.png",
+      "bytes": 6775,
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "alpha": true
+    },
+    {
+      "file": "logos/classfully-lockup-color-2400.png",
+      "bytes": 32808,
+      "width": 2400,
+      "height": 554,
+      "format": "png",
+      "alpha": true
+    },
+    {
+      "file": "logos/classfully-lockup-color.svg",
+      "bytes": 1033,
+      "format": "svg",
+      "scalable": true
+    },
+    {
+      "file": "logos/classfully-lockup-reversed-2400.png",
+      "bytes": 34492,
+      "width": 2400,
+      "height": 554,
+      "format": "png",
+      "alpha": true
+    },
+    {
+      "file": "logos/classfully-lockup-reversed.svg",
+      "bytes": 1082,
+      "format": "svg",
+      "scalable": true
+    },
+    {
+      "file": "logos/classfully-mark-color-2048.png",
+      "bytes": 37616,
+      "width": 2048,
+      "height": 2048,
+      "format": "png",
+      "alpha": true
+    },
+    {
+      "file": "logos/classfully-mark-color.svg",
+      "bytes": 770,
+      "format": "svg",
+      "scalable": true
+    },
+    {
+      "file": "logos/classfully-profile-400.png",
+      "bytes": 5425,
+      "width": 400,
+      "height": 400,
+      "format": "png",
+      "alpha": true
+    },
+    {
+      "file": "banners/classfully-linkedin-cover-4200x700.png",
+      "bytes": 1162237,
+      "width": 4200,
+      "height": 700,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "banners/classfully-master-16x9-3840x2160.png",
+      "bytes": 3306077,
+      "width": 3840,
+      "height": 2160,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "banners/classfully-x-header-1500x500.png",
+      "bytes": 491704,
+      "width": 1500,
+      "height": 500,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "banners/classfully-youtube-channel-2560x1440.png",
+      "bytes": 1907381,
+      "width": 2560,
+      "height": 1440,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "social/classfully-open-graph-1200x630.png",
+      "bytes": 485256,
+      "width": 1200,
+      "height": 630,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "social/classfully-portrait-2160x2700.png",
+      "bytes": 2837312,
+      "width": 2160,
+      "height": 2700,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "social/classfully-square-2160x2160.png",
+      "bytes": 2326406,
+      "width": 2160,
+      "height": 2160,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "social/classfully-story-2160x3840.png",
+      "bytes": 4160784,
+      "width": 2160,
+      "height": 3840,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "store/classfully-google-play-feature-1024x500.png",
+      "bytes": 342382,
+      "width": 1024,
+      "height": 500,
+      "format": "png",
+      "alpha": false
+    },
+    {
+      "file": "store/classfully-listing-gallery-1600x900.png",
+      "bytes": 877565,
+      "width": 1600,
+      "height": 900,
+      "format": "png",
+      "alpha": false
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { deleteSession, getCourse, getCoursesByTeacher, getSessionsByTeacher, updateCourse, updateCourseIdentity } from '@/lib/firebase/firestore';
+import { deleteSession, getAccessibleSessions, getCourse, getCourseInstructorRole, getCoursesByTeacher, updateCourse, updateCourseIdentity } from '@/lib/firebase/firestore';
 import { createCourseWithEntitlement } from '@/lib/firebase/billing';
 import { deleteInstructorClassroomData } from '@/lib/firebase/live-classroom';
 import { TEAM_COLORS, addInstructorTeamMember, createInstructorCourseTeam, deleteInstructorCourseTeam, ensureTeamModule, normalizeTeamName, normalizeTeamStudentNumber, removeInstructorTeamMember, subscribeInstructorTeamRoster, updateInstructorCourseTeam, type CourseTeamWithMembers, type TeamColorId } from '@/lib/firebase/course-teams';
@@ -18,6 +18,7 @@ import Button from '@/components/ui/Button';
 import Dialog from '@/components/ui/Dialog';
 import InlineMessage from '@/components/ui/InlineMessage';
 import { AmbientLoading } from '@/components/motion';
+import TeachingTeamPanel from '@/components/teacher/TeachingTeamPanel';
 import type { Course, CourseSource, CourseSourceKind, Session, SessionInteraction, SessionInteractionType } from '@/types';
 import {
   ArrowLeft,
@@ -149,7 +150,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [workspaceView, setWorkspaceView] = useState<'sessions' | 'teams' | 'kit'>('sessions');
+  const [workspaceView, setWorkspaceView] = useState<'sessions' | 'teams' | 'kit' | 'instructors'>('sessions');
   const [teamRoster, setTeamRoster] = useState<CourseTeamWithMembers[]>([]);
   const [teamError, setTeamError] = useState('');
   const [teamErrorTitle, setTeamErrorTitle] = useState('Teams need another try.');
@@ -198,7 +199,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
 
   useEffect(() => {
     const requestedView = new URLSearchParams(window.location.search).get('view');
-    if (requestedView === 'sessions' || requestedView === 'teams' || requestedView === 'kit') {
+    if (requestedView === 'sessions' || requestedView === 'teams' || requestedView === 'kit' || requestedView === 'instructors') {
       setWorkspaceView(requestedView);
     }
   }, []);
@@ -226,9 +227,14 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
     const loadWorkspace = async () => {
       if (!user) return;
       try {
-        const [courseData, sessionData] = await Promise.all([getCourse(id), getSessionsByTeacher(user.uid)]);
-        if (!courseData || courseData.teacherId !== user.uid) {
+        const [courseData, sessionData] = await Promise.all([getCourse(id), getAccessibleSessions(user.uid)]);
+        if (!courseData) {
           setError('This class could not be found.');
+          return;
+        }
+        const instructorRole = await getCourseInstructorRole(user.uid, courseData);
+        if (instructorRole === 'progress-viewer') {
+          router.replace(`/dashboard/progress?courseId=${courseData.id}`);
           return;
         }
         setCourse(courseData);
@@ -246,7 +252,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
       }
     };
     loadWorkspace();
-  }, [id, user]);
+  }, [id, router, user]);
 
   useEffect(() => {
     if (workspaceView !== 'teams' || !course || !user || course.teacherId !== user.uid) return;
@@ -749,6 +755,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                 <button type="button" aria-current={workspaceView === 'sessions' ? 'page' : undefined} onClick={() => setWorkspaceView('sessions')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'sessions' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><CalendarDays className="h-4 w-4" /> Sessions <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{sessions.length}</span></button>
                 <button type="button" aria-current={workspaceView === 'teams' ? 'page' : undefined} onClick={() => setWorkspaceView('teams')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'teams' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><UsersRound className="h-4 w-4" /> Teams <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{teamRoster.length}</span></button>
                 <button type="button" aria-current={workspaceView === 'kit' ? 'page' : undefined} onClick={() => setWorkspaceView('kit')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'kit' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><Library className="h-4 w-4" /> Course kit <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{templates.length}</span></button>
+                <button type="button" aria-current={workspaceView === 'instructors' ? 'page' : undefined} onClick={() => setWorkspaceView('instructors')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'instructors' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><Users className="h-4 w-4" /> Instructors</button>
                 <Link href={`/dashboard/progress?courseId=${course.id}`} className="seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold text-[#697087] transition hover:bg-white hover:text-[#101a38] sm:px-4"><BarChart3 className="h-4 w-4" /> Progress</Link>
               </nav>
 
@@ -865,6 +872,8 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                     <section className="rounded-3xl border border-[#e3e5ed] bg-white p-6"><p className="seminar-eyebrow mb-2">Team tags</p><h2 className="seminar-display text-2xl text-[#101a38]">Name the focus</h2><p className="mt-3 text-sm leading-6 text-[#697087]">Use tags for project topics, tracks, or any choice teams should make when they register.</p><div className="mt-4 flex flex-wrap gap-2">{course.teamTags?.length ? course.teamTags.map((teamTag) => <span key={teamTag} className="rounded-full bg-[#f0efff] px-3 py-1.5 text-xs font-bold text-[#5146e5]">{teamTag}</span>) : <span className="text-sm text-[#697087]">Add tags when you include team formation in the Course kit.</span>}</div></section>
                   </aside>
                 </div>
+              ) : workspaceView === 'instructors' ? (
+                <TeachingTeamPanel courseId={course.id} courseName={course.name} ownerUid={course.teacherId} />
               ) : (
               <fieldset disabled={course.archived} className="m-0 grid min-w-0 items-start gap-8 border-0 p-0 xl:grid-cols-[minmax(0,1fr)_340px]">
                 <section className="rounded-3xl border border-[#e3e5ed] bg-white p-5 sm:p-7" aria-labelledby="library-title">

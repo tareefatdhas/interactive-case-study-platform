@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { getCoursesByTeacher, getSessionsByTeacher } from '@/lib/firebase/firestore';
+import { getAccessibleCourses, getAccessibleSessions } from '@/lib/firebase/firestore';
 import {
   getInstructorClassroomRecords,
   type InstructorClassroomRecords,
@@ -246,13 +246,13 @@ function ReviewContent() {
     const loadReview = async () => {
       try {
         const [courseData, sessionData] = await Promise.all([
-          getCoursesByTeacher(user.uid),
-          getSessionsByTeacher(user.uid),
+          getAccessibleCourses(user.uid),
+          getAccessibleSessions(user.uid),
         ]);
         const held = sessionData.filter(isHeldSession);
         const recordPairs = await Promise.all(held.map(async (session) => {
           try {
-            return [session.id, await getInstructorClassroomRecords(user.uid, session.id, { includeDiscussion: true })] as const;
+            return [session.id, await getInstructorClassroomRecords(session.teacherId, session.id, { includeDiscussion: true })] as const;
           } catch (recordError) {
             console.warn(`Review data could not be loaded for session ${session.id}:`, recordError);
             return [session.id, EMPTY_RECORDS] as const;

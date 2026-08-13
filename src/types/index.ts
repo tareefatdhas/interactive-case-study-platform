@@ -245,6 +245,35 @@ export interface Teacher {
   billing?: TeacherBilling;
   courseIds: string[];
   createdAt: Timestamp;
+  signupContext?: {
+    source: 'teaching-team-invitation';
+    membershipId: string;
+    role: InstructorMembershipRole;
+    scope: InstructorMembershipScope;
+    courseId?: string;
+    courseName?: string;
+  };
+}
+
+export type InstructorMembershipRole = 'co-instructor' | 'progress-viewer';
+export type InstructorMembershipScope = 'workspace' | 'course';
+export type InstructorMembershipStatus = 'pending' | 'active' | 'revoked';
+
+export interface InstructorMembership {
+  id: string;
+  ownerUid: string;
+  userUid?: string;
+  email: string;
+  name?: string;
+  photoURL?: string;
+  role: InstructorMembershipRole;
+  scope: InstructorMembershipScope;
+  courseId?: string;
+  courseName?: string;
+  status: InstructorMembershipStatus;
+  invitedBy: string;
+  createdAt: Timestamp;
+  acceptedAt?: Timestamp;
 }
 
 export type BillingPlan = 'pilot' | 'instructor_term' | 'instructor_annual' | 'institution';

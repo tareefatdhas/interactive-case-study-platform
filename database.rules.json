@@ -10,10 +10,19 @@
       }
     },
 
+    "instructorAccess": {
+      "$ownerUid": {
+        "$instructorUid": {
+          ".read": "auth != null && (auth.uid === $ownerUid || auth.uid === $instructorUid)",
+          ".write": false
+        }
+      }
+    },
+
     "liveJoinCodes": {
       "$sessionCode": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && ((!newData.exists() && data.child('ownerUid').val() === auth.uid) || (newData.exists() && auth.uid === newData.child('ownerUid').val() && (!data.exists() || data.child('ownerUid').val() === auth.uid || data.child('status').val() === 'ended' || data.child('expiresAt').val() < now)))",
+        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && (((!newData.exists() && (data.child('ownerUid').val() === auth.uid || root.child('instructorAccess').child(data.child('ownerUid').val()).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child(data.child('ownerUid').val()).child(auth.uid).child('courses').child(data.child('courseId').val()).val() === 'co-instructor')) || (newData.exists() && (auth.uid === newData.child('ownerUid').val() || root.child('instructorAccess').child(newData.child('ownerUid').val()).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child(newData.child('ownerUid').val()).child(auth.uid).child('courses').child(newData.child('courseId').val()).val() === 'co-instructor') && (!data.exists() || data.child('ownerUid').val() === newData.child('ownerUid').val() || data.child('status').val() === 'ended' || data.child('expiresAt').val() < now))))",
         ".validate": "!newData.exists() || (newData.hasChildren(['sessionId', 'ownerUid', 'sessionCode', 'courseCode', 'courseName', 'sessionTitle', 'instructorName', 'status', 'expiresAt']) && newData.child('sessionId').isString() && newData.child('ownerUid').isString() && (!newData.child('participationMode').exists() || newData.child('participationMode').val() === 'course-record' || newData.child('participationMode').val() === 'session-name' || newData.child('participationMode').val() === 'anonymous') && (newData.child('status').val() === 'live' || newData.child('status').val() === 'ended') && newData.child('expiresAt').isNumber() && (newData.child('status').val() === 'ended' || newData.child('expiresAt').val() > now))"
       }
     },
@@ -21,23 +30,23 @@
     "liveV2": {
       "$ownerUid": {
         "$sessionId": {
-          ".write": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+          ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(data.child('meta').child('courseId').exists() ? data.child('meta').child('courseId').val() : newData.child('meta').child('courseId').val()).val() === 'co-instructor')",
           "meta": {
             ".read": "auth != null",
-            ".write": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(data.child('courseId').exists() ? data.child('courseId').val() : newData.child('courseId').val()).val() === 'co-instructor')",
             ".validate": "newData.hasChildren(['ownerUid', 'status', 'sessionCode', 'courseCode', 'sessionTitle', 'createdAt', 'updatedAt', 'expiresAt']) && newData.child('ownerUid').val() === $ownerUid && (!newData.child('participationMode').exists() || newData.child('participationMode').val() === 'course-record' || newData.child('participationMode').val() === 'session-name' || newData.child('participationMode').val() === 'anonymous') && (newData.child('status').val() === 'live' || newData.child('status').val() === 'ended') && (!data.exists() || newData.child('createdAt').val() === data.child('createdAt').val()) && newData.child('expiresAt').isNumber() && ((newData.child('status').val() === 'live' && newData.child('expiresAt').val() > now && newData.child('expiresAt').val() <= now + 43200000) || newData.child('status').val() === 'ended')"
           },
 
           "publicState": {
             ".read": "auth != null && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now",
-            ".write": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous' && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).val() === 'co-instructor')",
             ".validate": "newData.hasChildren(['session', 'counts', 'onboardingStep', 'updatedAt']) && newData.child('session').child('ownerUid').val() === $ownerUid && newData.child('session').child('sessionId').val() === $sessionId"
           },
 
           "responses": {
-            ".read": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$runId": {
-              ".read": "auth != null && auth.uid === $ownerUid",
+              ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists())",
               "$studentUid": {
                 ".read": "auth != null && auth.uid === $studentUid",
                 ".write": "auth != null && auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous' && !data.exists() && newData.exists() && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('activeInteraction').exists() && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('interactionResults').child('runId').val() === $runId && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('interactionResults').child('open').val() === true",
@@ -47,8 +56,9 @@
           },
 
           "welcomeResponses": {
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$runId": {
-              ".read": "auth != null && auth.uid === $ownerUid",
+              ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists())",
               "$studentUid": {
                 ".read": "auth != null && auth.uid === $studentUid",
                 ".write": "auth != null && auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous' && !data.exists() && newData.exists() && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('onboardingStep').val() === 3 && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('onboardingRunId').val() === newData.child('runId').val()",
@@ -58,8 +68,9 @@
           },
 
           "questionVotes": {
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$questionId": {
-              ".read": "auth != null && auth.uid === $ownerUid",
+              ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists())",
               "$studentUid": {
                 ".read": "auth != null && auth.uid === $studentUid",
                 ".write": "auth != null && auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous' && (!newData.exists() || (newData.val() === true && !root.child('liveV2').child($ownerUid).child($sessionId).child('studentQuestions').child($studentUid).child($questionId).exists() && !root.child('liveV2').child($ownerUid).child($sessionId).child('dismissedQuestions').child($questionId).exists())) && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('questions').exists()"
@@ -68,7 +79,7 @@
           },
 
           "studentQuestions": {
-            ".read": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$studentUid": {
               ".read": "auth != null && auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous'",
               "$questionId": {
@@ -79,9 +90,9 @@
           },
 
           "questionPointClaims": {
-            ".read": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$studentUid": {
-              ".read": "auth != null && (auth.uid === $ownerUid || auth.uid === $studentUid)",
+              ".read": "auth != null && ((auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) || auth.uid === $studentUid)",
               "$claimId": {
                 ".write": "auth != null && auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous' && !data.exists() && newData.exists() && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('participationMode').val() === 'course-record' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now",
                 ".validate": "newData.hasChildren(['type', 'questionId', 'amount', 'label', 'createdAt']) && newData.child('questionId').isNumber() && newData.child('createdAt').isNumber() && newData.child('createdAt').val() >= now - 60000 && newData.child('createdAt').val() <= now + 5000 && root.child('liveV2').child($ownerUid).child($sessionId).child('studentQuestions').child($studentUid).child(newData.child('questionId').val() + '').exists() && (($claimId === 'question-asked' && newData.child('type').val() === 'asked' && newData.child('amount').val() === 1 && newData.child('label').val() === 'Asked a question') || ($claimId === 'question-discussed' && newData.child('type').val() === 'discussed' && newData.child('amount').val() === 3 && newData.child('label').val() === 'Question discussed in class' && root.child('liveV2').child($ownerUid).child($sessionId).child('recognizedQuestions').child(newData.child('questionId').val() + '').val() === true))"
@@ -90,40 +101,40 @@
           },
 
           "recognizedQuestions": {
-            ".read": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$questionId": {
-              ".write": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+              ".write": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).val() === 'co-instructor') && auth.token.firebase.sign_in_provider !== 'anonymous'",
               ".validate": "!newData.exists() || newData.val() === true"
             }
           },
 
           "dismissedQuestions": {
-            ".read": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$questionId": {
-              ".write": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+              ".write": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).val() === 'co-instructor') && auth.token.firebase.sign_in_provider !== 'anonymous'",
               ".validate": "!newData.exists() || newData.val() === true"
             }
           },
 
           "attendanceClaims": {
-            ".read": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$studentUid": {
-              ".read": "auth != null && (auth.uid === $ownerUid || auth.uid === $studentUid)",
-              ".write": "auth != null && ((auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous') || (auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous' && data.exists() && newData.exists() && newData.child('studentUid').val() === data.child('studentUid').val() && newData.child('participationMode').val() === data.child('participationMode').val() && newData.child('joinedAt').val() === data.child('joinedAt').val() && ((!data.child('studentNumber').exists() && !newData.child('studentNumber').exists()) || newData.child('studentNumber').val() === data.child('studentNumber').val()) && ((!data.child('studentDisplayName').exists() && !newData.child('studentDisplayName').exists()) || newData.child('studentDisplayName').val() === data.child('studentDisplayName').val()) && ((data.child('status').val() === 'claimed' && (newData.child('status').val() === 'claimed' || newData.child('status').val() === 'participated')) || (data.child('status').val() === 'participated' && newData.child('status').val() === 'participated'))))",
+              ".read": "auth != null && ((auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) || auth.uid === $studentUid)",
+              ".write": "auth != null && (((auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).val() === 'co-instructor') && auth.token.firebase.sign_in_provider !== 'anonymous') || (auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous' && data.exists() && newData.exists() && newData.child('studentUid').val() === data.child('studentUid').val() && newData.child('participationMode').val() === data.child('participationMode').val() && newData.child('joinedAt').val() === data.child('joinedAt').val() && ((!data.child('studentNumber').exists() && !newData.child('studentNumber').exists()) || newData.child('studentNumber').val() === data.child('studentNumber').val()) && ((!data.child('studentDisplayName').exists() && !newData.child('studentDisplayName').exists()) || newData.child('studentDisplayName').val() === data.child('studentDisplayName').val()) && ((data.child('status').val() === 'claimed' && (newData.child('status').val() === 'claimed' || newData.child('status').val() === 'participated')) || (data.child('status').val() === 'participated' && newData.child('status').val() === 'participated'))))",
               ".validate": "newData.hasChildren(['studentUid', 'participationMode', 'status', 'joinedAt', 'updatedAt']) && newData.child('studentUid').val() === $studentUid && (newData.child('participationMode').val() === 'course-record' || newData.child('participationMode').val() === 'session-name' || newData.child('participationMode').val() === 'anonymous') && ((newData.child('participationMode').val() === 'course-record' && newData.child('studentNumber').isString() && newData.child('studentNumber').val().length >= 3 && newData.child('studentNumber').val().length <= 32) || (newData.child('participationMode').val() !== 'course-record' && !newData.child('studentNumber').exists())) && (!newData.child('studentDisplayName').exists() || (newData.child('studentDisplayName').isString() && newData.child('studentDisplayName').val().length <= 60)) && (newData.child('participationMode').val() !== 'session-name' || (newData.child('studentDisplayName').isString() && newData.child('studentDisplayName').val().length >= 2)) && (newData.child('status').val() === 'claimed' || newData.child('status').val() === 'participated' || newData.child('status').val() === 'confirmed' || newData.child('status').val() === 'excused') && newData.child('joinedAt').isNumber() && newData.child('updatedAt').isNumber() && (!newData.child('participatedAt').exists() || newData.child('participatedAt').isNumber())"
             }
           },
 
           "archives": {
-            ".read": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous'",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$archiveId": {
-              ".write": "auth != null && auth.uid === $ownerUid && auth.token.firebase.sign_in_provider !== 'anonymous' && !data.exists() && newData.exists()",
+              ".write": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').val() === 'co-instructor' || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).val() === 'co-instructor') && auth.token.firebase.sign_in_provider !== 'anonymous' && !data.exists() && newData.exists()",
               ".validate": "newData.hasChildren(['createdAt', 'reason']) && newData.child('createdAt').isNumber() && newData.child('reason').val() === 'session-reset'"
             }
           },
 
           "presence": {
-            ".read": "auth != null && auth.uid === $ownerUid",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists())",
             "$studentUid": {
               "$connectionId": {
                 ".write": "auth != null && auth.uid === $studentUid && auth.token.firebase.sign_in_provider === 'anonymous' && (!newData.exists() || (root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now))",
@@ -133,7 +144,7 @@
           },
 
           "displayPresence": {
-            ".read": "auth != null && auth.uid === $ownerUid",
+            ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists())",
             "$displayUid": {
               "$connectionId": {
                 ".write": "auth != null && auth.uid === $displayUid && auth.token.firebase.sign_in_provider === 'anonymous' && (!newData.exists() || (root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now))",

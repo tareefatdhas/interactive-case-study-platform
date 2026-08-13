@@ -22,6 +22,32 @@ service cloud.firestore {
     function isTeacherOfResource(teacherId) {
       return isAuthenticated() && request.auth.uid == teacherId;
     }
+
+    function hasWorkspaceAccess(ownerUid) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/workspaceInstructorAccess/$(ownerUid + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/workspaceInstructorAccess/$(ownerUid + '_' + request.auth.uid)).data.active == true;
+    }
+
+    function hasCourseAccess(courseId, ownerUid) {
+      return isAuthenticated() && (
+        hasWorkspaceAccess(ownerUid)
+        || (
+          exists(/databases/$(database)/documents/courseInstructorAccess/$(courseId + '_' + request.auth.uid))
+          && get(/databases/$(database)/documents/courseInstructorAccess/$(courseId + '_' + request.auth.uid)).data.active == true
+        )
+      );
+    }
+
+    function canManageCourse(courseId, ownerUid) {
+      return isTeacherOfResource(ownerUid) || (
+        hasCourseAccess(courseId, ownerUid)
+        && (
+          hasWorkspaceAccess(ownerUid) && get(/databases/$(database)/documents/workspaceInstructorAccess/$(ownerUid + '_' + request.auth.uid)).data.role == 'co-instructor'
+          || exists(/databases/$(database)/documents/courseInstructorAccess/$(courseId + '_' + request.auth.uid))
+            && get(/databases/$(database)/documents/courseInstructorAccess/$(courseId + '_' + request.auth.uid)).data.role == 'co-instructor'
+        )
+      );
+    }
     
     // Teachers collection - only teachers can read/write their own data
     match /teachers/{teacherId} {
@@ -53,11 +79,14 @@ service cloud.firestore {
       // the sanitized Realtime Database join record instead of this document.
       allow read: if isAuthenticated() && (!isAnonymous() || resource.data.sessionType != 'standalone');
       allow update, delete: if isTeacher()
-        && isTeacherOfResource(resource.data.teacherId)
+        && (isTeacherOfResource(resource.data.teacherId) || (resource.data.courseId is string && canManageCourse(resource.data.courseId, resource.data.teacherId)))
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['startedAt', 'billingSessionClaimedAt'])
         && (resource.data.active == true || request.resource.data.active != true || request.resource.data.keys().hasAny(['billingSessionClaimedAt']));
-      allow create: if isTeacher() && 
-        isTeacherOfResource(request.resource.data.teacherId)
+      allow create: if isTeacher()
+        && (
+          isTeacherOfResource(request.resource.data.teacherId)
+          || (request.resource.data.courseId is string && canManageCourse(request.resource.data.courseId, request.resource.data.teacherId))
+        )
         && request.resource.data.active == false;
       
       // Legacy case-study students may only append one joined student ID and
@@ -103,11 +132,27 @@ service cloud.firestore {
     
     // Courses - teachers can manage their courses
     match /courses/{courseId} {
-      allow read, update, delete: if isTeacher() &&
-        isTeacherOfResource(resource.data.teacherId);
+      allow read: if isTeacher() &&
+        (isTeacherOfResource(resource.data.teacherId) || hasCourseAccess(courseId, resource.data.teacherId));
+      allow update, delete: if isTeacher() && canManageCourse(courseId, resource.data.teacherId);
       // New classes go through createInstructorCourse so the current plan is
       // checked atomically before the document is created.
       allow create: if false;
+    }
+
+    match /instructorMemberships/{membershipId} {
+      allow read: if isTeacher() && (resource.data.ownerUid == request.auth.uid || resource.data.userUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /workspaceInstructorAccess/{accessId} {
+      allow read: if isTeacher() && (resource.data.ownerUid == request.auth.uid || resource.data.userUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /courseInstructorAccess/{accessId} {
+      allow read: if isTeacher() && (resource.data.ownerUid == request.auth.uid || resource.data.userUid == request.auth.uid);
+      allow write: if false;
     }
 
     // Payment records are server-only. The instructor receives a sanitized
@@ -121,25 +166,41 @@ service cloud.firestore {
     // created by two phones at the same time.
     match /teamModules/{courseId} {
       allow get: if isAuthenticated();
-      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid && request.resource.data.courseId == courseId;
-      allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid && request.resource.data.teacherId == request.auth.uid;
+      allow create: if isTeacher()
+        && request.resource.data.courseId == courseId
+        && canManageCourse(courseId, request.resource.data.teacherId);
+      allow update: if isTeacher()
+        && request.resource.data.teacherId == resource.data.teacherId
+        && canManageCourse(courseId, resource.data.teacherId);
+      allow delete: if isTeacher() && canManageCourse(courseId, resource.data.teacherId);
 
       match /nameClaims/{claimId} {
         allow get: if isAuthenticated();
-        allow list: if isTeacher() && get(/databases/$(database)/documents/teamModules/$(courseId)).data.teacherId == request.auth.uid;
+        allow list: if isTeacher()
+          && canManageCourse(courseId, get(/databases/$(database)/documents/teamModules/$(courseId)).data.teacherId);
         allow create: if isAuthenticated()
-          && (request.resource.data.creatorUid == request.auth.uid || request.resource.data.teacherId == request.auth.uid)
+          && (
+            request.resource.data.creatorUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, request.resource.data.teacherId))
+          )
           && request.resource.data.courseId == courseId
           && claimId == request.resource.data.normalizedName
           && getAfter(/databases/$(database)/documents/teamModules/$(courseId)/teams/$(request.resource.data.teamId)).data.normalizedName == request.resource.data.normalizedName;
-        allow delete: if isAuthenticated() && (resource.data.creatorUid == request.auth.uid || resource.data.teacherId == request.auth.uid);
+        allow delete: if isAuthenticated()
+          && (
+            resource.data.creatorUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, resource.data.teacherId))
+          );
         allow update: if false;
       }
 
       match /teams/{teamId} {
         allow read: if isAuthenticated();
         allow create: if isAuthenticated()
-          && (request.resource.data.creatorUid == request.auth.uid || request.resource.data.teacherId == request.auth.uid)
+          && (
+            request.resource.data.creatorUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, request.resource.data.teacherId))
+          )
           && request.resource.data.courseId == courseId
           && request.resource.data.name is string
           && request.resource.data.name.size() >= 2
@@ -150,7 +211,10 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/teamModules/$(courseId)).data.teacherId == request.resource.data.teacherId
           && getAfter(/databases/$(database)/documents/teamModules/$(courseId)/nameClaims/$(request.resource.data.normalizedName)).data.teamId == teamId;
         allow update: if isAuthenticated()
-          && (resource.data.creatorUid == request.auth.uid || resource.data.teacherId == request.auth.uid)
+          && (
+            resource.data.creatorUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, resource.data.teacherId))
+          )
           && request.resource.data.courseId == courseId
           && request.resource.data.teacherId == resource.data.teacherId
           && request.resource.data.creatorUid == resource.data.creatorUid
@@ -159,14 +223,26 @@ service cloud.firestore {
           && request.resource.data.name.size() <= 48
           && request.resource.data.color in ['violet', 'blue', 'teal', 'green', 'gold', 'coral', 'pink', 'navy']
           && getAfter(/databases/$(database)/documents/teamModules/$(courseId)/nameClaims/$(request.resource.data.normalizedName)).data.teamId == teamId;
-        allow delete: if isAuthenticated() && (resource.data.creatorUid == request.auth.uid || resource.data.teacherId == request.auth.uid);
+        allow delete: if isAuthenticated()
+          && (
+            resource.data.creatorUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, resource.data.teacherId))
+          );
       }
 
       match /memberships/{studentUid} {
-        allow get: if isAuthenticated() && (studentUid == request.auth.uid || resource.data.teacherId == request.auth.uid);
-        allow list: if isTeacher() && get(/databases/$(database)/documents/teamModules/$(courseId)).data.teacherId == request.auth.uid;
+        allow get: if isAuthenticated()
+          && (
+            studentUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, resource.data.teacherId))
+          );
+        allow list: if isTeacher()
+          && canManageCourse(courseId, get(/databases/$(database)/documents/teamModules/$(courseId)).data.teacherId);
         allow create: if isAuthenticated()
-          && (studentUid == request.auth.uid || request.resource.data.teacherId == request.auth.uid)
+          && (
+            studentUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, request.resource.data.teacherId))
+          )
           && request.resource.data.studentUid == studentUid
           && request.resource.data.courseId == courseId
           && request.resource.data.studentNumber is string
@@ -175,12 +251,19 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/teamModules/$(courseId)).data.enabled == true
           && getAfter(/databases/$(database)/documents/teamModules/$(courseId)/teams/$(request.resource.data.teamId)).data.courseId == courseId;
         allow update: if isAuthenticated()
-          && (studentUid == request.auth.uid || resource.data.teacherId == request.auth.uid)
+          && (
+            studentUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, resource.data.teacherId))
+          )
           && request.resource.data.studentUid == studentUid
           && request.resource.data.courseId == courseId
           && request.resource.data.teacherId == resource.data.teacherId
           && get(/databases/$(database)/documents/teamModules/$(courseId)/teams/$(request.resource.data.teamId)).data.courseId == courseId;
-        allow delete: if isAuthenticated() && (studentUid == request.auth.uid || resource.data.teacherId == request.auth.uid);
+        allow delete: if isAuthenticated()
+          && (
+            studentUid == request.auth.uid
+            || (isTeacher() && canManageCourse(courseId, resource.data.teacherId))
+          );
       }
     }
     

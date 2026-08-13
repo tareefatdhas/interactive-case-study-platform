@@ -170,6 +170,63 @@ export const getCoursesByTeacher = async (teacherId: string, includeArchived = f
   return includeArchived ? courses : courses.filter((course) => !course.archived);
 };
 
+export const getAccessibleCourses = async (userId: string, includeArchived = false): Promise<Course[]> => {
+  const owned = await getCoursesByTeacher(userId, true);
+  let workspaceAccess: QuerySnapshot<DocumentData>;
+  let courseAccess: QuerySnapshot<DocumentData>;
+  try {
+    [workspaceAccess, courseAccess] = await Promise.all([
+      getDocs(query(collection(db, 'workspaceInstructorAccess'), where('userUid', '==', userId))),
+      getDocs(query(collection(db, 'courseInstructorAccess'), where('userUid', '==', userId))),
+    ]);
+  } catch (accessError) {
+    const candidate = accessError as { code?: string; message?: string };
+    const code = candidate.code?.toLowerCase() || '';
+    const message = candidate.message?.toLowerCase() || '';
+    if (code === 'permission-denied' || message.includes('missing or insufficient permissions')) {
+      // Teaching-team access is additive. If its rules have not reached the
+      // current Firebase environment yet, an instructor must still be able to
+      // open and manage the courses they own.
+      return includeArchived ? owned : owned.filter((course) => !course.archived);
+    }
+    throw accessError;
+  }
+  const sharedCourseIds = new Set(courseAccess.docs.filter((item) => item.data().active === true).map((item) => item.data().courseId as string));
+  const workspaceOwnerIds = workspaceAccess.docs.filter((item) => item.data().active === true).map((item) => item.data().ownerUid as string);
+  const workspaceCourses = (await Promise.all(workspaceOwnerIds.map((ownerUid) => getCoursesByTeacher(ownerUid, true)))).flat();
+  const courseDocuments = await Promise.all([...sharedCourseIds].map((courseId) => getCourse(courseId)));
+  const courses = [...owned, ...workspaceCourses, ...courseDocuments.filter((course): course is Course => Boolean(course))];
+  const unique = [...new Map(courses.map((course) => [course.id, course])).values()].sort((a, b) => a.code.localeCompare(b.code));
+  return includeArchived ? unique : unique.filter((course) => !course.archived);
+};
+
+export const getCourseInstructorRole = async (
+  userId: string,
+  course: Course,
+): Promise<'owner' | 'co-instructor' | 'progress-viewer' | null> => {
+  if (course.teacherId === userId) return 'owner';
+  const [workspaceAccess, courseAccess] = await Promise.all([
+    getDocs(query(collection(db, 'workspaceInstructorAccess'), where('userUid', '==', userId))),
+    getDocs(query(collection(db, 'courseInstructorAccess'), where('userUid', '==', userId))),
+  ]);
+
+  // Query the records the signed-in instructor is allowed to read, then
+  // resolve the applicable scope locally. A direct read of a missing access
+  // document is rejected by Firestore rules instead of returning "not found",
+  // which previously prevented workspace-level instructors from opening a
+  // course when they did not also have a redundant course-level record.
+  const courseScopedAccess = courseAccess.docs
+    .map((item) => item.data())
+    .find((access) => access.active === true
+      && access.courseId === course.id
+      && access.ownerUid === course.teacherId);
+  const workspaceScopedAccess = workspaceAccess.docs
+    .map((item) => item.data())
+    .find((access) => access.active === true && access.ownerUid === course.teacherId);
+  const access = courseScopedAccess || workspaceScopedAccess || null;
+  return access?.role === 'co-instructor' || access?.role === 'progress-viewer' ? access.role : null;
+};
+
 export const updateCourse = async (
   id: string,
   updates: Partial<Omit<Course, 'id' | 'teacherId' | 'createdAt'>>,
@@ -314,6 +371,18 @@ export const getSessionsByTeacher = async (teacherId: string): Promise<Session[]
     id: doc.id,
     ...doc.data()
   })) as Session[];
+};
+
+export const getAccessibleSessions = async (userId: string): Promise<Session[]> => {
+  const courses = await getAccessibleCourses(userId, true);
+  const owned = await getSessionsByTeacher(userId);
+  const sharedCourses = courses.filter((course) => course.teacherId !== userId);
+  const sharedGroups = await Promise.all(sharedCourses.map(async (course) => {
+    const snapshot = await getDocs(query(collection(db, COLLECTIONS.SESSIONS), where('courseId', '==', course.id)));
+    return snapshot.docs.map((sessionDoc) => ({ id: sessionDoc.id, ...sessionDoc.data() } as Session));
+  }));
+  return [...new Map([...owned, ...sharedGroups.flat()].map((session) => [session.id, session])).values()]
+    .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
 };
 
 export const updateSessionActivity = async (sessionId: string) => {
@@ -850,6 +919,13 @@ export const getAllStudentsWithStats = async (teacherId: string) => {
     console.error('Error getting students with stats:', error);
     throw error;
   }
+};
+
+export const getAccessibleStudentsWithStats = async (userId: string) => {
+  const courses = await getAccessibleCourses(userId, true);
+  const ownerIds = [...new Set([userId, ...courses.map((course) => course.teacherId)])];
+  const groups = await Promise.all(ownerIds.map((ownerUid) => getAllStudentsWithStats(ownerUid)));
+  return [...new Map(groups.flat().map((student) => [student.id, student])).values()];
 };
 
 // Highlights functions for teachers

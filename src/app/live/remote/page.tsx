@@ -113,16 +113,10 @@ export default function InstructorRemotePage() {
       setClassroomStateReady(true);
       return;
     }
-    if (user.uid !== ownerUid) {
-      setError('This remote belongs to another instructor.');
-      setClassroomStateReady(true);
-      return;
-    }
-
     let stopped = false;
     const cleanups: Array<() => void> = [];
     getSession(sessionId).then((session) => {
-      if (stopped || !session || session.teacherId !== user.uid) {
+      if (stopped || !session) {
         if (!stopped) {
           setError('This live session could not be opened.');
           setClassroomStateReady(true);

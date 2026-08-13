@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -15,9 +15,11 @@ import SeminarAuthShell from '@/components/ui/SeminarAuthShell';
 import InlineMessage from '@/components/ui/InlineMessage';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { failureReason, track } from '@/lib/analytics/events';
+import { authHref, invitationTokenFromDestination, safeAuthDestination } from '@/lib/auth-destination';
 
 export default function SignUpPage() {
   const router = useRouter();
+  const [loginHref, setLoginHref] = useState('/login');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -27,13 +29,22 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isInvitationSignUp, setIsInvitationSignUp] = useState(false);
+
+  useEffect(() => {
+    setLoginHref(authHref('/login', window.location.search));
+    setIsInvitationSignUp(Boolean(invitationTokenFromDestination(safeAuthDestination(window.location.search))));
+  }, []);
+
+  const invitationDestination = () => safeAuthDestination(window.location.search);
+  const invitationToken = () => invitationTokenFromDestination(invitationDestination());
 
   const afterSignUp = (method: 'email' | 'google') => {
     const selectedPlan = new URLSearchParams(window.location.search).get('plan');
     // `plan_intent` carries the plan card the visitor came from, so paid
     // intent at signup can be compared against who actually checks out.
     track('sign_up', { method, plan_intent: selectedPlan ?? undefined });
-    router.push(selectedPlan ? `/dashboard/settings?plan=${encodeURIComponent(selectedPlan)}#billing` : '/dashboard');
+    router.push(invitationDestination() || (selectedPlan ? `/dashboard/settings?plan=${encodeURIComponent(selectedPlan)}#billing` : '/dashboard'));
   };
 
   const handleGoogleSignIn = async () => {
@@ -41,13 +52,13 @@ export default function SignUpPage() {
     setError('');
 
     try {
-      const result = await signInTeacherWithGoogle();
+      const result = await signInTeacherWithGoogle(invitationToken());
       // The same Google button signs existing instructors back in. Only a
       // genuinely new account is a signup.
       if (result.createdAccount) afterSignUp('google');
       else {
         track('login', { method: 'google' });
-        router.push('/dashboard');
+        router.push(invitationDestination() || '/dashboard');
       }
     } catch (error: unknown) {
       track('signup_failed', { method: 'google', failure_reason: failureReason(error) });
@@ -77,7 +88,7 @@ export default function SignUpPage() {
     }
 
     try {
-      await signUpTeacher(formData.email, formData.password, formData.name);
+      await signUpTeacher(formData.email, formData.password, formData.name, invitationToken());
       afterSignUp('email');
     } catch (error: unknown) {
       track('signup_failed', { method: 'email', failure_reason: failureReason(error) });
@@ -95,7 +106,13 @@ export default function SignUpPage() {
   };
 
   return (
-    <SeminarAuthShell eyebrow="Instructor account" title="Create your instructor account." description="Add your course after this, then prepare your first live classroom session.">
+    <SeminarAuthShell
+      eyebrow={isInvitationSignUp ? 'Teaching team invitation' : 'Instructor account'}
+      title={isInvitationSignUp ? 'Create your account to join.' : 'Create your instructor account.'}
+      description={isInvitationSignUp
+        ? 'Use the email address that received the invitation. We will take you straight to the shared teaching space.'
+        : 'Add your course after this, then prepare your first live classroom session.'}
+    >
       <div className="rounded-2xl border border-[#e3e5ed] bg-white p-6 shadow-[0_18px_50px_rgba(16,26,56,0.06)] sm:p-7">
             <GoogleSignInButton
               disabled={loading}
@@ -169,7 +186,7 @@ export default function SignUpPage() {
               <p className="text-sm text-gray-600">
                 Already have an account?{' '}
                 <Link
-                  href="/login"
+                  href={loginHref}
                   className="font-semibold text-[#5146e5] hover:text-[#4137c7]"
                 >
                   Sign in

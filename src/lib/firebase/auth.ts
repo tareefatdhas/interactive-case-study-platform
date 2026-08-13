@@ -9,8 +9,9 @@ import {
   User,
   updateProfile
 } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from './config';
+import { auth, db, functions } from './config';
 import type { AuthUser, Teacher } from '@/types';
 import { COLLECTIONS } from './firestore';
 import { getUserFacingError } from '@/lib/user-facing-error';
@@ -18,12 +19,43 @@ import { getUserFacingError } from '@/lib/user-facing-error';
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+const registerInstructorCall = httpsCallable<
+  { teachingTeamAction: 'register'; name: string; timeZone: string; invitationToken?: string },
+  { teacherId: string; name: string; email: string; created: boolean }
+>(functions, 'getInstructorBilling');
+
 const getBrowserTimeZone = (): string => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   } catch {
     return 'UTC';
   }
+};
+
+const registerInstructorProfile = async (name: string, invitationToken?: string) => {
+  return registerInstructorCall({
+    teachingTeamAction: 'register',
+    name,
+    timeZone: getBrowserTimeZone(),
+    ...(invitationToken ? { invitationToken } : {}),
+  });
+};
+
+const waitForInstructorProfile = async (
+  teacherRef: ReturnType<typeof doc>,
+  attempts = 20,
+  delayMs = 250,
+) => {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const snapshot = await getDoc(teacherRef);
+    if (snapshot.exists()) return snapshot;
+
+    if (attempt < attempts - 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+    }
+  }
+
+  return getDoc(teacherRef);
 };
 
 const saveMissingTeacherTimeZone = async (
@@ -48,11 +80,19 @@ export const signInTeacher = async (email: string, password: string): Promise<Au
   
   // Check if user is a teacher
   const teacherRef = doc(db, COLLECTIONS.TEACHERS, user.uid);
-  const teacherDoc = await getDoc(teacherRef);
+  let teacherDoc = await getDoc(teacherRef);
   
   if (!teacherDoc.exists()) {
-    await signOut(auth);
-    throw new Error('Access denied. Teacher account required.');
+    // Recover accounts whose Firebase login was created before their instructor
+    // profile finished. This can happen if a signup loses its connection at the
+    // exact handoff between Authentication and the profile callable.
+    const recoveredName = user.displayName?.trim() || user.email?.split('@')[0] || 'Instructor';
+    await registerInstructorProfile(recoveredName);
+    teacherDoc = await getDoc(teacherRef);
+    if (!teacherDoc.exists()) {
+      await signOut(auth);
+      throw new Error('Your instructor profile could not be completed. Try again.');
+    }
   }
   
   const teacherData = teacherDoc.data() as Teacher;
@@ -67,7 +107,7 @@ export const signInTeacher = async (email: string, password: string): Promise<Au
  */
 export type GoogleSignInResult = AuthUser & { createdAccount: boolean };
 
-export const signInTeacherWithGoogle = async (): Promise<GoogleSignInResult> => {
+export const signInTeacherWithGoogle = async (invitationToken?: string): Promise<GoogleSignInResult> => {
   const userCredential = await signInWithPopup(auth, googleProvider);
   const user = userCredential.user;
 
@@ -86,18 +126,8 @@ export const signInTeacherWithGoogle = async (): Promise<GoogleSignInResult> => 
   }
 
   const name = user.displayName?.trim() || user.email.split('@')[0];
-  const teacherData = {
-    email: user.email,
-    name,
-    courseIds: [],
-    timeZone: getBrowserTimeZone(),
-    billing: { plan: 'pilot', status: 'pilot', pilotSessionsUsed: 0 },
-    createdAt: new Date(),
-    ...(user.photoURL ? { photoURL: user.photoURL } : {}),
-  };
-
   try {
-    await setDoc(teacherRef, teacherData);
+    await registerInstructorProfile(name, invitationToken);
   } catch (error) {
     const isNewUser = getAdditionalUserInfo(userCredential)?.isNewUser;
 
@@ -158,7 +188,8 @@ export const getGoogleSignInErrorMessage = (
 export const signUpTeacher = async (
   email: string, 
   password: string, 
-  name: string
+  name: string,
+  invitationToken?: string,
 ): Promise<AuthUser> => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
@@ -166,16 +197,10 @@ export const signUpTeacher = async (
   // Update the user's display name
   await updateProfile(user, { displayName: name });
   
-  // Create teacher document
+  // Create the instructor profile through the trusted backend. This keeps new
+  // accounts independent from browser-side Firestore permission timing.
   try {
-    await setDoc(doc(db, COLLECTIONS.TEACHERS, user.uid), {
-      email,
-      name,
-      courseIds: [],
-      timeZone: getBrowserTimeZone(),
-      billing: { plan: 'pilot', status: 'pilot', pilotSessionsUsed: 0 },
-      createdAt: new Date()
-    });
+    await registerInstructorProfile(name, invitationToken);
   } catch (error: unknown) {
     // Clean up by deleting the auth user since teacher doc creation failed
     try {
@@ -214,12 +239,19 @@ export const resetPassword = async (email: string): Promise<void> => {
 export const onAuthChange = (callback: (user: AuthUser | null) => void): () => void => {
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
-      // Check if user is a teacher
-      const teacherDoc = await getDoc(doc(db, COLLECTIONS.TEACHERS, user.uid));
+      const teacherRef = doc(db, COLLECTIONS.TEACHERS, user.uid);
+      let teacherDoc = await getDoc(teacherRef);
+
+      // Firebase Authentication announces a new user before signup has
+      // finished creating their instructor profile. Wait for that secure
+      // backend handoff instead of signing the new account out underneath it.
+      if (!teacherDoc.exists()) {
+        teacherDoc = await waitForInstructorProfile(teacherRef);
+      }
       
       if (teacherDoc.exists()) {
         const teacherData = teacherDoc.data() as Teacher;
-        await saveMissingTeacherTimeZone(doc(db, COLLECTIONS.TEACHERS, user.uid), teacherData);
+        await saveMissingTeacherTimeZone(teacherRef, teacherData);
         callback({
           uid: user.uid,
           email: user.email!,
@@ -228,8 +260,9 @@ export const onAuthChange = (callback: (user: AuthUser | null) => void): () => v
           photoURL: teacherData.photoURL || user.photoURL || undefined,
         });
       } else {
-        // If not a teacher, sign them out
-        await signOut(auth);
+        // Keep the Firebase session available so signInTeacher can repair a
+        // legacy account whose profile was interrupted. Protected pages still
+        // receive no instructor until that repair succeeds.
         callback(null);
       }
     } else {

@@ -8,8 +8,8 @@ const { HttpsError, onCall, onRequest } = require('firebase-functions/v2/https')
 const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const Stripe = require('stripe');
-const { createHash } = require('node:crypto');
-const { renderWelcomeEmail, renderAfterClassReportEmail, renderWeeklyDigestEmail } = require('./email');
+const { createHash, randomBytes } = require('node:crypto');
+const { renderWelcomeEmail, renderTeachingTeamWelcomeEmail, renderAfterClassReportEmail, renderWeeklyDigestEmail } = require('./email');
 const { collectSessionMetrics, collectWeeklyMetrics } = require('./reporting');
 const { isWeeklyDigestSendTime, localPeriodKey } = require('./scheduling');
 const { RETENTION_DAYS, collectExpiredRooms } = require('./retention');
@@ -49,6 +49,43 @@ function stripeClient() {
 
 function cleanString(value, maxLength) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function normalizeEmail(value) {
+  return cleanString(value, 254).toLowerCase();
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function teachingMembershipId(ownerUid, scope, courseId, email) {
+  return createHash('sha256').update(`${ownerUid}:${scope}:${courseId || 'workspace'}:${email}`).digest('hex');
+}
+
+async function activeInstructorMembership(firestore, userUid, ownerUid, courseId, roles = ['co-instructor', 'progress-viewer']) {
+  if (userUid === ownerUid) return { role: 'owner', scope: 'workspace', ownerUid };
+  const snapshot = await firestore.collection('instructorMemberships')
+    .where('userUid', '==', userUid)
+    .where('ownerUid', '==', ownerUid)
+    .where('status', '==', 'active')
+    .get();
+  return snapshot.docs.map((document) => ({ id: document.id, ...document.data() })).find((membership) =>
+    roles.includes(membership.role)
+      && (membership.scope === 'workspace' || (membership.scope === 'course' && membership.courseId === courseId)),
+  ) || null;
+}
+
+function teachingInvitationEmail({ inviterName, scopeLabel, roleLabel, acceptUrl }) {
+  const subject = `${inviterName} invited you to teach with Classfully`;
+  const text = `${inviterName} invited you as ${roleLabel} for ${scopeLabel}. Accept the invitation: ${acceptUrl}\n\nThis invitation expires in 7 days.`;
+  const html = `<!doctype html><html><body style="margin:0;background:#f5f3ef;font-family:Arial,sans-serif;color:#101a38"><table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:36px 18px"><table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;background:#fffefa;border:1px solid #e3e5ed;border-radius:22px"><tr><td style="padding:30px 34px;border-bottom:1px solid #e3e5ed;font-family:Georgia,serif;font-size:25px">Classfully<span style="color:#df664e">.</span></td></tr><tr><td style="padding:34px"><p style="margin:0 0 10px;color:#5146e5;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">Shared teaching</p><h1 style="margin:0 0 16px;font-family:Georgia,serif;font-size:34px;line-height:1.15">Join the teaching team</h1><p style="margin:0 0 24px;color:#555d73;font-size:16px;line-height:1.65"><strong style="color:#101a38">${escapeHtml(inviterName)}</strong> invited you as ${escapeHtml(roleLabel)} for ${escapeHtml(scopeLabel)}. You will use your own instructor login.</p><a href="${escapeHtml(acceptUrl)}" style="display:inline-block;border-radius:10px;background:#5146e5;color:#fff;text-decoration:none;font-weight:700;padding:14px 22px">Accept invitation</a><p style="margin:24px 0 0;color:#7b8296;font-size:12px;line-height:1.6">This private invitation expires in 7 days. If you were not expecting it, you can ignore this email.</p></td></tr></table></td></tr></table></body></html>`;
+  return { subject, text, html };
 }
 
 function billingPayload(teacher, usage = {}) {
@@ -223,9 +260,72 @@ async function instructorUsage(teacherId) {
   };
 }
 
+async function registerInstructorHandler(request) {
+  const teacherId = requireInstructor(request);
+  const email = normalizeEmail(request.auth?.token?.email);
+  const name = cleanString(request.data?.name, 100);
+  const timeZone = cleanString(request.data?.timeZone, 80) || 'UTC';
+  const photoURL = cleanString(request.auth?.token?.picture, 1000);
+  const invitationToken = cleanString(request.data?.invitationToken, 128);
+  if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+    throw new HttpsError('failed-precondition', 'Your sign-in account did not provide an email address.');
+  }
+  if (!name) throw new HttpsError('invalid-argument', 'Enter the name you want to use in Classfully.');
+
+  const teacherRef = getFirestore().collection('teachers').doc(teacherId);
+  const teacherSnapshot = await teacherRef.get();
+  if (teacherSnapshot.exists) {
+    const teacher = teacherSnapshot.data();
+    return { teacherId, name: teacher.name || name, email: teacher.email || email, created: false };
+  }
+
+  let signupContext = null;
+  if (invitationToken) {
+    const tokenHash = createHash('sha256').update(invitationToken).digest('hex');
+    const invitationSnapshot = await getFirestore().collection('instructorMemberships')
+      .where('invitationTokenHash', '==', tokenHash)
+      .limit(1)
+      .get();
+    if (invitationSnapshot.empty) throw new HttpsError('not-found', 'This teaching invitation is no longer available.');
+    const invitation = invitationSnapshot.docs[0].data();
+    if (invitation.status !== 'pending' || invitation.invitationExpiresAt?.toMillis?.() < Date.now()) {
+      throw new HttpsError('failed-precondition', 'This teaching invitation has expired. Ask the course owner to send another.');
+    }
+    if (normalizeEmail(invitation.email) !== email) {
+      throw new HttpsError('permission-denied', `Create your account with ${invitation.email} to accept this invitation.`);
+    }
+    signupContext = {
+      source: 'teaching-team-invitation',
+      membershipId: invitationSnapshot.docs[0].id,
+      role: invitation.role,
+      scope: invitation.scope,
+      ...(invitation.courseId ? { courseId: invitation.courseId } : {}),
+      ...(invitation.courseName ? { courseName: invitation.courseName } : {}),
+    };
+  }
+
+  await teacherRef.create({
+    email,
+    name,
+    courseIds: [],
+    timeZone,
+    billing: { plan: 'pilot', status: 'pilot', pilotSessionsUsed: 0 },
+    createdAt: Timestamp.now(),
+    ...(photoURL ? { photoURL } : {}),
+    ...(signupContext ? { signupContext } : {}),
+  });
+  return { teacherId, name, email, created: true };
+}
+
 exports.getInstructorBilling = onCall(
-  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/], secrets: [postmarkServerToken] },
   async (request) => {
+    const teachingTeamAction = cleanString(request.data?.teachingTeamAction, 40);
+    if (teachingTeamAction === 'list') return listTeachingTeamHandler(request);
+    if (teachingTeamAction === 'invite') return inviteTeachingTeamMemberHandler(request);
+    if (teachingTeamAction === 'accept') return acceptTeachingTeamInvitationHandler(request);
+    if (teachingTeamAction === 'revoke') return revokeTeachingTeamMemberHandler(request);
+    if (teachingTeamAction === 'register') return registerInstructorHandler(request);
     const teacherId = requireInstructor(request);
     const teacherSnapshot = await getFirestore().collection('teachers').doc(teacherId).get();
     if (!teacherSnapshot.exists) throw new HttpsError('not-found', 'Your instructor profile could not be found.');
@@ -373,6 +473,243 @@ exports.createInstructorCourse = onCall(
   },
 );
 
+async function listTeachingTeamHandler(request) {
+    const userUid = requireInstructor(request);
+    const courseId = cleanString(request.data?.courseId, 160);
+    const firestore = getFirestore();
+    let ownerUid = userUid;
+    if (courseId) {
+      const courseSnapshot = await firestore.collection('courses').doc(courseId).get();
+      if (!courseSnapshot.exists) throw new HttpsError('not-found', 'That class could not be found.');
+      ownerUid = courseSnapshot.data().teacherId;
+      if (!await activeInstructorMembership(firestore, userUid, ownerUid, courseId)) {
+        throw new HttpsError('permission-denied', 'You do not have access to this teaching team.');
+      }
+    }
+    const ownerSnapshot = await firestore.collection('teachers').doc(ownerUid).get();
+    const owner = ownerSnapshot.data() || {};
+    const snapshot = await firestore.collection('instructorMemberships').where('ownerUid', '==', ownerUid).get();
+    const members = snapshot.docs
+      .map((document) => ({ id: document.id, ...document.data() }))
+      .filter((member) => member.status !== 'revoked' && (!courseId || member.scope === 'workspace' || member.courseId === courseId));
+    return {
+      ownerUid,
+      owner: {
+        name: cleanString(owner.name, 100) || cleanString(owner.email, 254) || 'Workspace owner',
+        email: cleanString(owner.email, 254),
+        photoURL: cleanString(owner.photoURL, 1000),
+      },
+      members,
+    };
+}
+
+exports.listTeachingTeam = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  listTeachingTeamHandler,
+);
+
+async function inviteTeachingTeamMemberHandler(request) {
+    const inviterUid = requireInstructor(request);
+    const email = normalizeEmail(request.data?.email);
+    const role = cleanString(request.data?.role, 32);
+    const scope = cleanString(request.data?.scope, 32);
+    const courseId = cleanString(request.data?.courseId, 160);
+    if (!/^\S+@\S+\.\S+$/.test(email)) throw new HttpsError('invalid-argument', 'Enter the instructor’s email address.');
+    if (!['co-instructor', 'progress-viewer'].includes(role)) throw new HttpsError('invalid-argument', 'Choose what this instructor can do.');
+    if (!['workspace', 'course'].includes(scope) || (scope === 'course' && !courseId)) throw new HttpsError('invalid-argument', 'Choose where this instructor can work.');
+
+    const firestore = getFirestore();
+    const inviterSnapshot = await firestore.collection('teachers').doc(inviterUid).get();
+    const inviter = inviterSnapshot.data();
+    if (!inviterSnapshot.exists) throw new HttpsError('permission-denied', 'Instructor account required.');
+    if (normalizeEmail(inviter.email) === email) throw new HttpsError('invalid-argument', 'You already own this workspace.');
+
+    let course = null;
+    let ownerUid = inviterUid;
+    if (courseId) {
+      const courseSnapshot = await firestore.collection('courses').doc(courseId).get();
+      if (!courseSnapshot.exists) throw new HttpsError('not-found', 'That class could not be found.');
+      course = { id: courseSnapshot.id, ...courseSnapshot.data() };
+      ownerUid = course.teacherId;
+    }
+    if (scope === 'workspace' && ownerUid !== inviterUid) throw new HttpsError('permission-denied', 'Only the workspace owner can invite someone to all courses.');
+    if (ownerUid !== inviterUid && !await activeInstructorMembership(firestore, inviterUid, ownerUid, courseId, ['co-instructor'])) {
+      throw new HttpsError('permission-denied', 'You cannot invite instructors to this class.');
+    }
+
+    const existingTeacherSnapshot = await firestore.collection('teachers').where('email', '==', email).limit(1).get();
+    const existingTeacher = existingTeacherSnapshot.empty ? null : existingTeacherSnapshot.docs[0];
+    const membershipId = teachingMembershipId(ownerUid, scope, courseId, email);
+    const membershipRef = firestore.collection('instructorMemberships').doc(membershipId);
+    const existingMembership = await membershipRef.get();
+    const previousMembership = existingMembership.exists ? existingMembership.data() : null;
+    if (previousMembership?.status === 'active') {
+      throw new HttpsError('already-exists', 'This instructor already has access.');
+    }
+    const resent = previousMembership?.status === 'pending';
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const now = Timestamp.now();
+    const membership = {
+      ownerUid,
+      ...(existingTeacher ? { userUid: existingTeacher.id, name: existingTeacher.data().name || '', photoURL: existingTeacher.data().photoURL || '' } : {}),
+      email,
+      role,
+      scope,
+      ...(scope === 'course' ? { courseId, courseName: course?.name || '' } : {}),
+      status: 'pending',
+      invitedBy: inviterUid,
+      invitationTokenHash: tokenHash,
+      invitationExpiresAt: Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      createdAt: previousMembership?.createdAt || now,
+      updatedAt: now,
+      invitedAt: now,
+    };
+    await membershipRef.set(membership);
+    const acceptUrl = `${APP_URL}/invite/${rawToken}`;
+    let invitationSent = false;
+    try {
+      await deliverEmail({
+        deliveryId: `teaching_invite_${membershipId}_${tokenHash.slice(0, 10)}`,
+        teacherId: ownerUid,
+        to: email,
+        email: teachingInvitationEmail({
+          inviterName: inviter.name || inviter.email || 'A Classfully instructor',
+          scopeLabel: scope === 'workspace' ? 'all courses in this workspace' : course?.name || 'this course',
+          roleLabel: role === 'co-instructor' ? 'a co-instructor' : 'a progress viewer',
+          acceptUrl,
+        }),
+        tag: 'teaching-team-invitation',
+        metadata: { ownerUid, membershipId, scope, courseId: courseId || '' },
+      });
+      invitationSent = true;
+    } catch (emailError) {
+      console.error('Teaching invitation email failed:', emailError);
+    }
+    const { invitationTokenHash: _tokenHash, invitationExpiresAt: _expiresAt, ...safeMembership } = membership;
+    return { membership: { id: membershipId, ...safeMembership }, invitationSent, resent };
+}
+
+exports.inviteTeachingTeamMember = onCall(
+  {
+    region: FUNCTION_REGION,
+    cors: ['https://classfully.com', /localhost:\d+$/],
+    secrets: [postmarkServerToken],
+  },
+  inviteTeachingTeamMemberHandler,
+);
+
+async function acceptTeachingTeamInvitationHandler(request) {
+    const userUid = requireInstructor(request);
+    const token = cleanString(request.data?.token, 128);
+    if (!token) throw new HttpsError('invalid-argument', 'This invitation link is incomplete.');
+    const firestore = getFirestore();
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const snapshot = await firestore.collection('instructorMemberships').where('invitationTokenHash', '==', tokenHash).limit(1).get();
+    if (snapshot.empty) throw new HttpsError('not-found', 'This invitation is no longer available.');
+    const membershipDocument = snapshot.docs[0];
+    const membership = membershipDocument.data();
+    if (membership.status !== 'pending' || membership.invitationExpiresAt?.toMillis?.() < Date.now()) {
+      throw new HttpsError('failed-precondition', 'This invitation has expired. Ask the course owner to send another.');
+    }
+    const teacherSnapshot = await firestore.collection('teachers').doc(userUid).get();
+    const teacher = teacherSnapshot.data();
+    if (!teacherSnapshot.exists || normalizeEmail(teacher.email) !== normalizeEmail(membership.email)) {
+      throw new HttpsError('permission-denied', `Sign in with ${membership.email} to accept this invitation.`);
+    }
+    await membershipDocument.ref.update({
+      userUid,
+      name: teacher.name || '',
+      photoURL: teacher.photoURL || '',
+      status: 'active',
+      acceptedAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      invitationTokenHash: FieldValue.delete(),
+      invitationExpiresAt: FieldValue.delete(),
+    });
+    const accessId = membership.scope === 'workspace'
+      ? `${membership.ownerUid}_${userUid}`
+      : `${membership.courseId}_${userUid}`;
+    const accessCollection = membership.scope === 'workspace' ? 'workspaceInstructorAccess' : 'courseInstructorAccess';
+    await firestore.collection(accessCollection).doc(accessId).set({
+      ownerUid: membership.ownerUid,
+      userUid,
+      role: membership.role,
+      scope: membership.scope,
+      courseId: membership.courseId || null,
+      membershipId: membershipDocument.id,
+      active: true,
+      updatedAt: Timestamp.now(),
+    });
+    const liveAccessPath = membership.scope === 'workspace'
+      ? `instructorAccess/${membership.ownerUid}/${userUid}/workspaceRole`
+      : `instructorAccess/${membership.ownerUid}/${userUid}/courses/${membership.courseId}`;
+    await getDatabase().ref(liveAccessPath).set(membership.role);
+    try {
+      const courseSnapshot = membership.courseId
+        ? await firestore.collection('courses').doc(membership.courseId).get()
+        : null;
+      const course = courseSnapshot?.data() || {};
+      const teachingWelcomeUrl = membership.role === 'progress-viewer'
+        ? membership.courseId
+          ? `${APP_URL}/dashboard/progress?courseId=${encodeURIComponent(membership.courseId)}`
+          : `${APP_URL}/dashboard/progress`
+        : membership.scope === 'course' && membership.courseId
+          ? `${APP_URL}/dashboard/classes/${membership.courseId}`
+          : `${APP_URL}/dashboard/classes`;
+      await deliverEmail({
+        deliveryId: `teaching_welcome_${membershipDocument.id}_${userUid}`,
+        teacherId: userUid,
+        to: teacher.email,
+        email: renderTeachingTeamWelcomeEmail({
+          recipientName: teacher.name || 'there',
+          role: membership.role,
+          scope: membership.scope,
+          courseName: membership.courseName || course.name || 'Shared course',
+          courseCode: course.code || '',
+          ctaUrl: teachingWelcomeUrl,
+        }),
+        tag: 'teaching-team-welcome',
+        metadata: { membershipId: membershipDocument.id, role: membership.role, scope: membership.scope },
+      });
+    } catch (emailError) {
+      console.error('Teaching-team welcome email failed:', emailError);
+    }
+    return { courseId: membership.courseId || null };
+}
+
+exports.acceptTeachingTeamInvitation = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  acceptTeachingTeamInvitationHandler,
+);
+
+async function revokeTeachingTeamMemberHandler(request) {
+    const requesterUid = requireInstructor(request);
+    const membershipId = cleanString(request.data?.membershipId, 160);
+    const firestore = getFirestore();
+    const membershipRef = firestore.collection('instructorMemberships').doc(membershipId);
+    const membershipSnapshot = await membershipRef.get();
+    if (!membershipSnapshot.exists) throw new HttpsError('not-found', 'That teaching-team member could not be found.');
+    const membership = membershipSnapshot.data();
+    if (membership.ownerUid !== requesterUid) throw new HttpsError('permission-denied', 'Only the workspace owner can remove this access.');
+    await membershipRef.update({ status: 'revoked', revokedAt: Timestamp.now(), revokedBy: requesterUid, updatedAt: Timestamp.now() });
+    if (membership.userUid) {
+      const accessId = membership.scope === 'workspace' ? `${membership.ownerUid}_${membership.userUid}` : `${membership.courseId}_${membership.userUid}`;
+      const accessCollection = membership.scope === 'workspace' ? 'workspaceInstructorAccess' : 'courseInstructorAccess';
+      await firestore.collection(accessCollection).doc(accessId).delete().catch(() => undefined);
+      const liveAccessPath = membership.scope === 'workspace'
+        ? `instructorAccess/${membership.ownerUid}/${membership.userUid}/workspaceRole`
+        : `instructorAccess/${membership.ownerUid}/${membership.userUid}/courses/${membership.courseId}`;
+      await getDatabase().ref(liveAccessPath).remove();
+    }
+    return { membershipId };
+}
+
+exports.revokeTeachingTeamMember = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  revokeTeachingTeamMemberHandler,
+);
+
 exports.startInstructorSession = onCall(
   { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
   async (request) => {
@@ -380,8 +717,13 @@ exports.startInstructorSession = onCall(
     const sessionId = cleanString(request.data?.sessionId, 160);
     if (!sessionId) throw new HttpsError('invalid-argument', 'Choose the session you want to start.');
     const firestore = getFirestore();
-    const teacherRef = firestore.collection('teachers').doc(teacherId);
     const sessionRef = firestore.collection('sessions').doc(sessionId);
+    const sessionPreview = await sessionRef.get();
+    if (!sessionPreview.exists) throw new HttpsError('not-found', 'That session could not be found.');
+    const sessionOwnerUid = sessionPreview.data().teacherId;
+    const permission = await activeInstructorMembership(firestore, teacherId, sessionOwnerUid, sessionPreview.data().courseId, ['co-instructor']);
+    if (!permission) throw new HttpsError('permission-denied', 'You do not have permission to run this class.');
+    const teacherRef = firestore.collection('teachers').doc(sessionOwnerUid);
 
     return firestore.runTransaction(async (transaction) => {
       const [teacherSnapshot, sessionSnapshot] = await Promise.all([
@@ -390,7 +732,7 @@ exports.startInstructorSession = onCall(
       ]);
       if (!teacherSnapshot.exists || !sessionSnapshot.exists) throw new HttpsError('not-found', 'That session could not be found.');
       const session = sessionSnapshot.data();
-      if (session.teacherId !== teacherId) throw new HttpsError('permission-denied', 'This session belongs to another instructor.');
+      if (session.teacherId !== sessionOwnerUid) throw new HttpsError('permission-denied', 'This session belongs to another instructor.');
       const teacher = teacherSnapshot.data();
       const access = accessSnapshot(teacher.billing);
       if (session.startedAt || session.billingSessionClaimedAt) {
@@ -623,6 +965,7 @@ exports.sendInstructorWelcome = onDocumentCreated(
   async (event) => {
     const teacher = event.data?.data();
     if (!teacher?.email) return;
+    if (teacher.signupContext?.source === 'teaching-team-invitation') return;
     const teacherId = event.params.teacherId;
     await deliverEmail({
       deliveryId: `welcome_${teacherId}`,

@@ -6,9 +6,9 @@ import { useSearchParams } from 'next/navigation';
 import { Timestamp } from 'firebase/firestore';
 import { useAuth } from '@/lib/hooks/useAuth';
 import {
-  getAllStudentsWithStats,
-  getCoursesByTeacher,
-  getSessionsByTeacher,
+  getAccessibleStudentsWithStats,
+  getAccessibleCourses,
+  getAccessibleSessions,
   syncStandaloneSessionStudents,
 } from '@/lib/firebase/firestore';
 import {
@@ -249,15 +249,15 @@ function ProgressContent() {
       if (!user) return;
       try {
         const [courseData, sessionData, studentData] = await Promise.all([
-          getCoursesByTeacher(user.uid),
-          getSessionsByTeacher(user.uid),
-          getAllStudentsWithStats(user.uid),
+          getAccessibleCourses(user.uid),
+          getAccessibleSessions(user.uid),
+          getAccessibleStudentsWithStats(user.uid),
         ]);
         const classroomRecordPairs = await Promise.all(sessionData
           .filter((session) => session.sessionType === 'standalone')
           .map(async (session) => {
             try {
-              return [session.id, await getInstructorClassroomRecords(user.uid, session.id)] as const;
+              return [session.id, await getInstructorClassroomRecords(session.teacherId, session.id)] as const;
             } catch {
               return [session.id, {
                 attendance: {},
@@ -274,7 +274,7 @@ function ProgressContent() {
           .filter((session) => session.sessionType === 'standalone')
           .map((session) => syncStandaloneSessionStudents(
             session.id,
-            user.uid,
+            session.teacherId,
             Object.values(records[session.id]?.attendance || {}).flatMap((claim) => claim.participationMode !== 'session-name' && claim.participationMode !== 'anonymous' && claim.studentNumber ? [claim.studentNumber] : []),
           )));
 
@@ -702,7 +702,7 @@ function ProgressContent() {
           )}
         </main>
       </DashboardLayout>
-      {selectedStudent && <StudentResponseModal isOpen onClose={() => setSelectedStudent(null)} studentId={selectedStudent.studentId} studentDocId={selectedStudent.id} studentName={selectedStudent.name || 'Student'} teacherId={user?.uid || ''} />}
+      {selectedStudent && <StudentResponseModal isOpen onClose={() => setSelectedStudent(null)} studentId={selectedStudent.studentId} studentDocId={selectedStudent.id} studentName={selectedStudent.name || 'Student'} teacherId={selectedCourse?.teacherId || user?.uid || ''} />}
     </ProtectedRoute>
   );
 }

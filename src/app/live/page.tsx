@@ -699,6 +699,7 @@ export default function LiveLessonPrototype() {
   const persistedTeamsKeyRef = useRef('');
   const lastSyncedRosterRef = useRef('');
   const launchInteractionCommandRef = useRef<(interaction: LiveInteraction) => void>(() => undefined);
+  const navigateInteractionCommandRef = useRef<(direction: -1 | 1) => void>(() => undefined);
   const advanceModuleCommandRef = useRef<() => void>(() => undefined);
   const returnToSlidesCommandRef = useRef<() => void>(() => undefined);
   const planDragSensors = useSensors(
@@ -883,12 +884,6 @@ export default function LiveLessonPrototype() {
       }
       classStartedAtRef.current = session.startedAt?.toMillis?.() || Date.now();
 
-      if (session.teacherId !== user.uid) {
-        setClassroomStateError('This session belongs to another instructor.');
-        setClassroomStateReady(true);
-        return;
-      }
-
       const course = session.courseId ? await getCourse(session.courseId) : null;
       let courseTeams = course?.teams || [];
       if (course) {
@@ -1062,12 +1057,15 @@ export default function LiveLessonPrototype() {
       voterId?: string;
       voted?: boolean;
       dismissed?: boolean;
-      command?: 'launch' | 'toggle-responses' | 'reveal' | 'advance-module' | 'finish';
+      command?: 'launch' | 'previous' | 'next' | 'toggle-responses' | 'reveal' | 'advance-module' | 'finish';
       interactionId?: string;
     }>) => {
       if (event.data?.type === 'display-ready' || event.data?.type === 'display-heartbeat') {
         lastDisplayPingRef.current = Date.now();
         setDisplayConnected(true);
+      }
+      if (event.data?.type === 'presentation-controller-ready') {
+        channel.postMessage({ type: 'presentation-controller-available' });
       }
       if (event.data?.type === 'display-closed') setDisplayConnected(false);
       if (event.data?.type === 'student-onboarding-response' && event.data.mood) {
@@ -1166,6 +1164,8 @@ export default function LiveLessonPrototype() {
         if (event.data.command === 'toggle-responses') {
           setInteractionResults((current) => current ? { ...current, open: !current.open } : current);
         }
+        if (event.data.command === 'previous') navigateInteractionCommandRef.current(-1);
+        if (event.data.command === 'next') navigateInteractionCommandRef.current(1);
         if (event.data.command === 'reveal') {
           setInteractionResults((current) => current ? { ...current, open: false, revealed: true } : current);
         }
@@ -1603,6 +1603,24 @@ export default function LiveLessonPrototype() {
     window.setTimeout(() => document.querySelector('.live-interaction-stage')?.scrollTo({ top: 0 }), 0);
   };
 
+  const navigateInteraction = (direction: -1 | 1) => {
+    const plan = sessionPlanRef.current;
+    const current = activeInteractionRef.current;
+    const currentIndex = current ? plan.findIndex((item) => item.id === current.id) : -1;
+    const targetIndex = currentIndex < 0
+      ? (direction > 0 ? 0 : -1)
+      : currentIndex + direction;
+    const target = plan[targetIndex];
+    if (!target) {
+      setToast(direction > 0 ? 'This is the last interaction in the plan.' : 'This is the first interaction in the plan.');
+      return;
+    }
+    const savedRun = [...interactionRunsRef.current]
+      .reverse()
+      .find((run) => run.interactionId === target.id && run.status !== 'archived');
+    launchInteraction(target, savedRun);
+  };
+
   const spinWheel = () => {
     const interaction = activeInteractionRef.current;
     const current = interactionResultsRef.current;
@@ -1784,6 +1802,7 @@ export default function LiveLessonPrototype() {
   };
 
   launchInteractionCommandRef.current = (interaction) => launchInteraction(interaction);
+  navigateInteractionCommandRef.current = navigateInteraction;
   advanceModuleCommandRef.current = advanceModule;
   returnToSlidesCommandRef.current = returnToSlides;
 

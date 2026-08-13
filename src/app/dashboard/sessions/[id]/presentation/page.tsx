@@ -197,11 +197,6 @@ export default function PresentationPage({ params }: PresentationPageProps) {
           return;
         }
 
-        if (sessionData.teacherId !== user?.uid) {
-          setError('This presentation belongs to another instructor account. Sign in with the account that created it.');
-          return;
-        }
-
         setSession(sessionData);
         
         const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
