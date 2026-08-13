@@ -52,6 +52,21 @@ record and must not become a copy of it.
   Students authenticate anonymously against a separate Firebase app and are
   never identified.
 
+## Configuration status
+
+Live and collecting since 13 August 2026.
+
+| Item | State |
+| --- | --- |
+| Measurement ID in Vercel (Production only) | Done |
+| Enhanced measurement history-event page views | Off — the app sends `page_view` itself |
+| Custom dimensions (16) and metrics (4) | Registered |
+| Event data retention | 14 months |
+| Unwanted referral `checkout.stripe.com` | Added |
+| Internal traffic rule + filter | Active, excluding the team IP |
+| Key events | `purchase` only — see below |
+| Server-side `purchase` | Not enabled; needs `GA4_API_SECRET` |
+
 ## Setup
 
 ### 1. Environment variables
@@ -126,7 +141,8 @@ carries data collected after it exists.
 
 ### 4. Mark key events
 
-**Admin → Events → Key events.** Mark exactly these four:
+**Admin → Data display → Events → Key events tab.** Exactly four should be
+marked:
 
 - `sign_up` — the marketing conversion
 - `live_classroom_started` — the activation conversion, and the one that
@@ -136,6 +152,18 @@ carries data collected after it exists.
 
 Do **not** mark `begin_checkout`, `cta_clicked`, or `session_created`. They are
 funnel steps; marking them makes the conversion count meaningless.
+
+**This one has to be finished later.** The property offers no way to name a key
+event up front: the only control is a star beside an event the property has
+already received, so an event that has never fired cannot be marked. `purchase`
+is already starred because GA4 seeds it from the business objectives, along with
+its own `qualify_lead` and `close_convert_lead`, which are unrelated to this
+plan and can be unstarred.
+
+Star the other three the first time each genuinely happens — the first real
+signup, the first live class, the first institution enquiry. Do not fire them by
+hand to unlock the star: a fabricated `sign_up` is a permanent false conversion
+in the reports this plan exists to make trustworthy.
 
 ### 5. Server-side purchase reporting
 
