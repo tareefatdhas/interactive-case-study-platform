@@ -486,17 +486,40 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 .instructor-team-members { color: #596176; font-size: 10px; line-height: 1.45; }
 .instructor-team-list article b { flex: 0 0 auto; border-radius: 999px; background: #fff2c1; color: #76590d; padding: 6px 9px; font-size: 10px; }
 
-.interaction-composer-wheel { display: grid; gap: 12px; padding: 14px; border: 1px solid #dedaf8; border-radius: 14px; background: #f8f7ff; }
+.interaction-composer-wheel { display: grid; gap: 14px; padding: 16px; border: 1px solid #dedaf8; border-radius: 14px; background: #f8f7ff; }
 .interaction-composer-wheel > label { margin: 0; }
-.interaction-composer-wheel .interaction-wheel-checkbox { display: flex; grid-template-columns: none; flex-direction: row; align-items: center; gap: 9px; font-size: 12px; }
-.interaction-composer-wheel .interaction-wheel-checkbox input { width: 16px; min-height: 16px; accent-color: #5146e5; }
+.interaction-composer-wheel .interaction-wheel-checkbox {
+  display: flex;
+  grid-template-columns: none;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 11px;
+  min-height: 44px;
+  padding-top: 13px;
+  border-top: 1px solid #e1def3;
+  color: #30384f;
+  font-size: 11px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.interaction-composer-wheel .interaction-wheel-checkbox input,
+.interaction-composer-scoring > .interaction-wheel-checkbox input {
+  width: 18px !important;
+  height: 18px;
+  min-height: 18px !important;
+  flex: 0 0 18px;
+  margin: 0;
+  padding: 0 !important;
+  border-radius: 4px;
+  accent-color: #5146e5;
+  cursor: pointer;
+}
 .interaction-composer-scoring { display: grid; gap: 10px; padding: 14px; border: 1px solid #dedaf8; border-radius: 14px; background: #f8f7ff; }
 .interaction-composer-scoring > span { color: #4f576d; font-size: 12px; font-weight: 800; }
 .interaction-composer-scoring > .interaction-wheel-checkbox { display: flex; grid-template-columns: none; flex-direction: row; align-items: center; gap: 9px; margin: 0; font-size: 13px; }
-.interaction-composer-scoring > .interaction-wheel-checkbox input { width: 16px; min-height: 16px; accent-color: #5146e5; }
-.interaction-composer-scoring > div { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; padding-top: 4px; }
-.interaction-composer-scoring > div label { display: flex; grid-template-columns: none; flex-direction: row; align-items: center; gap: 8px; margin: 0; }
-.interaction-composer-scoring > div input { width: 62px; min-height: 38px; }
+.interaction-composer-scoring > div { display: grid; gap: 9px; padding-top: 4px; }
+.interaction-composer-scoring > div label { display: grid; grid-template-columns: auto 72px auto; align-items: center; justify-content: start; gap: 8px; margin: 0; }
+.interaction-composer-scoring > div input { width: 72px !important; min-height: 40px; }
 .interaction-composer-scoring > div p { margin: 0; color: #697087; font-size: 11px; }
 .instructor-wheel-stage { display: grid; justify-items: center; gap: 16px; min-height: 380px; align-content: center; border: 1px solid #dedaf8; border-radius: 24px; background: radial-gradient(circle at 50% 42%, #fff 0 22%, #f5f2ff 62%, #fbfaff 100%); }
 .instructor-wheel-result { display: flex; align-items: center; gap: 14px; min-width: min(520px, 80%); padding: 18px 22px; border: 1px solid #e1def4; border-radius: 18px; color: #5146e5; background: rgba(255,255,255,.88); box-shadow: 0 14px 34px rgba(62,50,142,.09); }
@@ -595,6 +618,39 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 .choice-result-count strong { color: var(--seminar-ink); font-size: 17px; }
 .choice-result-count span { margin-top: 3px; color: var(--seminar-muted); font-size: 10px; }
 .live-choice-results article > svg { color: #3a9454; }
+
+.live-waiting-state {
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px auto 0;
+  padding: 9px 14px;
+  border: 1px solid #dedbea;
+  border-radius: 999px;
+  color: #4f5870;
+  background: #faf9ff;
+}
+
+.live-waiting-state > i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #42a35c;
+  box-shadow: 0 0 0 5px rgba(66, 163, 92, 0.1);
+}
+
+.live-waiting-state > span {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.live-waiting-state strong { color: #303950; font-size: 10px; }
+.live-waiting-state small { color: #7b8294; font-size: 9px; }
 
 .reveal-result-button {
   min-height: 48px;
@@ -992,7 +1048,7 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   border-top: 1px solid var(--seminar-line);
   padding: 14px 26px;
   display: grid;
-  grid-template-columns: minmax(190px, 0.7fr) minmax(310px, 1.25fr) minmax(150px, 0.55fr);
+  grid-template-columns: minmax(155px, .68fr) minmax(245px, 1.2fr) minmax(150px, .68fr) 140px;
   gap: 12px;
   background: rgba(255, 255, 255, 0.98);
   position: relative;
@@ -1000,7 +1056,7 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 }
 
 .lesson-controls.is-wheel {
-  grid-template-columns: minmax(310px, 1.25fr) minmax(150px, 0.55fr);
+  grid-template-columns: minmax(245px, 1.2fr) minmax(150px, .68fr) 140px;
 }
 
 .lesson-controls button {
@@ -1072,6 +1128,34 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   position: relative;
 }
 
+.control-utilities {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.lesson-controls .control-utility {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 11px;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 1px solid #d7d9e2;
+  color: #4f5870;
+  background: #fff;
+}
+
+.lesson-controls .control-utility span { display: block; flex: initial; }
+.lesson-controls .control-utility strong { font-size: 9px; }
+
+.lesson-controls .control-utility:hover {
+  color: var(--seminar-violet);
+  border-color: #c8c3f5;
+  background: #faf9ff;
+}
+
+.lesson-controls .control-presentation.is-connected { border-color: #bfe0ca; color: #267846; background: #f5fbf7; }
+
 .control-quick-add {
   width: 100%;
   border: 1px solid #cbc7f5;
@@ -1092,7 +1176,7 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   z-index: 12;
   right: 0;
   bottom: calc(100% + 9px);
-  width: min(370px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 32px));
   max-height: min(720px, calc(100vh - 120px));
   overflow: auto;
   border: 1px solid #d8d5ee;
@@ -1108,17 +1192,23 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 }
 
 .quick-add-menu > header {
+  position: sticky;
+  z-index: 3;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16px 17px 13px;
   border-bottom: 1px solid #ebe9f3;
+  background: rgba(255, 255, 255, .97);
+  backdrop-filter: blur(10px);
 }
 
 .quick-add-menu > header > div { display: grid; gap: 2px; }
 .quick-add-menu > header small { color: #6d65d8; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .quick-add-menu > header strong { color: #17213f; font-family: var(--font-fraunces), Georgia, serif; font-size: 20px; }
-.lesson-controls .quick-add-menu > header button { width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%; color: #66708a; background: #f4f3f8; }
+.lesson-controls .quick-add-menu > header button { width: 36px; min-height: 36px; padding: 0; border: 0; border-radius: 10px; color: #66708a; background: #f4f3f8; }
+.lesson-controls .quick-add-menu > header button:hover { color: #4035cb; background: #ebe9ff; }
 
 .quick-add-section { display: grid; gap: 11px; padding: 14px 17px; border-bottom: 1px solid #eeecf4; }
 .quick-add-label,
@@ -1158,14 +1248,12 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   font-size: 10px;
 }
 
-.activity-type-picker {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 12px 16px 16px;
-}
+.activity-type-picker { display: grid; gap: 14px; padding: 10px 16px 18px; }
+.activity-type-group { display: grid; gap: 7px; }
+.activity-type-group > h3 { margin: 0; color: #7a8092; font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.activity-type-group > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 
-.activity-type-picker > button {
+.activity-type-group button {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
@@ -1181,21 +1269,21 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
 }
 
-.activity-type-picker > button:hover {
+.activity-type-group button:hover {
   border-color: #aaa4ed;
   background: #f8f7ff;
   transform: translateY(-1px);
 }
 
-.activity-type-picker > button > span { display: grid; gap: 2px; }
-.activity-type-picker > button strong { color: #202943; font-size: 10px; }
-.activity-type-picker > button small { color: #7b8295; font-size: 8px; line-height: 1.35; }
-.activity-type-picker > button > svg:last-child { color: #9a9fb0; }
+.activity-type-group button > span { display: grid; gap: 2px; }
+.activity-type-group button strong { color: #202943; font-size: 10px; }
+.activity-type-group button small { color: #7b8295; font-size: 8px; line-height: 1.35; }
+.activity-type-group button > svg:last-child { color: #9a9fb0; }
 
 .interaction-composer {
   display: grid;
-  gap: 13px;
-  padding: 16px;
+  gap: 16px;
+  padding: 18px;
 }
 
 .interaction-composer-heading {
@@ -1209,34 +1297,34 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  min-height: 30px;
-  padding: 0 8px;
+  min-height: 36px !important;
+  padding: 0 11px !important;
   border: 0;
   border-radius: 7px;
   color: #5f6680;
   background: #f3f2f8;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 750;
   cursor: pointer;
 }
 
-.interaction-composer-heading > strong { color: #202943; font-size: 11px; }
+.interaction-composer-heading > strong { color: #202943; font-size: 12px; }
 .interaction-composer > label { display: grid; gap: 6px; }
 .interaction-composer > label > span,
 .interaction-composer-options > span,
-.interaction-composer-duration > span { color: #6f768a; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.interaction-composer-duration > span { color: #6f768a; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .interaction-composer input:not([type="radio"]),
 .interaction-composer textarea,
 .interaction-composer select {
   width: 100%;
-  min-height: 40px;
-  padding: 9px 11px;
+  min-height: 44px;
+  padding: 10px 12px;
   border: 1px solid #d8dae4;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #202943;
   background: #fff;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   outline: none;
 }
@@ -1245,24 +1333,25 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 .interaction-composer input:focus,
 .interaction-composer textarea:focus,
 .interaction-composer select:focus { border-color: #746ae1; box-shadow: 0 0 0 3px rgba(81, 70, 229, .1); }
-.interaction-composer-markdown textarea { min-height: 104px; border-radius: 0 0 8px 8px; }
+.interaction-composer-markdown textarea { min-height: 116px; border-radius: 0 0 10px 10px; }
 .interaction-format-toolbar {
   display: flex;
   align-items: center;
   gap: 3px;
-  min-height: 34px;
+  min-height: 42px;
   margin-bottom: -7px;
   padding: 4px 6px;
   border: 1px solid #d8dae4;
   border-bottom: 0;
-  border-radius: 8px 8px 0 0;
+  border-radius: 10px 10px 0 0;
   background: #f7f7fa;
 }
 .interaction-format-toolbar button {
   display: grid;
-  width: 27px;
-  height: 25px;
-  padding: 0;
+  width: 32px;
+  height: 32px;
+  min-height: 32px !important;
+  padding: 0 !important;
   place-items: center;
   border: 0;
   border-radius: 6px;
@@ -1275,7 +1364,7 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 .interaction-markdown-preview {
   display: grid;
   gap: 7px;
-  padding: 11px 12px;
+  padding: 12px 13px;
   border: 1px solid #e5e2f4;
   border-radius: 9px;
   color: #30384f;
@@ -1283,13 +1372,13 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   font-size: 11px;
   line-height: 1.5;
 }
-.interaction-markdown-preview > span { color: #756bd7; font-size: 8px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.interaction-markdown-preview > span { color: #756bd7; font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .interaction-composer-options { display: grid; gap: 7px; }
 .interaction-composer-options > label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .interaction-composer-options > label:not(:has(input[type="radio"])) { grid-template-columns: minmax(0, 1fr) auto; }
-.interaction-composer-options input[type="radio"] { accent-color: #5146e5; }
-.interaction-composer-options > label > button { display: grid; width: 28px; height: 28px; padding: 0; place-items: center; border: 0; border-radius: 7px; color: #9a6570; background: #fff2f3; cursor: pointer; }
-.interaction-option-add { display: inline-flex; width: max-content; align-items: center; gap: 5px; min-height: 30px; padding: 0 9px; border: 1px solid #ddd9f1; border-radius: 7px; color: #4e44c8; background: #fff; font-size: 9px; font-weight: 750; cursor: pointer; }
+.interaction-composer-options input[type="radio"] { width: 18px; height: 18px; accent-color: #5146e5; }
+.lesson-controls .interaction-composer-options > label > button { display: grid; width: 34px; height: 34px; min-height: 34px; padding: 0; place-items: center; border: 0; border-radius: 8px; color: #9a6570; background: #fff2f3; cursor: pointer; }
+.lesson-controls .interaction-option-add { display: inline-flex; width: max-content; align-items: center; gap: 6px; min-height: 36px; padding: 0 11px; border: 1px solid #ddd9f1; border-radius: 8px; color: #4e44c8; background: #fff; font-size: 10px; font-weight: 750; cursor: pointer; }
 .interaction-composer-duration { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 8px; }
 .interaction-composer-duration > label { display: flex; align-items: center; gap: 5px; color: #697087; font-size: 9px; }
 .interaction-composer-duration input { width: 58px !important; text-align: center; font-variant-numeric: tabular-nums; }
@@ -1298,15 +1387,17 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 42px;
+  min-height: 50px;
   border: 1px solid #4035cb;
-  border-radius: 9px;
+  border-radius: 11px;
   color: #fff;
   background: #5146e5;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 780;
   cursor: pointer;
 }
+.lesson-controls .interaction-composer-submit { min-height: 50px; padding: 0 18px; }
+.interaction-composer-submit:hover:not(:disabled) { background: #453bd5; box-shadow: 0 8px 20px rgba(81, 70, 229, .18); }
 .interaction-composer-submit:disabled { cursor: not-allowed; opacity: .45; }
 
 .instructor-timer-stage {
@@ -1327,25 +1418,6 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 .instructor-timer-stage strong { color: #111b39; font-family: var(--seminar-font-display); font-size: clamp(70px, 9vw, 124px); font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: -.06em; line-height: .95; }
 .instructor-timer-stage span { margin-top: 8px; color: #777e91; font-size: 11px; }
 .instructor-timer-stage.is-complete { border-color: #efc7bc; color: #bd563e; background: #fff7f3; }
-
-.next-activity-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px 52px;
-  gap: 8px;
-  height: 100%;
-}
-
-.lesson-controls .next-activity-actions > button { min-width: 0; padding: 0 12px; }
-.lesson-controls .next-activity-actions .control-primary { padding-left: 18px; }
-.lesson-controls .control-more,
-.lesson-controls .control-return-to-slides {
-  padding: 0;
-  border: 1px solid #d7d9e2;
-  color: #4f5870;
-  background: white;
-}
-.lesson-controls .control-more:hover { color: var(--seminar-violet); border-color: #c8c3f5; background: #f7f5ff; }
-.lesson-controls .control-return-to-slides:hover { color: #101a38; border-color: #bfc4d0; background: #f7f8fb; }
 
 .activity-menu {
   position: absolute;
@@ -1498,26 +1570,6 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 
 .preview-interaction-state > strong {
   max-width: 210px;
-}
-
-.presentation-companion-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 11px 2px 0;
-  color: #697087;
-  font-size: 8px;
-  line-height: 1.45;
-}
-
-.presentation-companion-note svg {
-  margin-top: 1px;
-  color: var(--seminar-violet);
-  flex: 0 0 auto;
-}
-
-.presentation-companion-note strong {
-  color: #313950;
 }
 
 .session-plan-backdrop {
@@ -1721,45 +1773,6 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   background: white;
   color: var(--seminar-muted);
   cursor: pointer;
-}
-
-.session-plan-companion {
-  margin: 22px 32px 12px;
-  padding: 15px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid #dcd8ff;
-  border-radius: 12px;
-  background: #f5f3ff;
-  color: var(--seminar-violet);
-}
-
-.session-plan-companion div {
-  display: flex;
-  flex-direction: column;
-}
-
-.session-plan-companion strong {
-  color: var(--seminar-ink);
-  font-size: 11px;
-}
-
-.session-plan-companion div span {
-  margin-top: 2px;
-  color: var(--seminar-muted);
-  font-size: 9px;
-}
-
-.session-plan-companion > span {
-  padding: 5px 8px;
-  border-radius: 999px;
-  background: white;
-  font-size: 8px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
 }
 
 .session-plan-list {
@@ -2171,6 +2184,26 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   flex: 1;
 }
 
+.question-list-empty {
+  min-height: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 28px 18px;
+  color: #8a90a1;
+  text-align: center;
+}
+
+.question-list-empty svg {
+  margin-bottom: 3px;
+  color: #766de1;
+}
+
+.question-list-empty strong { color: #3c455d; font-size: 11px; }
+.question-list-empty span { max-width: 210px; font-size: 9px; line-height: 1.5; }
+
 .question-card {
   padding: 15px 0 14px;
   border-bottom: 1px solid var(--seminar-line);
@@ -2390,9 +2423,6 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 
 .topbar-actions .end-class-trigger { color: #9b4b3d; }
 .topbar-actions .end-class-trigger:hover { border-color: #efc9c0; background: #fff4f1; }
-.topbar-actions .leave-console-trigger { color: #4f5870; }
-.topbar-actions .leave-console-trigger:hover { border-color: #cbc7ea; color: #4037be; background: #f7f5ff; }
-
 .end-class-backdrop {
   position: fixed;
   inset: 0;
@@ -2745,7 +2775,7 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   .mood-row { grid-template-columns: 125px minmax(220px, 1fr) 74px 45px; }
   .instructor-insight { margin-left: 140px; }
   .connected-count { display: none; }
-  .lesson-controls { grid-template-columns: minmax(170px, .7fr) minmax(270px, 1.25fr) 112px; }
+  .lesson-controls { grid-template-columns: minmax(145px, .68fr) minmax(220px, 1.15fr) minmax(125px, .6fr) 126px; }
   .control-quick-add { gap: 7px; padding: 0 10px !important; }
   .control-quick-add small { display: none; }
 }
@@ -2788,6 +2818,7 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   .professor-card .professor-avatar { width: 38px !important; height: 38px !important; }
   .conversation-rail { grid-column: 2; min-height: 0; border-top: 1px solid var(--seminar-line); }
   .question-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .question-list-empty { grid-column: 1 / -1; }
   .question-card { border: 1px solid var(--seminar-line); padding: 16px; margin: 16px 0; }
   .question-card.is-active::before { left: 0; top: 0; bottom: 0; }
   .question-card > p,
@@ -2802,7 +2833,6 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   .lesson-topbar { min-height: 68px; padding: 12px 18px; }
   .course-name em { display: none; }
   .topbar-actions button:first-of-type { display: none; }
-  .lesson-topbar .leave-console-trigger { width: 39px; padding: 0; justify-content: center; font-size: 0; }
   .lesson-topbar .end-class-trigger { padding: 0 9px; }
   .leave-console-dialog > div { grid-template-columns: 1fr; }
   .lesson-content { padding: 26px 18px 20px; }
@@ -2816,11 +2846,13 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
   .mood-row { grid-template-columns: 104px minmax(120px, 1fr) 66px; gap: 8px; }
   .mood-delta { display: none; }
   .mood-label { font-size: 11px; }
+  .live-waiting-state > span { align-items: flex-start; flex-direction: column; gap: 2px; }
   .instructor-insight { margin-left: 0; }
   .lesson-controls { grid-template-columns: 1fr 1fr; padding: 11px 18px; }
   .lesson-controls .control-secondary:nth-child(2) { display: none; }
   .lesson-controls button { min-height: 61px; padding: 0 12px; }
-  .next-activity-actions { grid-template-columns: minmax(0, 1fr) 46px 46px; }
+  .control-utilities { grid-column: 1 / -1; grid-template-columns: repeat(2, 1fr); grid-template-rows: 1fr; }
+  .lesson-controls .control-utility { min-height: 46px; }
   .quick-add-wrap { grid-column: 1 / -1; }
   .lesson-controls .control-quick-add { min-height: 48px; }
   .conversation-rail { display: none; }

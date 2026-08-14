@@ -785,7 +785,7 @@ export default function ClassroomDisplayPage() {
   }
 
   return (
-    <main className={`classroom-display ${lessonState.playingHistory ? 'is-flowing' : ''}`}>
+    <main className={`classroom-display ${lessonState.playingHistory ? 'is-flowing' : ''} ${presenterControlsVisible ? 'presenter-controls-visible' : ''}`}>
       <header className="display-topbar">
         <div className="display-brand">Classfully<span>.</span></div>
         <div className="display-course">
@@ -802,9 +802,9 @@ export default function ClassroomDisplayPage() {
       {projectorFlights.map((flight) => <ProjectorTransportFlight key={flight.id} flight={flight} />)}
       {presenterControlsAvailable && (
         <nav className={`presentation-navigator ${presenterControlsVisible ? 'is-visible' : ''}`} aria-label="Presenter activity controls">
-          <button type="button" onClick={() => navigateFromPresentation('previous')} aria-label="Show previous interaction" title="Previous interaction (Left arrow)"><ChevronLeft size={20} /></button>
-          <span><small>Presenter controls</small><strong>{lessonState.activeInteraction?.title || 'Class view'}</strong></span>
-          <button type="button" onClick={() => navigateFromPresentation('next')} aria-label="Show next interaction" title="Next interaction (Right arrow)"><ChevronRight size={20} /></button>
+          <button type="button" onClick={() => navigateFromPresentation('previous')} aria-label="Show previous interaction" title="Previous interaction (Left arrow)"><ChevronLeft size={22} /></button>
+          <span><small>Now showing</small><strong>{lessonState.activeInteraction?.title || 'Class view'}</strong></span>
+          <button type="button" onClick={() => navigateFromPresentation('next')} aria-label="Show next interaction" title="Next interaction (Right arrow)"><ChevronRight size={22} /></button>
         </nav>
       )}
       {lessonState.timer && lessonState.activeInteraction?.type !== 'timer' && <ProjectorTimer timer={lessonState.timer} />}
@@ -857,7 +857,7 @@ export default function ClassroomDisplayPage() {
           <ClassroomInteraction lessonState={lessonState} />
           <footer className="display-footer">
             <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.activeInteraction.type === 'spin-wheel' ? lessonState.interactionResults?.wheelSelectedLabel ? 'Selection complete' : 'Wheel ready' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
-            <div className="display-footer-insight"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
+            <div className="display-footer-insight remote-control-hint"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
             <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
           </footer>
         </>

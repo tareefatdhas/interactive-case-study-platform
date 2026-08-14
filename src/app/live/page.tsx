@@ -66,7 +66,6 @@ import {
   GripVertical,
   HeartPulse,
   Italic,
-  Laptop,
   ListChecks,
   ListOrdered,
   List as ListIcon,
@@ -135,17 +134,18 @@ const ACTIVITY_TYPES: Array<{
   label: string;
   description: string;
   icon: typeof Activity;
+  group: 'Quick checks' | 'Class activities';
 }> = [
-  { type: 'timer', label: 'Timer', description: 'Full-screen working time', icon: Timer },
-  { type: 'pulse', label: 'Class pulse', description: 'Check pace, confidence, or mood', icon: HeartPulse },
-  { type: 'poll', label: 'Poll', description: 'See where the room stands', icon: BarChart3 },
-  { type: 'quiz', label: 'Knowledge check', description: 'Check understanding', icon: CircleHelp },
-  { type: 'open-response', label: 'Short response', description: 'Gather written thinking', icon: MessageCircle },
-  { type: 'word-cloud', label: 'Word cloud', description: 'Surface shared themes', icon: Cloud },
-  { type: 'peer-learning', label: 'Peer learning', description: 'Answer, discuss, answer again', icon: Repeat2 },
-  { type: 'team-formation', label: 'Form teams', description: 'Create named teams for this course', icon: Users },
-  { type: 'group-work', label: 'Group work', description: 'Give teams a shared task', icon: Users },
-  { type: 'spin-wheel', label: 'Spin the wheel', description: 'Select students, teams, or custom items', icon: Dices },
+  { type: 'timer', label: 'Timer', description: 'Full-screen working time', icon: Timer, group: 'Quick checks' },
+  { type: 'pulse', label: 'Class pulse', description: 'Check pace, confidence, or mood', icon: HeartPulse, group: 'Quick checks' },
+  { type: 'poll', label: 'Poll', description: 'See where the room stands', icon: BarChart3, group: 'Quick checks' },
+  { type: 'quiz', label: 'Knowledge check', description: 'Check understanding', icon: CircleHelp, group: 'Quick checks' },
+  { type: 'open-response', label: 'Short response', description: 'Gather written thinking', icon: MessageCircle, group: 'Quick checks' },
+  { type: 'word-cloud', label: 'Word cloud', description: 'Surface shared themes', icon: Cloud, group: 'Quick checks' },
+  { type: 'peer-learning', label: 'Peer learning', description: 'Answer, discuss, answer again', icon: Repeat2, group: 'Class activities' },
+  { type: 'team-formation', label: 'Form teams', description: 'Create named teams for this course', icon: Users, group: 'Class activities' },
+  { type: 'group-work', label: 'Group work', description: 'Give teams a shared task', icon: Users, group: 'Class activities' },
+  { type: 'spin-wheel', label: 'Spin the wheel', description: 'Select students, teams, or custom items', icon: Dices, group: 'Class activities' },
 ];
 
 const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInteraction): LiveInteraction => {
@@ -275,12 +275,19 @@ function restoreRunResults(
 function ActivityTypePicker({ onSelect }: { onSelect: (type: LiveInteraction['type']) => void }) {
   return (
     <div className="activity-type-picker" role="group" aria-label="Interaction types">
-      {ACTIVITY_TYPES.map(({ type, label, description, icon: Icon }) => (
-        <button type="button" key={type} onClick={() => onSelect(type)}>
-          <Icon size={18} />
-          <span><strong>{label}</strong><small>{description}</small></span>
-          <ArrowRight size={14} />
-        </button>
+      {(['Quick checks', 'Class activities'] as const).map((group) => (
+        <section key={group} className="activity-type-group" aria-label={group}>
+          <h3>{group}</h3>
+          <div>
+            {ACTIVITY_TYPES.filter((activity) => activity.group === group).map(({ type, label, description, icon: Icon }) => (
+              <button type="button" key={type} onClick={() => onSelect(type)}>
+                <Icon size={18} />
+                <span><strong>{label}</strong><small>{description}</small></span>
+                <ArrowRight size={14} />
+              </button>
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );
@@ -492,6 +499,7 @@ function SortableSessionPlanItem({
 function InstructorInteractionStage({
   interaction,
   results,
+  connectedStudents,
   teams,
   timer,
   onReveal,
@@ -501,6 +509,7 @@ function InstructorInteractionStage({
 }: {
   interaction: LiveInteraction;
   results: InteractionResults;
+  connectedStudents: number;
   teams: import('./live-data').LiveTeam[];
   timer: LiveTimer | null;
   onReveal: () => void;
@@ -596,6 +605,15 @@ function InstructorInteractionStage({
               </article>
             );
           })}
+          {!results.responseCount && (
+            <div className="live-waiting-state" role="status">
+              <i aria-hidden="true" />
+              <span>
+                <strong>Waiting for the first response</strong>
+                <small>{connectedStudents ? `${connectedStudents} ${connectedStudents === 1 ? 'student is' : 'students are'} connected` : 'Share the class code when students are ready'}</small>
+              </span>
+            </div>
+          )}
           {isPeerLearning && !results.revealed ? (
             <button className="reveal-result-button" type="button" onClick={onAdvanceModule} disabled={results.phase !== 'discuss' && !results.responseCount}>
               <ArrowRight size={18} /> {results.phase === 'respond' ? 'Start partner discussion' : results.phase === 'discuss' ? 'Ask the question again' : 'Show the shift'}
@@ -646,7 +664,6 @@ export default function LiveLessonPrototype() {
   const [questionDraft, setQuestionDraft] = useState('');
   const [dismissingQuestionIds, setDismissingQuestionIds] = useState<number[]>([]);
   const [dismissedQuestionUndo, setDismissedQuestionUndo] = useState<LiveQuestion | null>(null);
-  const [nextMenuOpen, setNextMenuOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddType, setQuickAddType] = useState<LiveInteraction['type'] | null>(null);
   const [topbarMenuOpen, setTopbarMenuOpen] = useState(false);
@@ -681,6 +698,7 @@ export default function LiveLessonPrototype() {
   const [onboardingRunId, setOnboardingRunId] = useState(0);
   const [onboardingMoodCounts, setOnboardingMoodCounts] = useState<Counts>(EMPTY_ONBOARDING_COUNTS);
   const displayChannelRef = useRef<BroadcastChannel | null>(null);
+  const displayWindowRef = useRef<Window | null>(null);
   const lastDisplayPingRef = useRef(0);
   const pausedBeforeWelcomeRef = useRef(false);
   const receivedResponseIdsRef = useRef(new Set<string>());
@@ -1067,7 +1085,10 @@ export default function LiveLessonPrototype() {
       if (event.data?.type === 'presentation-controller-ready') {
         channel.postMessage({ type: 'presentation-controller-available' });
       }
-      if (event.data?.type === 'display-closed') setDisplayConnected(false);
+      if (event.data?.type === 'display-closed') {
+        displayWindowRef.current = null;
+        setDisplayConnected(false);
+      }
       if (event.data?.type === 'student-onboarding-response' && event.data.mood) {
         const mood = event.data.mood;
         if (MOODS.some((option) => option.key === mood)) {
@@ -1552,7 +1573,11 @@ export default function LiveLessonPrototype() {
     });
   };
 
-  const launchInteraction = (interaction: LiveInteraction, resumeRun?: SessionInteractionRun) => {
+  const launchInteraction = (
+    interaction: LiveInteraction,
+    resumeRun?: SessionInteractionRun,
+    options: { ensureDisplay?: boolean } = {},
+  ) => {
     const now = Date.now();
     const closedRuns = closeCurrentRun(interactionRunsRef.current, 'paused', now);
     const results = resumeRun
@@ -1577,7 +1602,6 @@ export default function LiveLessonPrototype() {
     const nextRuns = [...closedRuns.filter((run) => run.id !== nextRun.id), nextRun]
       .sort((a, b) => a.startedAt - b.startedAt);
 
-    setNextMenuOpen(false);
     setSessionPlanOpen(false);
     setLobbyOpen(false);
     setActiveInteraction(interaction);
@@ -1598,7 +1622,7 @@ export default function LiveLessonPrototype() {
       });
     } else setLiveTimer(null);
     setActiveNav(interaction.label);
-    if (!displayConnected) openClassroomDisplay();
+    if (options.ensureDisplay !== false && !displayConnected) openClassroomDisplay();
     setToast(resumeRun ? `${interaction.title} resumed with its saved responses.` : `${interaction.title} is ready on the classroom display`);
     window.setTimeout(() => document.querySelector('.live-interaction-stage')?.scrollTo({ top: 0 }), 0);
   };
@@ -1618,7 +1642,9 @@ export default function LiveLessonPrototype() {
     const savedRun = [...interactionRunsRef.current]
       .reverse()
       .find((run) => run.interactionId === target.id && run.status !== 'archived');
-    launchInteraction(target, savedRun);
+    // The command came from the already-open presentation. Never open or
+    // refocus a display window because a heartbeat was briefly stale.
+    launchInteraction(target, savedRun, { ensureDisplay: false });
   };
 
   const spinWheel = () => {
@@ -1834,6 +1860,14 @@ export default function LiveLessonPrototype() {
   };
 
   const openClassroomDisplay = () => {
+    const existingDisplay = displayWindowRef.current;
+    if (existingDisplay && !existingDisplay.closed) {
+      existingDisplay.focus();
+      displayChannelRef.current?.postMessage({ type: 'lesson-state', state: displayStateRef.current });
+      setToast('Presentation brought to the front.');
+      return;
+    }
+
     const displayUrl = sessionContext.sessionId && sessionContext.ownerUid
       ? `/live/display?sessionId=${encodeURIComponent(sessionContext.sessionId)}&ownerUid=${encodeURIComponent(sessionContext.ownerUid)}`
       : '/live/display';
@@ -1848,9 +1882,11 @@ export default function LiveLessonPrototype() {
       return;
     }
 
-    setToast('Classroom display opened in a second window');
+    displayWindowRef.current = display;
+    display.focus();
+    setToast(displayConnected ? 'Presentation brought to the front.' : 'Presentation opened in a second window.');
     window.setTimeout(() => {
-      displayChannelRef.current?.postMessage({ type: 'lesson-state', state: displayState });
+      displayChannelRef.current?.postMessage({ type: 'lesson-state', state: displayStateRef.current });
     }, 500);
   };
 
@@ -2104,7 +2140,6 @@ export default function LiveLessonPrototype() {
           <div className="topbar-actions">
             <span className="connected-count"><Users size={17} /> {activeInteraction && interactionResults ? `${interactionResults.responseCount} responded` : `${connectedStudents} connected`}</span>
             <button className="floating-controls-trigger" type="button" onClick={openFloatingControls}><PictureInPicture2 size={17} /> Float controls</button>
-            {sessionContext.sessionId && <button className="leave-console-trigger" type="button" onClick={() => setLeaveConsoleOpen(true)}><LogOut size={16} /> Leave console</button>}
             {sessionContext.sessionId && <button className="end-class-trigger" type="button" onClick={() => setEndClassOpen(true)}><Square size={15} /> End class</button>}
             <div className="topbar-more-wrap">
               <button className="topbar-more-trigger" type="button" aria-haspopup="menu" aria-expanded={topbarMenuOpen} onClick={() => setTopbarMenuOpen((open) => !open)}><MoreHorizontal size={18} /> More</button>
@@ -2115,7 +2150,9 @@ export default function LiveLessonPrototype() {
                   <button role="menuitem" type="button" onClick={showClassLobby}><QrCode size={17} /><span><strong>Show join screen</strong><small>QR code, link, and class code</small></span></button>
                   <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); if (onboardingStep > 0) setToast('Use the welcome controls above the lesson dock'); else setWelcomeOpen(true); }}><GraduationCap size={17} /><span><strong>{onboardingStep > 0 ? 'Welcome running' : 'Welcome class'}</strong><small>Introduce the class to participation</small></span></button>
                   <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); startProjectorCheck(); }}><MonitorUp size={17} /><span><strong>{displayConnected ? 'Check display' : 'Set up display'}</strong><small>Open or reconnect the projector</small></span></button>
-                  <i /><button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); setResetSessionOpen(true); }}><RotateCcw size={16} /><span><strong>Reset session</strong><small>Clear responses and start again</small></span></button>
+                  <i />
+                  {sessionContext.sessionId && <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); setLeaveConsoleOpen(true); }}><LogOut size={16} /><span><strong>Leave console</strong><small>The class stays open</small></span></button>}
+                  <button className="is-danger" role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); setResetSessionOpen(true); }}><RotateCcw size={16} /><span><strong>Reset session</strong><small>Clear responses and start again</small></span></button>
                 </div>
               )}
             </div>
@@ -2148,6 +2185,7 @@ export default function LiveLessonPrototype() {
           <InstructorInteractionStage
             interaction={activeInteraction}
             results={interactionResults}
+            connectedStudents={connectedStudents}
             teams={formedTeams}
             timer={liveTimer}
             onReveal={revealInteractionResults}
@@ -2307,25 +2345,13 @@ export default function LiveLessonPrototype() {
             </span>
           </button>}
           <div className="next-activity-wrap">
-            {nextMenuOpen && (
-              <div className="activity-menu">
-                <p>{activeInteraction ? 'Switch interaction' : 'Prepared for this session'}</p>
-                {sessionPlan.filter((interaction) => interaction.id !== activeInteraction?.id).map((interaction) => (
-                  <button type="button" key={interaction.id} onClick={() => launchInteraction(interaction)}><span><small>{interaction.id === nextPreparedInteraction?.id ? 'Up next' : interaction.plannedTime}</small>{interaction.title}</span><ArrowRight size={15} /></button>
-                ))}
-              </div>
-            )}
             {activeInteraction ? (
-              <div className="next-activity-actions">
-                <button className="control-primary" type="button" onClick={() => nextPreparedInteraction ? launchInteraction(nextPreparedInteraction) : setNextMenuOpen((current) => !current)}>
-                  <span><strong>{nextPreparedInteraction ? 'Start next interaction' : 'Choose an interaction'}</strong><small>{nextPreparedInteraction?.title || 'The prepared sequence is complete'}</small></span>
-                  <ArrowRight size={20} />
-                </button>
-                <button className="control-more" type="button" aria-label="Choose another interaction" title="Choose another interaction" onClick={() => setNextMenuOpen((current) => !current)}><ListChecks size={19} /></button>
-                <button className="control-return-to-slides" type="button" aria-label="Return to slides" title="Return to slides" onClick={returnToSlides}><Laptop size={19} /></button>
-              </div>
+              <button className="control-primary" type="button" onClick={() => nextPreparedInteraction ? launchInteraction(nextPreparedInteraction) : setSessionPlanOpen(true)}>
+                <span><strong>{nextPreparedInteraction ? 'Start next interaction' : 'Choose from session plan'}</strong><small>{nextPreparedInteraction?.title || 'Return to an activity or add another'}</small></span>
+                <ArrowRight size={20} />
+              </button>
             ) : (
-              <button className="control-primary" type="button" onClick={() => setNextMenuOpen((current) => !current)}>
+              <button className="control-primary" type="button" onClick={() => setSessionPlanOpen(true)}>
                 <span><strong>Show an interaction</strong><small>{sessionPlan.length} {sessionPlan.length === 1 ? 'interaction' : 'interactions'} prepared for this session</small></span>
                 <ArrowRight size={20} />
               </button>
@@ -2335,7 +2361,7 @@ export default function LiveLessonPrototype() {
             {quickAddOpen && (
               <section className="quick-add-menu" role="dialog" aria-label="Add something during class">
                 <header>
-                  <div><small>In the moment</small><strong>Add something now</strong></div>
+                  <div><small>During class</small><strong>Add an interaction</strong></div>
                   <button type="button" aria-label="Close quick add" onClick={() => { setQuickAddOpen(false); setQuickAddType(null); }}><X size={16} /></button>
                 </header>
                 {quickAddType ? (
@@ -2354,16 +2380,25 @@ export default function LiveLessonPrototype() {
                   />
                 ) : (
                   <>
-                    <p className="activity-picker-intro">What do you want to bring into the room?</p>
+                    <p className="activity-picker-intro">Choose a format. You can adjust it before it goes live.</p>
                     <ActivityTypePicker onSelect={setQuickAddType} />
-                    <p className="quick-add-note">It opens now and stays in the Session plan so you can return to it.</p>
                   </>
                 )}
               </section>
             )}
-            <button className="control-quick-add" type="button" aria-haspopup="dialog" aria-expanded={quickAddOpen} onClick={() => { setNextMenuOpen(false); setQuickAddType(null); setQuickAddOpen((open) => !open); }}>
+            <button className="control-quick-add" type="button" aria-haspopup="dialog" aria-expanded={quickAddOpen} onClick={() => { setQuickAddType(null); setQuickAddOpen((open) => !open); }}>
               <Plus size={19} />
-              <span><strong>Add now</strong><small>Choose and add to plan</small></span>
+              <span><strong>Add interaction</strong><small>Create and show now</small></span>
+            </button>
+          </div>
+          <div className="control-utilities" role="group" aria-label="Classroom tools">
+            <button className="control-utility" type="button" aria-label="Open session plan" title="Session plan" onClick={() => { setQuickAddOpen(false); setSessionPlanOpen(true); }}>
+              <ListChecks size={19} />
+              <span><strong>Session plan</strong></span>
+            </button>
+            <button className={`control-utility control-presentation ${displayConnected ? 'is-connected' : ''}`} type="button" aria-label="Open presentation view" title="Presentation view" onClick={openClassroomDisplay}>
+              <MonitorUp size={19} />
+              <span><strong>Presentation</strong></span>
             </button>
           </div>
           </>
@@ -2416,7 +2451,6 @@ export default function LiveLessonPrototype() {
               )}
               <span className="preview-action"><MonitorUp size={13} /> Open on projector</span>
             </button>
-            <div className="presentation-companion-note"><Laptop size={14} /><span><strong>Your slides stay separate.</strong> Open this display once, then use your normal app switch between the presentation and classroom view.</span></div>
           </section>
 
           <header className="rail-header">
@@ -2434,6 +2468,13 @@ export default function LiveLessonPrototype() {
           </header>
 
           <div className="question-list">
+            {!filteredClassQuestions.length && (
+              <div className="question-list-empty" role="status">
+                <MessageCircle size={24} />
+                <strong>{questionFilter === 'Unanswered' ? 'No unanswered questions' : 'No questions yet'}</strong>
+                <span>{questionFilter === 'Unanswered' ? 'New questions will appear here.' : 'Student questions will appear here as they arrive.'}</span>
+              </div>
+            )}
             {filteredClassQuestions.map((question) => (
               <article className={`question-card ${activeQuestion === question.id ? 'is-active' : ''}`} key={question.id}>
                 <div className="question-meta">
@@ -2507,12 +2548,6 @@ export default function LiveLessonPrototype() {
               </div>
               <button type="button" aria-label="Close session plan" onClick={() => setSessionPlanOpen(false)}><X size={19} /></button>
             </header>
-
-            <div className="session-plan-companion">
-              <Laptop size={19} />
-              <div><strong>Presentation companion mode</strong><span>Your slides remain in their original app.</span></div>
-              <span>Separate</span>
-            </div>
 
             <div className="session-plan-editor">
               {planEditingInteraction ? (
