@@ -337,6 +337,8 @@ export interface Course {
   archivedAt?: Timestamp | null;
   sourceCourseId?: string;
   interactionTemplates?: SessionInteraction[];
+  /** Session ids in the instructor-defined teaching sequence, from first to last. */
+  sessionOrder?: string[];
   courseSources?: CourseSource[];
   teamTags?: string[];
   teams?: Array<{

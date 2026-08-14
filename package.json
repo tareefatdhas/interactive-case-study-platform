@@ -19,6 +19,7 @@
     "test:analytics-paths": "tsx scripts/verify-analytics-paths.ts",
     "test:course-sources": "node scripts/verify-course-source-contract.mjs",
     "test:course-source-api": "node scripts/verify-course-source-api.mjs",
+    "test:course-session-order": "tsx scripts/verify-course-session-order.ts",
     "check": "npm run typecheck && npm run lint && npm run build && npm run test:e2e",
     "ready:classroom": "node scripts/check-live-readiness.mjs"
   },

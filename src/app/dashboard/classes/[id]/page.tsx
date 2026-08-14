@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, use, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
@@ -9,6 +9,7 @@ import { createCourseWithEntitlement } from '@/lib/firebase/billing';
 import { deleteInstructorClassroomData } from '@/lib/firebase/live-classroom';
 import { TEAM_COLORS, addInstructorTeamMember, createInstructorCourseTeam, deleteInstructorCourseTeam, ensureTeamModule, normalizeTeamName, normalizeTeamStudentNumber, removeInstructorTeamMember, subscribeInstructorTeamRoster, updateInstructorCourseTeam, type CourseTeamWithMembers, type TeamColorId } from '@/lib/firebase/course-teams';
 import { COURSE_SOURCE_KINDS, MAX_COURSE_SOURCES, MAX_COURSE_SOURCE_CHARS, courseSourceWordCount, removeCourseSource, upsertCourseSource } from '@/lib/course-sources';
+import { orderCourseSessions, placeCourseSession } from '@/lib/course-session-order';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { auth } from '@/lib/firebase/config';
 import { Timestamp } from 'firebase/firestore';
@@ -20,6 +21,9 @@ import InlineMessage from '@/components/ui/InlineMessage';
 import { AmbientLoading } from '@/components/motion';
 import TeachingTeamPanel from '@/components/teacher/TeachingTeamPanel';
 import type { Course, CourseSource, CourseSourceKind, Session, SessionInteraction, SessionInteractionType } from '@/types';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, type DragEndEvent, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   ArrowLeft,
   ArrowRight,
@@ -41,6 +45,7 @@ import {
   LoaderCircle,
   MessageCircle,
   MoreHorizontal,
+  GripVertical,
   Pencil,
   Plus,
   Play,
@@ -137,6 +142,27 @@ const readableDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+function SortableSessionRow({ session, enabled, active, children }: { session: Session; enabled: boolean; active: boolean; children: ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: session.id, disabled: !enabled });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`group flex items-stretch transition-[background-color,box-shadow,opacity] duration-200 ${active ? 'bg-[#fbfefc]' : 'bg-white'} ${isDragging ? 'relative z-20 opacity-95 shadow-[0_18px_45px_rgba(16,26,56,0.14)]' : ''}`}
+    >
+      {enabled && <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="seminar-focus ml-2 grid h-10 w-8 shrink-0 self-center touch-none cursor-grab place-items-center rounded-lg text-[#a1a6b5] opacity-45 transition-[color,opacity] duration-150 hover:text-[#716b91] hover:opacity-75 active:cursor-grabbing active:text-[#5146e5] active:opacity-100 sm:ml-3 sm:opacity-30 sm:group-hover:opacity-55"
+        aria-label={`Reorder ${session.title || 'untitled session'}`}
+        title="Drag to reorder. Press Space to use the keyboard."
+      ><GripVertical className="h-5 w-5" /></button>}
+      {children}
+    </li>
+  );
+}
+
 export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const { id } = use(params);
   const { user } = useAuth();
@@ -191,6 +217,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [classDetailsError, setClassDetailsError] = useState('');
   const [sessionMenuOpen, setSessionMenuOpen] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+  const [sessionOrderSaving, setSessionOrderSaving] = useState(false);
   const [rollingOver, setRollingOver] = useState(false);
   const [nextTerm, setNextTerm] = useState('');
   const [nextCode, setNextCode] = useState('');
@@ -290,12 +317,35 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const studentCount = useMemo(() => new Set(sessions.flatMap((session) => session.studentsJoined || [])).size, [sessions]);
   const normalizedNewTeamName = normalizeTeamName(newTeamName);
   const duplicateTeam = teamRoster.find((team) => team.normalizedName === normalizedNewTeamName && team.id !== editingTeamId);
-  const orderedSessions = useMemo(() => [...sessions].sort((a, b) => {
-    if (a.active !== b.active) return a.active ? -1 : 1;
-    const aTime = a.scheduledFor ? new Date(a.scheduledFor).getTime() : 0;
-    const bTime = b.scheduledFor ? new Date(b.scheduledFor).getTime() : 0;
-    return bTime - aTime;
-  }), [sessions]);
+  const orderedSessions = useMemo(
+    () => orderCourseSessions(sessions, course?.sessionOrder),
+    [course?.sessionOrder, sessions],
+  );
+  const sessionDragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 7 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const reorderSession = async ({ active, over }: DragEndEvent) => {
+    if (!course || sessionOrderSaving || !over || active.id === over.id) return;
+    const currentOrder = orderedSessions.map((session) => session.id);
+    const nextOrder = placeCourseSession(currentOrder, String(active.id), String(over.id));
+    if (nextOrder === currentOrder) return;
+
+    const previousOrder = course.sessionOrder;
+    setCourse({ ...course, sessionOrder: nextOrder });
+    setSessionOrderSaving(true);
+    setError('');
+    try {
+      await updateCourse(course.id, { sessionOrder: nextOrder });
+    } catch (moveError) {
+      console.error('Could not reorder sessions:', moveError);
+      setCourse({ ...course, sessionOrder: previousOrder });
+      setError(getUserFacingError(moveError, 'The session order could not be saved. Try moving it once more.'));
+    } finally {
+      setSessionOrderSaving(false);
+    }
+  };
 
   const resetTeamCreator = () => {
     setTeamCreatorOpen(false);
@@ -764,7 +814,9 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                   <section className="overflow-visible rounded-3xl border border-[#e3e5ed] bg-white" aria-labelledby="class-sessions-title">
                     <div className="flex flex-col gap-5 border-b border-[#e3e5ed] bg-[linear-gradient(110deg,#fff_0%,#faf9ff_70%,#fff5f0_100%)] p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
                       <div><p className="seminar-eyebrow mb-2">Prepare and teach</p><h2 id="class-sessions-title" className="seminar-display text-3xl text-[#101a38]">Plan and run each class</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#697087]">Open a live session when you are teaching, or prepare the interactions for the next one.</p></div>
-                      {!course.archived && <Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="shrink-0"><Button className="w-full gap-2 sm:w-auto"><Plus className="h-4 w-4" /> Plan a session</Button></Link>}
+                      {!course.archived && <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                        <Link href={`/dashboard/sessions/new?courseId=${course.id}`}><Button className="w-full gap-2 sm:w-auto"><Plus className="h-4 w-4" /> Plan a session</Button></Link>
+                      </div>}
                     </div>
 
                     {orderedSessions.length === 0 ? (
@@ -775,11 +827,13 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                         {!course.archived && <Link href={`/dashboard/sessions/new?courseId=${course.id}`} className="mt-6 inline-block"><Button className="gap-2">Plan session 1 <ArrowRight className="h-4 w-4" /></Button></Link>}
                       </div>
                     ) : (
-                      <ol className="divide-y divide-[#e8e8ee]">
-                        {orderedSessions.map((session, index) => {
-                          const sessionNumber = Math.max(1, sessions.length - index);
-                          return (
-                            <li key={session.id} className={`group flex items-stretch transition-colors ${session.active ? 'bg-[#fbfefc]' : 'bg-white'}`}>
+                      <DndContext sensors={sessionDragSensors} collisionDetection={closestCenter} onDragEnd={(event) => void reorderSession(event)}>
+                        <SortableContext items={orderedSessions.map((session) => session.id)} strategy={verticalListSortingStrategy}>
+                          <ol className="divide-y divide-[#e8e8ee]">
+                          {orderedSessions.map((session, index) => {
+                            const sessionNumber = index + 1;
+                            return (
+                            <SortableSessionRow key={session.id} session={session} active={session.active} enabled={!course.archived && orderedSessions.length > 1}>
                               <Link
                                 href={session.active ? `/live?sessionId=${session.id}` : `/dashboard/sessions/${session.id}`}
                                 className={`seminar-focus group/session grid min-w-0 flex-1 cursor-pointer gap-4 rounded-2xl p-5 transition-colors sm:grid-cols-[54px_minmax(0,1fr)_auto] sm:items-center sm:p-6 ${session.active ? 'hover:bg-[#f1faf4]' : 'hover:bg-[#faf9ff]'}`}
@@ -797,7 +851,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                   <ArrowRight className="h-4 w-4 transition-transform group-hover/session:translate-x-1" />
                                 </span>
                               </Link>
-                              <div className="flex shrink-0 items-center pr-3 sm:pr-5">
+                              <div className="flex shrink-0 items-center gap-1 pr-3 sm:pr-5">
                                 <div className="relative" data-overflow-menu>
                                   <Button variant="ghost" aria-label={`More actions for ${session.title || 'untitled session'}`} aria-haspopup="menu" aria-expanded={sessionMenuOpen === session.id} onClick={() => setSessionMenuOpen((open) => open === session.id ? null : session.id)} className="px-2.5"><MoreHorizontal className="h-5 w-5" /></Button>
                                   {sessionMenuOpen === session.id && <div role="menu" className="absolute right-0 z-30 mt-2 w-52 origin-top-right rounded-2xl border border-[#e3e5ed] bg-white p-1.5 shadow-[0_18px_48px_rgba(16,26,56,0.16)] animate-[fadeIn_180ms_ease-out]">
@@ -806,10 +860,12 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                   </div>}
                                 </div>
                               </div>
-                            </li>
-                          );
-                        })}
-                      </ol>
+                            </SortableSessionRow>
+                            );
+                          })}
+                          </ol>
+                        </SortableContext>
+                      </DndContext>
                     )}
                   </section>
 
