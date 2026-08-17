@@ -1,7 +1,7 @@
 import type { BlogPost } from '../types';
 
 export const engage100StudentsInALecture: BlogPost = {
-  status: 'draft',
+  status: 'published',
   slug: 'engage-100-students-in-a-lecture',
   title: 'How to engage 100 students without losing control of the lecture',
   description:

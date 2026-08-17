@@ -33,7 +33,7 @@ export const contentCalendar: ContentCalendarItem[] = [
   {
     slug: 'engage-100-students-in-a-lecture',
     workingTitle: 'How to engage 100 students without losing control of the lecture',
-    status: 'draft',
+    status: 'published',
     contentFamily: 'Classroom practice',
     primaryQuery: 'how to engage students in large lectures',
     intent: 'act',
