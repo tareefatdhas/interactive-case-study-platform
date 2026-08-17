@@ -49,6 +49,11 @@ export function createPageMetadata({ title, description, path }: PageMetadata): 
 }
 
 export const privateRouteMetadata: Metadata = {
+  // Private application screens are not alternate versions of the marketing
+  // homepage. Clear the root layout canonical instead of inheriting `/`.
+  alternates: {
+    canonical: null,
+  },
   robots: {
     index: false,
     follow: false,
