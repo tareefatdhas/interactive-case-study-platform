@@ -1,7 +1,11 @@
 import { interactiveLectureWithoutRebuildingSlides } from './posts/interactive-lecture-without-rebuilding-slides';
+import { engage100StudentsInALecture } from './posts/engage-100-students-in-a-lecture';
 import type { BlogPost } from './types';
 
-export const allBlogPosts: BlogPost[] = [interactiveLectureWithoutRebuildingSlides];
+export const allBlogPosts: BlogPost[] = [
+  interactiveLectureWithoutRebuildingSlides,
+  engage100StudentsInALecture,
+];
 
 export const blogPosts = allBlogPosts.filter((post) => post.status === 'published').sort(
   (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),

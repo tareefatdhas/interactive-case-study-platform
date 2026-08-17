@@ -13,6 +13,10 @@ export type BlogBlock =
   | { type: 'callout'; eyebrow?: string; title: string; body: string; tone: BlogCalloutTone }
   | { type: 'quote'; quote: string; attribution?: string }
   | {
+      type: 'sources';
+      items: Array<{ title: string; publisher: string; href: string; note?: string }>;
+    }
+  | {
       type: 'table';
       caption?: string;
       headers: string[];

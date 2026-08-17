@@ -69,6 +69,22 @@ export default function BlogArticleBlocks({ blocks }: { blocks: BlogBlock[] }) {
           );
         }
 
+        if (block.type === 'sources') {
+          return (
+            <ul key={index} className="blog-source-list">
+              {block.items.map((item) => (
+                <li key={item.href}>
+                  <Link href={item.href} target="_blank" rel="noreferrer" className="seminar-focus">
+                    <strong>{item.title}</strong>
+                    <span>{item.publisher}</span>
+                    {item.note ? <p>{item.note}</p> : null}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
         return (
           <aside key={index} className={`blog-inline-cta blog-tone-${block.tone}`}>
             <div>

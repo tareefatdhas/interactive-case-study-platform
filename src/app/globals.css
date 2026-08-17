@@ -2647,6 +2647,12 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .blog-inline-cta p { margin-top: 0.55rem; color: #4f576d; font-size: 0.84rem; line-height: 1.6; }
 .blog-inline-cta .marketing-button { justify-self: start; }
 .blog-inline-cta .marketing-button svg { width: 17px; }
+.blog-source-list { display: grid; gap: 0.8rem; margin-top: 1.6rem; }
+.blog-source-list a { display: grid; gap: 0.2rem; border: 1px solid var(--seminar-line); border-radius: 15px; padding: 1rem 1.1rem; background: rgba(255,255,255,0.62); transition: border-color 160ms ease, transform 160ms ease, background 160ms ease; }
+.blog-source-list a:hover { transform: translateY(-1px); border-color: rgba(83,67,232,0.32); background: #fff; }
+.blog-source-list strong { color: var(--seminar-ink); font-size: 0.9rem; line-height: 1.4; }
+.blog-source-list span { color: var(--seminar-violet); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+.blog-source-list p { color: var(--seminar-muted); font-size: 0.8rem; line-height: 1.55; }
 .blog-article-side { position: sticky; top: 1.5rem; display: grid; gap: 0.8rem; }
 .blog-side-card { border: 1px solid var(--seminar-line); border-radius: 18px; padding: 1.25rem; background: white; box-shadow: 0 14px 36px rgba(16,26,56,0.06); }
 .blog-side-card h2 { margin-top: 0.7rem; font-size: 1.55rem; line-height: 1.05; }
