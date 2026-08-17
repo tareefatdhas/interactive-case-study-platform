@@ -25,11 +25,12 @@ Create or improve one high-value Classfully Field Notes article using current Se
    - recommend no article because the available opportunities are weak
 7. Research the topic. Prefer official sources and original research. Attach a source to any factual or comparative claim that could change.
 8. Write in the typed structure defined by `src/content/blog/types.ts`.
-9. Generate one cover image with the built-in image generation tool. Match the reference image's art direction while changing the classroom moment and composition. Do not place text in the image.
+9. Generate one cover image with the built-in image generation tool. Use the reference visual to extract written art-direction traits only, such as palette, tactile depth, adult university context, and the shared-signal motif. Do not attach the reference visual to the generation call. Create a new classroom moment with a clearly different camera angle, spatial layout, focal action, and signal behavior. Do not place text in the image.
 10. Save the final image as WebP under `public/images/blog/`, ideally below 250 KB while keeping enough detail for a 1536 by 1024 display.
-11. Register the post in `src/content/blog/index.ts` with `status: 'draft'` and update its content calendar entry.
-12. Run typecheck, lint, build, and focused visual checks at mobile and desktop widths.
-13. Create a draft branch or pull request with:
+11. Compare the generated cover with every existing Field Notes cover before accepting it. Reject it when the room geometry, camera position, subject placement, or response path reads as a variation of an existing image.
+12. Register the post in `src/content/blog/index.ts` with `status: 'draft'` and update its content calendar entry.
+13. Run typecheck, lint, build, and focused visual checks at mobile and desktop widths.
+14. Create a draft branch or pull request with:
     - target query
     - why the topic was selected
     - Search Console evidence

@@ -17,7 +17,7 @@ export const engage100StudentsInALecture: BlogPost = {
   },
   featuredImage: '/images/blog/engage-100-students-in-a-lecture.webp',
   featuredImageAlt:
-    'A university instructor reading grouped response signals from students across a large lecture hall',
+    'A circular university lecture theatre where colored response cards form clear rings around the instructor',
   primaryKeyword: 'how to engage students in large lectures',
   secondaryKeywords: [
     'large lecture student engagement',

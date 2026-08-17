@@ -67,6 +67,7 @@ Use:
 - Tactile editorial depth and restrained hand-made energy
 - One purposeful visual path or focal idea
 - Clear composition at thumbnail size
+- A classroom moment and camera position that are distinct from every existing article cover
 
 Avoid:
 
@@ -77,6 +78,9 @@ Avoid:
 - Generic corporate teams
 - Fake dashboards or unreadable interface text
 - Sci-fi screens and holograms
+- Reusing an existing cover's room geometry, subject placement, or response path
+
+Treat the reference visual as a source of written art-direction traits, not as an image-to-image template. For new covers, do not attach it to the generation call. Compare the result beside the existing cover library and reject close compositional variations.
 
 Every image needs useful alt text that describes the subject and purpose, not its art style.
 
