@@ -1784,6 +1784,79 @@ html[data-input-modality="keyboard"] .presentation-navigator button:focus-visibl
 @keyframes classroom-arrival-count { from { opacity: .2; transform: translateY(8px) scale(.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes classroom-arrival-dot { from { opacity: 0; transform: translate(18px,-14px) scale(.25); } to { opacity: .86; transform: translate(0,0) scale(1); } }
 
+/* Course Momentum is a short, instructor-triggered celebration. It uses the
+   same ripple language as live responses while keeping the score legible. */
+.course-momentum-stage {
+  min-height: 0;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: clamp(42px, 6vh, 72px) clamp(70px, 8vw, 138px) clamp(30px, 4vh, 48px);
+  overflow: hidden;
+  background: var(--display-paper);
+  isolation: isolate;
+}
+.course-momentum-stage::before,
+.course-momentum-stage::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  border: 1px solid rgba(81,70,229,.12);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.course-momentum-stage::before { width: 66vw; height: 66vw; right: -28vw; top: -47vw; }
+.course-momentum-stage::after { width: 44vw; height: 44vw; left: -25vw; bottom: -36vw; }
+.course-momentum-stage > header { max-width: 1120px; }
+.course-momentum-stage > header > span { display: inline-flex; align-items: center; gap: 9px; color: var(--display-violet); font-size: 13px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.course-momentum-stage > header h1 { margin: 14px 0 8px; font-family: var(--seminar-font-display); font-size: clamp(62px, 6.4vw, 104px); font-weight: 500; letter-spacing: -.045em; line-height: .94; }
+.course-momentum-stage > header p { max-width: 850px; margin: 0; color: var(--display-muted); font-size: clamp(16px, 1.45vw, 22px); line-height: 1.45; }
+.course-momentum-note { display: flex; align-items: center; justify-content: center; gap: 10px; color: #6d7184; font-size: 13px; font-weight: 650; }
+.course-momentum-note i { width: 8px; height: 8px; border-radius: 50%; background: var(--display-violet); box-shadow: 0 0 0 7px rgba(81,70,229,.08); }
+
+.course-momentum-collective { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(190px, 1fr) auto; align-items: end; gap: 20px 58px; padding-top: 16px; }
+.course-momentum-ripple { min-height: 240px; position: relative; align-self: stretch; overflow: hidden; }
+.course-momentum-ripple > i { --ring-size: calc(120px + var(--ripple-index) * 94px); width: var(--ring-size); height: calc(var(--ring-size) * .34); position: absolute; left: 42%; bottom: calc(18px + var(--ripple-index) * 6px); border: 2px solid rgba(81,70,229,calc(.36 - var(--ripple-index) * .035)); border-radius: 50%; transform: translateX(-50%) scale(.72); animation: momentum-ring-arrive 1.05s cubic-bezier(.16,1,.3,1) calc(var(--ripple-index) * 80ms) both, momentum-ring-breathe 4.8s ease-in-out calc(var(--ripple-index) * -420ms) infinite; }
+.course-momentum-ripple > b { --x: calc((var(--signal-index) * 37) % 96); width: calc(5px + (var(--signal-index) % 4) * 2px); height: calc(5px + (var(--signal-index) % 4) * 2px); position: absolute; left: calc(2% + var(--x) * 1%); bottom: calc(36px + (var(--signal-index) % 7) * 9px); border-radius: 50%; background: color-mix(in srgb, var(--display-violet) calc(42% + (var(--signal-index) % 5) * 10%), white); animation: momentum-signal-arrive 800ms cubic-bezier(.2,.9,.25,1.25) calc((var(--signal-index) % 13) * 42ms) both, momentum-signal-float 5.4s ease-in-out calc(var(--signal-index) * -117ms) infinite; }
+.course-momentum-ripple > span { width: 18px; height: 18px; position: absolute; left: min(calc(12% + var(--momentum-progress) * .72), 84%); bottom: 92px; border: 5px solid #fff; border-radius: 50%; background: var(--display-violet); box-shadow: 0 0 0 2px var(--display-violet), 0 10px 34px rgba(81,70,229,.3); animation: momentum-marker-in 720ms cubic-bezier(.16,1,.3,1) 500ms both; }
+.course-momentum-number { min-width: 260px; align-self: center; padding-bottom: 22px; }
+.course-momentum-number strong { display: block; font-family: var(--seminar-font-display); font-size: clamp(88px, 9vw, 148px); font-weight: 500; letter-spacing: -.06em; line-height: .75; }
+.course-momentum-number span { display: block; margin-top: 20px; color: var(--display-muted); font-size: 14px; }
+.course-momentum-meter { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 22px; }
+.course-momentum-meter > div { height: 10px; overflow: hidden; border-radius: 999px; background: #e7e6ef; }
+.course-momentum-meter > div i { display: block; height: 100%; border-radius: inherit; background: var(--display-violet); animation: momentum-meter-grow 900ms cubic-bezier(.16,1,.3,1) both; }
+.course-momentum-meter span { min-width: 155px; color: #565d76; font-size: 12px; }
+.course-momentum-meter span strong { color: var(--display-ink); font-family: var(--seminar-font-display); font-size: 27px; font-weight: 500; }
+.course-momentum-meter small { color: var(--display-muted); font-size: 11px; }
+
+.course-momentum-teams { min-height: 0; display: grid; align-content: center; gap: 11px; padding: 20px 3vw; }
+.course-momentum-teams article { min-height: 70px; position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 11px 22px; overflow: hidden; border: 1px solid #dedde8; border-radius: 17px; background: #fff; animation: momentum-team-in 620ms cubic-bezier(.16,1,.3,1) calc(var(--team-rank) * 85ms) both; }
+.course-momentum-teams article > span { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; color: var(--team-color); background: color-mix(in srgb, var(--team-color) 9%, white); font-weight: 850; }
+.course-momentum-teams article > div { display: flex; flex-direction: column; gap: 3px; }
+.course-momentum-teams article > div strong { font-family: var(--seminar-font-display); font-size: 24px; font-weight: 500; }
+.course-momentum-teams article > div small { color: var(--display-muted); font-size: 11px; }
+.course-momentum-teams article > b { font-family: var(--seminar-font-display); font-size: 31px; font-weight: 500; }
+.course-momentum-teams article > i { height: 3px; position: absolute; left: 0; bottom: 0; border-radius: 0 999px 999px 0; background: var(--team-color); animation: momentum-meter-grow 800ms cubic-bezier(.16,1,.3,1) calc(250ms + var(--team-rank) * 85ms) both; transform-origin: left; }
+
+.course-momentum-signals { min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(16px, 2.2vw, 34px); padding: 24px 0 10px; }
+.course-momentum-signals article { min-width: 132px; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 20px 14px 16px; border: 1px solid #dedde8; border-radius: 26px; background: #fff; box-shadow: 0 18px 40px rgba(20,27,55,.06); animation: momentum-signal-card-in 720ms cubic-bezier(.16,1,.3,1) calc(var(--signal-rank) * 80ms) both, momentum-signal-card-float 4.8s ease-in-out calc(var(--signal-rank) * -510ms) infinite; }
+.course-momentum-signals article strong { max-width: 150px; margin-top: 4px; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.course-momentum-signals article span { color: var(--display-muted); font-size: 11px; }
+
+@keyframes momentum-ring-arrive { from { opacity: 0; transform: translateX(-50%) scale(.28); } to { opacity: 1; transform: translateX(-50%) scale(.72); } }
+@keyframes momentum-ring-breathe { 0%, 100% { margin-bottom: 0; } 50% { margin-bottom: 8px; } }
+@keyframes momentum-signal-arrive { from { opacity: 0; transform: translate(55px,-70px) scale(.25); } to { opacity: 1; transform: translate(0,0) scale(1); } }
+@keyframes momentum-signal-float { 0%, 100% { margin-bottom: 0; } 50% { margin-bottom: 7px; } }
+@keyframes momentum-marker-in { from { opacity: 0; transform: translateY(-80px) scale(.35); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes momentum-meter-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes momentum-team-in { from { opacity: 0; transform: translateX(45px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes momentum-signal-card-in { from { opacity: 0; transform: translateY(50px) scale(.8); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes momentum-signal-card-float { 0%, 100% { margin-top: 0; } 50% { margin-top: -9px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .course-momentum-stage *, .course-momentum-stage *::before, .course-momentum-stage *::after { animation: none !important; }
+}
+
 @media (max-width: 1050px) {
   .classroom-lobby-stage { grid-template-columns: minmax(0, 1fr) 350px; gap: 36px; padding-inline: 44px; }
   .classroom-lobby-qr { border-radius: 28px; }

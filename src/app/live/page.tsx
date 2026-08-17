@@ -49,6 +49,7 @@ import { interactionRunSummariesDiffer, reconcileInteractionRuns } from '@/lib/s
 import { claimSessionStart } from '@/lib/firebase/billing';
 import { bucketDuration, bucketParticipants, setInstructorPlan, track } from '@/lib/analytics/events';
 import { getUserFacingError } from '@/lib/user-facing-error';
+import { getInstructorMomentumBoard } from '@/lib/firebase/motivation';
 import {
   Activity,
   ArrowRight,
@@ -84,6 +85,7 @@ import {
   Smartphone,
   Square,
   RotateCcw,
+  Sparkles,
   ThumbsUp,
   Timer,
   TimerReset,
@@ -116,6 +118,7 @@ import {
   type LiveInteraction,
   type LiveTimer,
   type MoodKey,
+  type MotivationMoment,
   type OnboardingStep,
 } from './live-data';
 import './live.css';
@@ -176,9 +179,6 @@ const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInt
     options: choiceType ? choiceOptions : undefined,
     correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
     explanation: type === 'quiz' || type === 'peer-learning' ? 'Explain why this answer is correct.' : undefined,
-    speedBonusEnabled: type === 'quiz' ? false : undefined,
-    speedBonusSeconds: type === 'quiz' ? 40 : undefined,
-    maxSpeedBonusPoints: type === 'quiz' ? 4 : undefined,
     durationMinutes: type === 'timer' ? 5 : type === 'group-work' ? 8 : undefined,
     discussionMinutes: type === 'peer-learning' ? 2 : undefined,
     groupSize: type === 'group-work' ? 4 : undefined,
@@ -314,8 +314,6 @@ function InteractionComposer({
   const [options, setOptions] = useState(initialDraft.options || []);
   const [correctOptionIndex, setCorrectOptionIndex] = useState(initialDraft.correctOptionIndex || 0);
   const [explanation, setExplanation] = useState(initialDraft.explanation || '');
-  const [speedBonusEnabled, setSpeedBonusEnabled] = useState(Boolean(initialDraft.speedBonusEnabled));
-  const [speedBonusSeconds, setSpeedBonusSeconds] = useState(String(initialDraft.speedBonusSeconds || 40));
   const [discussionMinutes, setDiscussionMinutes] = useState(String(initialDraft.discussionMinutes || 2));
   const [groupSize, setGroupSize] = useState(String(initialDraft.groupSize || 4));
   const [teamTags, setTeamTags] = useState((initialDraft.teamTags || []).join(', '));
@@ -359,9 +357,6 @@ function InteractionComposer({
       options: usesChoices ? options.map((option) => option.trim()).filter(Boolean) : undefined,
       correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? correctOptionIndex : undefined,
       explanation: type === 'quiz' || type === 'peer-learning' ? explanation.trim() || undefined : undefined,
-      speedBonusEnabled: type === 'quiz' ? speedBonusEnabled : undefined,
-      speedBonusSeconds: type === 'quiz' && speedBonusEnabled ? Math.min(120, Math.max(10, Number.parseInt(speedBonusSeconds || '40', 10) || 40)) : undefined,
-      maxSpeedBonusPoints: type === 'quiz' && speedBonusEnabled ? 4 : undefined,
       durationMinutes: usesTimer ? durationSeconds / 60 : initialDraft.durationMinutes,
       discussionMinutes: type === 'peer-learning' ? Math.max(1, Number.parseInt(discussionMinutes || '2', 10) || 2) : undefined,
       groupSize: type === 'group-work' ? Math.max(2, Number.parseInt(groupSize || '4', 10) || 4) : undefined,
@@ -410,7 +405,6 @@ function InteractionComposer({
         </div>
       )}
       {(type === 'quiz' || type === 'peer-learning') && <label><span>Answer explanation</span><textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} maxLength={500} rows={3} placeholder="Explain why the marked answer is correct" /></label>}
-      {type === 'quiz' && <div className="interaction-composer-scoring"><span>Scoring</span><label className="interaction-wheel-checkbox"><input type="checkbox" checked={speedBonusEnabled} onChange={(event) => setSpeedBonusEnabled(event.target.checked)} /> Add a speed bonus</label>{speedBonusEnabled && <div><label><span>Bonus window</span><input inputMode="numeric" value={speedBonusSeconds} onChange={(event) => setSpeedBonusSeconds(event.target.value.replace(/\D/g, '').slice(0, 3))} aria-label="Speed bonus window in seconds" /> sec</label><p>Correct answer: 8 points · Speed: up to 4 more</p></div>}</div>}
       {usesTimer && (
         <div className="interaction-composer-duration">
           <span>Duration</span>
@@ -685,6 +679,7 @@ export default function LiveLessonPrototype() {
   const [interactionRuns, setInteractionRuns] = useState<SessionInteractionRun[]>([]);
   const [formedTeams, setFormedTeams] = useState<import('./live-data').LiveTeam[]>([]);
   const [liveTimer, setLiveTimer] = useState<LiveTimer | null>(null);
+  const [motivationMoment, setMotivationMoment] = useState<MotivationMoment | null>(null);
   const [toast, setToast] = useState('');
   const [incomingMood, setIncomingMood] = useState<MoodKey | null>(null);
   const [displayConnected, setDisplayConnected] = useState(false);
@@ -853,9 +848,10 @@ export default function LiveLessonPrototype() {
         memberCount: members?.length ?? memberCount ?? 0,
       })),
       timer: liveTimer,
+      motivationMoment,
       updatedAt: Date.now(),
     };
-  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, connectedStudents, formedTeams, incomingMood, interactionResults, liveTimer, lobbyOpen, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
+  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, connectedStudents, formedTeams, incomingMood, interactionResults, liveTimer, lobbyOpen, motivationMoment, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
   const displayStateRef = useRef(displayState);
 
   useEffect(() => {
@@ -929,6 +925,7 @@ export default function LiveLessonPrototype() {
         courseName: session.courseName || '',
         sessionTitle: session.title || 'Live session',
         participationMode: session.participationMode || 'course-record',
+        motivation: course?.motivation,
       };
       setSessionContext(context);
       setLiveCounts({ ...EMPTY_ONBOARDING_COUNTS });
@@ -1701,6 +1698,47 @@ export default function LiveLessonPrototype() {
     }
   };
 
+  const showMomentumMoment = async () => {
+    setTopbarMenuOpen(false);
+    setLobbyOpen(false);
+    setOnboardingStep(0);
+    const config = sessionContext.motivation;
+    const goal = Math.max(20, config?.collectiveGoal || 100);
+    const completedResponses = interactionRunsRef.current
+      .filter((run) => run.status === 'completed' || run.status === 'archived')
+      .reduce((sum, run) => sum + Math.max(0, run.responseCount || 0), 0);
+    const currentResponses = completedResponses + Math.max(0, interactionResultsRef.current?.responseCount || 0);
+    const collective: MotivationMoment = {
+      id: Date.now(),
+      mode: 'collective',
+      title: 'The room is building momentum.',
+      subtitle: `${currentResponses} meaningful responses have shaped this class.`,
+      current: currentResponses,
+      goal,
+      progress: Math.min(100, Math.round((currentResponses / goal) * 100)),
+    };
+    let moment = collective;
+    if (sessionContext.courseId && (config?.projectorMode === 'teams' || config?.projectorMode === 'individuals')) {
+      try {
+        const board = await getInstructorMomentumBoard(sessionContext.courseId);
+        if (config.projectorMode === 'teams' && config.teamBoard === 'public') {
+          const teams = board.teams.filter((team) => team.eligible).slice(0, 6);
+          if (teams.length) moment = { ...collective, mode: 'teams', title: 'Teams are lifting the room.', subtitle: 'Momentum is averaged per active member, so every team has a fair chance.', teams };
+        }
+        if (config.projectorMode === 'individuals' && config.individualBoard === 'public-aliases') {
+          const students = board.students.filter((student) => student.leaderboardOptIn).slice(0, 7).map(({ alias, seminarPoints: points, avatar }) => ({ alias, points, avatar }));
+          if (students.length) moment = { ...collective, mode: 'individuals', title: 'Signals worth celebrating.', subtitle: 'Only students who chose to share an alias appear here.', students };
+        }
+      } catch {
+        setToast('Showing collective momentum. The course board could not be refreshed.');
+      }
+    }
+    setMotivationMoment(moment);
+    if (!displayConnected) openClassroomDisplay();
+    setToast('Course Momentum is on the classroom display.');
+    window.setTimeout(() => setMotivationMoment((current) => current?.id === moment.id ? null : current), 12000);
+  };
+
   const saveSessionPlan = async (nextPlan: LiveInteraction[], successMessage: string) => {
     setSessionPlan(nextPlan);
     sessionPlanRef.current = nextPlan;
@@ -1957,6 +1995,7 @@ export default function LiveLessonPrototype() {
       questions: [],
       teams: [],
       timer: null,
+      motivationMoment: null,
       updatedAt: Date.now(),
     };
 
@@ -2149,6 +2188,7 @@ export default function LiveLessonPrototype() {
                   <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); setAttendanceOpen(true); }}><ClipboardCheck size={17} /><span><strong>Attendance</strong><small>{attendanceClaims.length} checked in</small></span></button>
                   <button role="menuitem" type="button" onClick={showClassLobby}><QrCode size={17} /><span><strong>Show join screen</strong><small>QR code, link, and class code</small></span></button>
                   <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); if (onboardingStep > 0) setToast('Use the welcome controls above the lesson dock'); else setWelcomeOpen(true); }}><GraduationCap size={17} /><span><strong>{onboardingStep > 0 ? 'Welcome running' : 'Welcome class'}</strong><small>Introduce the class to participation</small></span></button>
+                  {sessionContext.motivation?.enabled !== false && <button role="menuitem" type="button" onClick={() => void showMomentumMoment()}><Sparkles size={17} /><span><strong>Celebrate momentum</strong><small>Show the course moment on the projector</small></span></button>}
                   <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); startProjectorCheck(); }}><MonitorUp size={17} /><span><strong>{displayConnected ? 'Check display' : 'Set up display'}</strong><small>Open or reconnect the projector</small></span></button>
                   <i />
                   {sessionContext.sessionId && <button role="menuitem" type="button" onClick={() => { setTopbarMenuOpen(false); setLeaveConsoleOpen(true); }}><LogOut size={16} /><span><strong>Leave console</strong><small>The class stays open</small></span></button>}

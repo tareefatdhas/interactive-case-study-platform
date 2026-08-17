@@ -20,6 +20,8 @@ import Dialog from '@/components/ui/Dialog';
 import InlineMessage from '@/components/ui/InlineMessage';
 import { AmbientLoading } from '@/components/motion';
 import TeachingTeamPanel from '@/components/teacher/TeachingTeamPanel';
+import MotivationStudio from '@/components/gamification/MotivationStudio';
+import type { CourseMotivationConfig } from '@/lib/gamification';
 import type { Course, CourseSource, CourseSourceKind, Session, SessionInteraction, SessionInteractionType } from '@/types';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, type DragEndEvent, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -176,7 +178,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [workspaceView, setWorkspaceView] = useState<'sessions' | 'teams' | 'kit' | 'instructors'>('sessions');
+  const [workspaceView, setWorkspaceView] = useState<'sessions' | 'teams' | 'momentum' | 'kit' | 'instructors'>('sessions');
   const [teamRoster, setTeamRoster] = useState<CourseTeamWithMembers[]>([]);
   const [teamError, setTeamError] = useState('');
   const [teamErrorTitle, setTeamErrorTitle] = useState('Teams need another try.');
@@ -226,7 +228,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
 
   useEffect(() => {
     const requestedView = new URLSearchParams(window.location.search).get('view');
-    if (requestedView === 'sessions' || requestedView === 'teams' || requestedView === 'kit' || requestedView === 'instructors') {
+    if (requestedView === 'sessions' || requestedView === 'teams' || requestedView === 'momentum' || requestedView === 'kit' || requestedView === 'instructors') {
       setWorkspaceView(requestedView);
     }
   }, []);
@@ -619,6 +621,19 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
     }
   };
 
+  const saveMotivation = async (motivation: CourseMotivationConfig) => {
+    if (!course) return;
+    setError('');
+    try {
+      await updateCourse(course.id, { motivation });
+      setCourse((current) => current ? { ...current, motivation } : current);
+    } catch (saveError) {
+      console.error('Could not save Course Momentum:', saveError);
+      setError('Course Momentum could not be saved. Nothing changed, so you can try again.');
+      throw saveError;
+    }
+  };
+
   const openClassDetails = () => {
     if (!course) return;
     setClassName(course.name);
@@ -804,6 +819,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
               <nav className="mb-7 flex gap-1 overflow-x-auto rounded-2xl bg-[#f1f0f5] p-1.5" aria-label="Class workspace">
                 <button type="button" aria-current={workspaceView === 'sessions' ? 'page' : undefined} onClick={() => setWorkspaceView('sessions')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'sessions' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><CalendarDays className="h-4 w-4" /> Sessions <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{sessions.length}</span></button>
                 <button type="button" aria-current={workspaceView === 'teams' ? 'page' : undefined} onClick={() => setWorkspaceView('teams')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'teams' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><UsersRound className="h-4 w-4" /> Teams <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{teamRoster.length}</span></button>
+                <button type="button" aria-current={workspaceView === 'momentum' ? 'page' : undefined} onClick={() => setWorkspaceView('momentum')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'momentum' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><Sparkles className="h-4 w-4" /> Momentum</button>
                 <button type="button" aria-current={workspaceView === 'kit' ? 'page' : undefined} onClick={() => setWorkspaceView('kit')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'kit' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><Library className="h-4 w-4" /> Course kit <span className="hidden rounded-full bg-[#f0efff] px-2 py-0.5 text-[11px] text-[#5146e5] sm:inline">{templates.length}</span></button>
                 <button type="button" aria-current={workspaceView === 'instructors' ? 'page' : undefined} onClick={() => setWorkspaceView('instructors')} className={`seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold transition sm:px-4 ${workspaceView === 'instructors' ? 'bg-white text-[#101a38] shadow-[0_4px_14px_rgba(16,26,56,0.08)]' : 'text-[#697087] hover:text-[#101a38]'}`}><Users className="h-4 w-4" /> Instructors</button>
                 <Link href={`/dashboard/progress?courseId=${course.id}`} className="seminar-focus flex min-h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3 text-sm font-bold text-[#697087] transition hover:bg-white hover:text-[#101a38] sm:px-4"><BarChart3 className="h-4 w-4" /> Progress</Link>
@@ -930,6 +946,8 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                 </div>
               ) : workspaceView === 'instructors' ? (
                 <TeachingTeamPanel courseId={course.id} courseName={course.name} ownerUid={course.teacherId} />
+              ) : workspaceView === 'momentum' ? (
+                <MotivationStudio courseId={course.id} value={course.motivation} disabled={course.archived} onSave={saveMotivation} />
               ) : (
               <fieldset disabled={course.archived} className="m-0 grid min-w-0 items-start gap-8 border-0 p-0 xl:grid-cols-[minmax(0,1fr)_340px]">
                 <section className="rounded-3xl border border-[#e3e5ed] bg-white p-5 sm:p-7" aria-labelledby="library-title">
@@ -960,7 +978,6 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                 <textarea aria-label={`${template.title} prompt`} value={template.prompt} onChange={(event) => updateTemplate(template.id, { prompt: event.target.value })} rows={2} className="mt-3 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
                                 {template.options && <div className="mt-4 space-y-2"><p className="text-[11px] font-bold uppercase tracking-[0.07em] text-[#697087]">{template.type === 'quiz' || template.type === 'peer-learning' ? 'Choices and correct answer' : 'Response choices'}</p>{template.options.map((option, optionIndex) => { const hasCorrectAnswer = template.type === 'quiz' || template.type === 'peer-learning'; return <div key={`${template.id}-${optionIndex}`} className="flex items-center gap-2"><input type="radio" name={`correct-${template.id}`} checked={hasCorrectAnswer && template.correctOptionIndex === optionIndex} onChange={() => hasCorrectAnswer && updateTemplate(template.id, { correctOptionIndex: optionIndex })} disabled={!hasCorrectAnswer} className={hasCorrectAnswer ? 'accent-[#5146e5]' : 'invisible'} aria-label={hasCorrectAnswer ? `Mark choice ${optionIndex + 1} correct` : undefined} /><input aria-label={`Choice ${optionIndex + 1}`} value={option} onChange={(event) => updateTemplateOption(template.id, optionIndex, event.target.value)} className="min-h-10 flex-1 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /><button type="button" onClick={() => removeTemplateOption(template.id, optionIndex)} disabled={template.options!.length <= 2} className="seminar-focus rounded-lg p-2 text-[#8b91a3] hover:bg-[#fff1ee] hover:text-[#b64936] disabled:opacity-25" aria-label={`Remove choice ${optionIndex + 1}`}><X className="h-3.5 w-3.5" /></button></div>; })}{template.options.length < 6 && <button type="button" onClick={() => updateTemplate(template.id, { options: [...template.options!, `Option ${template.options!.length + 1}`] })} className="seminar-focus ml-6 rounded-lg px-2 py-1 text-xs font-bold text-[#5146e5] hover:bg-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Add choice</button>}</div>}
                                 {(template.type === 'quiz' || template.type === 'peer-learning') && <textarea aria-label={`${template.title} answer explanation`} value={template.explanation || ''} onChange={(event) => updateTemplate(template.id, { explanation: event.target.value })} rows={2} placeholder="Explain why the correct answer is right" className="mt-4 w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />}
-                                {template.type === 'quiz' && <div className="mt-4 rounded-xl border border-[#dedaf8] bg-[#f7f6ff] p-3"><label className="flex min-h-10 items-center gap-3 text-xs font-bold text-[#4f576d]"><input type="checkbox" checked={Boolean(template.speedBonusEnabled)} onChange={(event) => updateTemplate(template.id, { speedBonusEnabled: event.target.checked, speedBonusSeconds: event.target.checked ? template.speedBonusSeconds || 40 : undefined, maxSpeedBonusPoints: event.target.checked ? 4 : undefined })} className="h-4 w-4 accent-[#5146e5]" /> Add a speed bonus</label>{template.speedBonusEnabled && <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[#dedaf8] pt-3"><label className="flex items-center gap-2 text-xs font-semibold text-[#555d73]">Bonus window <input type="number" min={10} max={120} step={5} value={template.speedBonusSeconds || 40} onChange={(event) => updateTemplate(template.id, { speedBonusSeconds: Math.min(120, Math.max(10, Number(event.target.value) || 40)) })} className="w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> sec</label><span className="text-[11px] font-normal text-[#697087]">8 points for a correct answer, plus up to 4 for speed.</span></div>}</div>}
                                 {template.type === 'peer-learning' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#555d73]"><Repeat2 className="h-4 w-4 text-[#5146e5]" /> Partner discussion <input type="number" aria-label={`${template.title} discussion minutes`} min={1} max={10} value={template.discussionMinutes || 2} onChange={(event) => updateTemplate(template.id, { discussionMinutes: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> min</label>}
                                 {template.type === 'group-work' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#fff5f0] p-3 text-xs font-bold text-[#654f48]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested size <input type="number" aria-label={`${template.title} group size`} min={2} max={10} value={template.groupSize || 4} onChange={(event) => updateTemplate(template.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5" /> students</label>}
                                 {template.type === 'team-formation' && <label className="mt-4 grid gap-2 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#565078]"><span>Course tags <small className="font-normal">Separate with commas</small></span><input defaultValue={(template.teamTags || []).join(', ')} onBlur={(event) => { const teamTags = event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8); updateTemplate(template.id, { teamTags, requireTeamTag: teamTags.length > 0 }); }} placeholder="Theme 1, Theme 2, Theme 3" className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal" /></label>}

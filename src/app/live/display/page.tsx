@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'react-qr-code';
-import { Activity, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Smartphone, Timer, Users, Waves } from 'lucide-react';
+import { Activity, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Sparkles, Smartphone, Timer, Users, Waves } from 'lucide-react';
 import LivingMoodField from '@/components/live/LivingMoodField';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
+import SignalAvatarBadge from '@/components/gamification/SignalAvatarBadge';
 import { joinDisplayPresence, subscribeToStudentPublicState } from '@/lib/firebase/live-classroom';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import {
@@ -45,6 +46,7 @@ const DEFAULT_STATE: LessonDisplayState = {
   featuredQuestionId: null,
   questions: DEFAULT_LIVE_QUESTIONS,
   teams: [],
+  motivationMoment: null,
   updatedAt: Date.now(),
 };
 
@@ -475,6 +477,65 @@ function ClassroomLobby({ lessonState, joinUrl }: { lessonState: LessonDisplaySt
   );
 }
 
+function CourseMomentumMoment({ moment }: { moment: NonNullable<LessonDisplayState['motivationMoment']> }) {
+  const progress = Math.min(100, Math.max(0, moment.progress));
+  return (
+    <section className={`course-momentum-stage is-${moment.mode}`} aria-live="polite">
+      <header>
+        <span><Sparkles size={19} /> Course Momentum</span>
+        <h1>{moment.title}</h1>
+        <p>{moment.subtitle}</p>
+      </header>
+
+      {moment.mode === 'collective' && (
+        <div className="course-momentum-collective">
+          <div className="course-momentum-ripple" aria-hidden="true">
+            {Array.from({ length: 7 }, (_, index) => <i key={index} style={{ '--ripple-index': index } as CSSProperties} />)}
+            {Array.from({ length: 38 }, (_, index) => <b key={index} style={{ '--signal-index': index } as CSSProperties} />)}
+            <span style={{ '--momentum-progress': `${progress}%` } as CSSProperties} />
+          </div>
+          <div className="course-momentum-number"><strong>{moment.current}</strong><span>meaningful responses</span></div>
+          <div className="course-momentum-meter" aria-label={`${progress}% of the shared response goal`}>
+            <div><i style={{ width: `${progress}%` }} /></div>
+            <span><strong>{progress}%</strong> of the shared goal</span>
+            <small>{moment.goal} responses</small>
+          </div>
+        </div>
+      )}
+
+      {moment.mode === 'teams' && (
+        <div className="course-momentum-teams">
+          {(moment.teams || []).map((team, index) => (
+            <article key={team.name} style={{ '--team-rank': index, '--team-color': team.color || RESULT_COLORS[index % RESULT_COLORS.length] } as CSSProperties}>
+              <span>{index + 1}</span>
+              <div><strong>{team.name}</strong><small>{team.activeMembers} active members</small></div>
+              <b>{team.score}</b>
+              <i style={{ width: `${Math.max(10, Math.min(100, team.score))}%` }} />
+            </article>
+          ))}
+        </div>
+      )}
+
+      {moment.mode === 'individuals' && (
+        <div className="course-momentum-signals">
+          {(moment.students || []).map((student, index) => (
+            <article key={`${student.alias}-${index}`} style={{ '--signal-rank': index } as CSSProperties}>
+              <SignalAvatarBadge avatar={student.avatar} size={92} label={`${student.alias}'s Signal`} />
+              <strong>{student.alias}</strong>
+              <span>{student.points} points</span>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <div className="course-momentum-note">
+        <i />
+        <span>{moment.mode === 'teams' ? 'Team momentum is averaged per active member.' : moment.mode === 'individuals' ? 'Every Signal shown here was shared by choice.' : 'Every response moves the room forward.'}</span>
+      </div>
+    </section>
+  );
+}
+
 function QuestionSpotlight({ question }: { question: LessonDisplayState['questions'][number] }) {
   return (
     <section className="question-spotlight-stage" key={question.id}>
@@ -840,6 +901,15 @@ export default function ClassroomDisplayPage() {
               {[1, 2, 3].map((step) => <i className={step <= lessonState.onboardingStep ? 'is-filled' : ''} key={step} />)}
               <span>{lessonState.onboardingStep === 4 ? 'Ready to begin' : `Step ${lessonState.onboardingStep} of 3`}</span>
             </div>
+            <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
+          </footer>
+        </>
+      ) : lessonState.motivationMoment ? (
+        <>
+          <CourseMomentumMoment moment={lessonState.motivationMoment} />
+          <footer className="display-footer course-momentum-footer">
+            <div className="room-rhythm"><i /><span><strong>Course Momentum</strong><small>A brief celebration of meaningful participation</small></span></div>
+            <div className="display-footer-insight"><Sparkles size={16} /><span>This moment clears automatically</span></div>
             <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
           </footer>
         </>

@@ -1,4 +1,5 @@
 import { Timestamp } from 'firebase/firestore';
+import type { CourseMotivationConfig } from '@/lib/gamification';
 
 export interface Question {
   id: string;
@@ -341,6 +342,7 @@ export interface Course {
   sessionOrder?: string[];
   courseSources?: CourseSource[];
   teamTags?: string[];
+  motivation?: CourseMotivationConfig;
   teams?: Array<{
     id: string;
     name: string;

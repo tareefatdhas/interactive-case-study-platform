@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UserCircle, UsersThree as Users, X } from '@phosphor-icons/react';
+import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UsersThree as Users, X } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
+import SignalAvatarBadge from '@/components/gamification/SignalAvatarBadge';
 import { SharedMomentEffect, RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/motion';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
@@ -30,11 +31,21 @@ import {
   getStudentRewardRequests,
   requestReward as requestManagedReward,
 } from '@/lib/firebase/rewards';
+import {
+  claimStudentMotivationEvent,
+  claimStudentMotivationQuestionEvent,
+  flushPendingStudentMotivationClaims,
+  getStudentMotivationProfile,
+  getStudentMotivationStanding,
+  updateStudentMotivationProfile,
+  type StudentMotivationStanding,
+  type StoredStudentMotivationProfile,
+} from '@/lib/firebase/student-motivation';
 import type { RewardDefinition, RewardRequest, RewardRequestStatus } from '@/types';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { triggerStudentHaptic } from '@/lib/student-haptics';
-import { calculateSpeedBonus } from '@/lib/knowledge-check-scoring';
+import { motivationConfig } from '@/lib/gamification';
 import {
   EMPTY_ONBOARDING_COUNTS,
   DEFAULT_LIVE_QUESTIONS,
@@ -119,6 +130,7 @@ const COURSE_PROGRESS_RIPPLE = {
 } as const;
 
 const ParticipationSignal = dynamic(() => import('@/components/live/ParticipationSignal'), { ssr: false });
+const StudentSignalEditor = dynamic(() => import('@/components/gamification/StudentSignalEditor'), { ssr: false });
 
 const OPTION_COLORS = ['#5146e5', '#2f73df', '#d99f18', '#df664e', '#2f8b63'];
 
@@ -549,6 +561,9 @@ function StudentCourseHome({
   rewardsLoading,
   view,
   onViewChange,
+  onProfileChange,
+  standing,
+  standingLoading,
   classEnded = false,
   embedded = false,
 }: {
@@ -559,8 +574,11 @@ function StudentCourseHome({
   onRequestReward: (reward: CourseReward) => void;
   enableSocialRewards: boolean;
   rewardsLoading: boolean;
-  view: 'home' | 'standing' | 'rewards';
-  onViewChange: (view: 'home' | 'standing' | 'rewards') => void;
+  view: 'home' | 'standing' | 'rewards' | 'signal';
+  onViewChange: (view: 'home' | 'standing' | 'rewards' | 'signal') => void;
+  onProfileChange: (profile: Pick<StudentRewardState, 'avatar' | 'alias' | 'leaderboardOptIn'>) => void;
+  standing: StudentMotivationStanding | null;
+  standingLoading: boolean;
   classEnded?: boolean;
   embedded?: boolean;
 }) {
@@ -580,6 +598,7 @@ function StudentCourseHome({
   const allRewardsUnlocked = courseRewards.length > 0 && !nextReward;
   const progress = nextReward ? Math.min(100, Math.round((rewards.seminarPoints / nextReward.pointsRequired) * 100)) : 0;
   const hasProgress = rewards.ledger.length > 0;
+  const motivation = motivationConfig(lessonState.session.motivation);
 
   return (
     <div className={`student-course-home ${embedded ? 'is-embedded' : ''}`}>
@@ -589,12 +608,14 @@ function StudentCourseHome({
         <button type="button" className={view === 'home' ? 'is-active' : ''} onClick={() => onViewChange('home')}>Home</button>
         <button type="button" className={view === 'standing' ? 'is-active' : ''} onClick={() => onViewChange('standing')}>Standing</button>
         <button type="button" className={view === 'rewards' ? 'is-active' : ''} onClick={() => onViewChange('rewards')}>Rewards</button>
+        {motivation.avatarsEnabled && <button type="button" className={view === 'signal' ? 'is-active' : ''} onClick={() => onViewChange('signal')}>Signal</button>}
       </nav>}
 
       {view === 'home' && (
         <>
           <h1>{hasProgress ? 'Your semester is taking shape.' : 'Your progress starts here.'}</h1>
           <p className="student-home-intro">Every response, prediction, and contribution builds this private record.</p>
+          {motivation.classRunsEnabled && <div className="student-course-markers" aria-label="Course participation markers"><span><Activity size={17} /><strong>{rewards.classRun}</strong><small>class run</small></span><span><Check size={17} /><strong>{rewards.sessionsParticipated}</strong><small>classes joined</small></span>{rewards.longestRun > rewards.classRun && <span><Trophy size={17} /><strong>{rewards.longestRun}</strong><small>best run</small></span>}</div>}
           <section className="student-constellation-card" aria-labelledby="student-progress-title">
             <div className="student-constellation-heading">
               <div><small>Your points</small><strong id="student-progress-title">{rewards.seminarPoints}</strong></div>
@@ -645,10 +666,33 @@ function StudentCourseHome({
 
       {view === 'standing' && (
         <section className="student-home-section is-panel" aria-labelledby="student-standing-title">
-          <div className="student-section-title"><div><span>Class standing</span><h2 id="student-standing-title">No board published</h2></div><Trophy size={19} /></div>
-          <div className="student-tab-empty"><Trophy size={24} /><strong>There is no class standing to show.</strong><p>Your {rewards.seminarPoints} points remain private. If a verified leaderboard is published for this course, it will appear here.</p></div>
+          <div className="student-section-title"><div><span>Class standing</span><h2 id="student-standing-title">Your place in the room</h2></div><Trophy size={19} /></div>
+          {standingLoading && <div className="student-tab-empty"><Trophy size={24} /><strong>Finding your current standing…</strong></div>}
+          {!standingLoading && !standing && <div className="student-tab-empty"><Trophy size={24} /><strong>Standing is not available yet.</strong><p>Your {rewards.seminarPoints} points remain private while the course record reconnects.</p></div>}
+          {!standingLoading && standing && standing.individualMode === 'off' && standing.teamMode === 'off' && <div className="student-tab-empty"><Trophy size={24} /><strong>Your instructor has kept standings off.</strong><p>You can still build points, a class run, and your private course record.</p></div>}
+          {!standingLoading && standing && standing.individualMode !== 'off' && (
+            <div className="student-standing-board">
+              <header><div><strong>{standing.selfRank ? `Position ${standing.selfRank}` : 'Your first position is waiting'}</strong><small>among {standing.activeStudents} active students</small></div><span>{standing.individualMode === 'private-neighborhood' ? 'Private neighborhood' : 'Shared aliases'}</span></header>
+              <div>
+                {standing.students.map((student) => <article className={student.isYou ? 'is-you' : ''} key={`${student.rank}-${student.alias}`}>
+                  <b>{student.rank}</b><SignalAvatarBadge avatar={student.avatar} size={42} label={student.isYou ? 'Your Signal' : `${student.alias}'s Signal`} />
+                  <span><strong>{student.isYou ? 'You' : student.alias}</strong><small>{student.points === null ? 'Nearby in the course' : `${student.points} points`}</small></span>
+                  {student.isYou && <em>Your place</em>}
+                </article>)}
+              </div>
+              <p>{standing.individualMode === 'private-neighborhood' ? 'You see only the learners around you. Other identities and scores stay private.' : 'Only aliases that students chose to share appear here.'}</p>
+            </div>
+          )}
+          {!standingLoading && standing && standing.teamMode !== 'off' && standing.teams.length > 0 && (
+            <div className="student-team-standing">
+              <header><span>Team momentum</span><small>Average points per active member</small></header>
+              {standing.teams.map((team) => <article className={team.isYourTeam ? 'is-you' : ''} key={team.id}><b>{team.rank}</b><span><strong>{team.name}</strong><small>{team.activeMembers} active members</small></span><em>{team.score}</em></article>)}
+            </div>
+          )}
         </section>
       )}
+
+      {view === 'signal' && motivation.avatarsEnabled && <StudentSignalEditor avatar={rewards.avatar} alias={rewards.alias} optedIn={rewards.leaderboardOptIn} publicAliasesEnabled={motivation.individualBoard === 'public-aliases'} onSave={onProfileChange} />}
 
       {view === 'rewards' && (
         <section className="student-home-section is-panel" aria-labelledby="student-rewards-title">
@@ -703,11 +747,13 @@ function StudentCourseSheet({
   children,
   points,
   studentName,
+  avatar,
   onClose,
 }: {
   children: ReactNode;
   points: number;
   studentName: string;
+  avatar: StudentRewardState['avatar'];
   onClose: () => void;
 }) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -756,7 +802,7 @@ function StudentCourseSheet({
           }}
         />
         <header>
-          <div className="student-course-sheet-person"><span><UserCircle size={25} /></span><div><small id="student-course-sheet-title">Profile and progress</small><strong>{studentName}</strong></div></div>
+          <div className="student-course-sheet-person"><span><SignalAvatarBadge avatar={avatar} size={32} label="Your Signal" /></span><div><small id="student-course-sheet-title">Profile and progress</small><strong>{studentName}</strong></div></div>
           <div className="student-course-sheet-points"><span className="student-ripple-glyph" aria-hidden="true"><i /><i /></span><strong>{points}</strong><small>points</small></div>
           <button ref={closeButtonRef} type="button" aria-label="Close my course" onClick={onClose}><X size={18} weight="bold" aria-hidden="true" /></button>
         </header>
@@ -783,7 +829,6 @@ export default function StudentWelcomePage() {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [creatingNewTeam, setCreatingNewTeam] = useState(false);
   const [interactionSubmitted, setInteractionSubmitted] = useState(false);
-  const [responseSubmittedAt, setResponseSubmittedAt] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedQuestionVotes, setSelectedQuestionVotes] = useState<number[]>([]);
   const [confidence, setConfidence] = useState<string | null>(null);
@@ -804,7 +849,9 @@ export default function StudentWelcomePage() {
   const transportOriginsRef = useRef(new Map<number, HTMLElement>());
   const [questionSheetOpen, setQuestionSheetOpen] = useState(false);
   const [courseSpaceOpen, setCourseSpaceOpen] = useState(false);
-  const [courseView, setCourseView] = useState<'home' | 'standing' | 'rewards'>('home');
+  const [courseView, setCourseView] = useState<'home' | 'standing' | 'rewards' | 'signal'>('home');
+  const [motivationStanding, setMotivationStanding] = useState<StudentMotivationStanding | null>(null);
+  const [motivationStandingLoading, setMotivationStandingLoading] = useState(false);
   const [remoteEnded, setRemoteEnded] = useState(false);
   const [questionDraft, setQuestionDraft] = useState('');
   const [questionSubmitting, setQuestionSubmitting] = useState(false);
@@ -1200,6 +1247,38 @@ export default function StudentWelcomePage() {
     window.setTimeout(() => courseTriggerRef.current?.focus(), 0);
   }, []);
 
+  const mergeStoredMotivation = useCallback((profile: StoredStudentMotivationProfile, entry?: { eventKey: string; balance: RewardBalance; label: string }) => {
+    setRewardState((current) => {
+      const amount = entry?.balance === 'score'
+        ? Math.max(0, profile.classScore - current.classScore)
+        : Math.max(0, profile.seminarPoints - current.seminarPoints);
+      const hasEvent = entry ? current.ledger.some((item) => item.eventKey === entry.eventKey) : true;
+      const ledgerEntry: RewardLedgerEntry | null = entry && amount > 0 && !hasEvent ? {
+        id: crypto.randomUUID(),
+        eventKey: entry.eventKey,
+        balance: entry.balance,
+        amount,
+        label: entry.label,
+        createdAt: Date.now(),
+      } : null;
+      const next: StudentRewardState = {
+        ...current,
+        seminarPoints: profile.seminarPoints,
+        classScore: profile.classScore,
+        classRun: profile.classRun,
+        longestRun: profile.longestRun,
+        sessionsParticipated: profile.sessionsParticipated,
+        alias: profile.alias,
+        avatar: profile.avatar,
+        leaderboardOptIn: profile.leaderboardOptIn,
+        ledger: ledgerEntry ? [ledgerEntry, ...current.ledger].slice(0, 60) : current.ledger,
+      };
+      if (rewardScope) saveRewardState(rewardScope, next);
+      if (ledgerEntry) setLatestReward(ledgerEntry);
+      return next;
+    });
+  }, [rewardScope]);
+
   useEffect(() => {
     if (!rewardScope) return;
     setRewardStateReady(false);
@@ -1228,6 +1307,44 @@ export default function StudentWelcomePage() {
   }, [remoteSession]);
 
   useEffect(() => {
+    if (!remoteSession || lessonState.session.participationMode !== 'course-record' || !studentNumber) return;
+    let cancelled = false;
+    getStudentMotivationProfile(remoteSession.ownerUid, remoteSession.sessionId)
+      .then(async (profile) => {
+        if (!cancelled) mergeStoredMotivation(profile);
+        const reconciled = await flushPendingStudentMotivationClaims(remoteSession.ownerUid, remoteSession.sessionId).catch(() => null);
+        if (!cancelled && reconciled) mergeStoredMotivation(reconciled);
+      })
+      .catch(() => {
+        // Course interaction remains available if the optional motivation layer
+        // is temporarily unavailable. The local record will sync next time.
+      });
+    return () => { cancelled = true; };
+  }, [lessonState.session.participationMode, mergeStoredMotivation, remoteSession, studentNumber]);
+
+  useEffect(() => {
+    if (!remoteSession || lessonState.session.participationMode !== 'course-record') return;
+    const reconcile = () => {
+      void flushPendingStudentMotivationClaims(remoteSession.ownerUid, remoteSession.sessionId)
+        .then((profile) => { if (profile) mergeStoredMotivation(profile); })
+        .catch(() => undefined);
+    };
+    window.addEventListener('online', reconcile);
+    return () => window.removeEventListener('online', reconcile);
+  }, [lessonState.session.participationMode, mergeStoredMotivation, remoteSession]);
+
+  useEffect(() => {
+    if (courseView !== 'standing' || !remoteSession || lessonState.session.participationMode !== 'course-record' || !studentNumber) return;
+    let cancelled = false;
+    setMotivationStandingLoading(true);
+    getStudentMotivationStanding(remoteSession.ownerUid, remoteSession.sessionId)
+      .then((standing) => { if (!cancelled) setMotivationStanding(standing); })
+      .catch(() => { if (!cancelled) setMotivationStanding(null); })
+      .finally(() => { if (!cancelled) setMotivationStandingLoading(false); });
+    return () => { cancelled = true; };
+  }, [courseView, lessonState.session.participationMode, remoteSession, rewardState.seminarPoints, studentNumber]);
+
+  useEffect(() => {
     if (!remoteSession || lessonState.session.participationMode !== 'course-record' || !studentNumber || !lessonState.session.courseCode) {
       setManagedRewards([]);
       setManagedRequests([]);
@@ -1250,7 +1367,7 @@ export default function StudentWelcomePage() {
       if (!cancelled) setManagedRewardsLoading(false);
     });
     return () => { cancelled = true; };
-  }, [lessonState.session.courseCode, lessonState.session.courseId, remoteSession, studentNumber]);
+  }, [lessonState.session.courseCode, lessonState.session.courseId, lessonState.session.participationMode, remoteSession, studentNumber]);
 
   const awardReward = useCallback((eventKey: string, balance: RewardBalance, amount: number, label: string) => {
     if (remoteSession && lessonState.session.participationMode !== 'course-record') return;
@@ -1273,7 +1390,13 @@ export default function StudentWelcomePage() {
     try {
       if (remoteSession) {
         const result = await claimStudentQuestionPoints(remoteSession.ownerUid, remoteSession.sessionId, type, questionId);
-        awardReward(`server:${remoteSession.sessionId}:${result.eventId}`, 'seminar', result.claim.amount, result.claim.label);
+        try {
+          const profile = await claimStudentMotivationQuestionEvent(remoteSession.ownerUid, remoteSession.sessionId, result.eventId);
+          mergeStoredMotivation(profile, { eventKey: `server:${remoteSession.sessionId}:${result.eventId}`, balance: 'seminar', label: result.claim.label });
+        } catch {
+          // The verified course record retries automatically when connectivity
+          // returns. Avoid showing a local balance that could later disappear.
+        }
         if (result.created) setQuestionRewardNotice({ amount: result.claim.amount, label: result.claim.label });
       } else if (!demoQuestionClaimsRef.current.has(rule.id)) {
         demoQuestionClaimsRef.current.add(rule.id);
@@ -1285,7 +1408,7 @@ export default function StudentWelcomePage() {
     } finally {
       pendingQuestionClaimsRef.current.delete(claimKey);
     }
-  }, [awardReward, lessonState.session.participationMode, remoteSession]);
+  }, [awardReward, lessonState.session.participationMode, mergeStoredMotivation, remoteSession]);
 
   useEffect(() => {
     if (!remoteSession) return;
@@ -1361,7 +1484,6 @@ export default function StudentWelcomePage() {
     setSelectedTeamId(draft.selectedTeamId || '');
     setCreatingNewTeam(false);
     setInteractionSubmitted(false);
-    setResponseSubmittedAt(null);
     setIsSubmitting(false);
     setConfidence(null);
     setPrediction(null);
@@ -1377,7 +1499,6 @@ export default function StudentWelcomePage() {
           setTeamName(response.teamName || '');
           setTeamDescription(response.teamDescription || '');
           setSelectedTeamId(response.teamId || '');
-          setResponseSubmittedAt(response.submittedAt || null);
           setInteractionSubmitted(true);
         })
         .catch(() => undefined);
@@ -1391,7 +1512,6 @@ export default function StudentWelcomePage() {
         setTeamName(response.teamName || '');
         setTeamDescription(response.teamDescription || '');
         setSelectedTeamId(response.teamId || '');
-        setResponseSubmittedAt(response.submittedAt || null);
         setInteractionSubmitted(true);
       } catch {
         // A malformed local preview response should not interrupt the live room.
@@ -1504,13 +1624,11 @@ export default function StudentWelcomePage() {
     setIsSubmitting(true);
     try {
       if (remoteSession) {
-        const savedResponse = await submitStudentInteractionResponse(remoteSession.ownerUid, remoteSession.sessionId, response);
-        setResponseSubmittedAt(savedResponse.submittedAt || Date.now());
+        await submitStudentInteractionResponse(remoteSession.ownerUid, remoteSession.sessionId, response);
       } else {
         const submittedAt = Date.now();
         channelRef.current?.postMessage({ type: 'student-interaction-response', response });
         window.localStorage.setItem(`classfully-demo-response:${demoVoterIdRef.current}:${results.runId}`, JSON.stringify({ ...response, submittedAt }));
-        setResponseSubmittedAt(submittedAt);
       }
       setInteractionSubmitted(true);
       window.localStorage.removeItem(`classfully-response-draft:${responseScope}`);
@@ -1518,7 +1636,13 @@ export default function StudentWelcomePage() {
       completeTransport(transportId);
       const participationPoints = getParticipationPoints(interaction.type);
       window.setTimeout(() => {
-        if (participationPoints > 0) awardReward(`${results.runId}:response`, 'seminar', participationPoints, `${interaction.label} response`);
+        if (remoteSession && lessonState.session.participationMode === 'course-record') {
+          void claimStudentMotivationEvent(remoteSession.ownerUid, remoteSession.sessionId, results.runId, 'response')
+            .then((profile) => mergeStoredMotivation(profile, { eventKey: `${results.runId}:response`, balance: 'seminar', label: `${interaction.label} response` }))
+            .catch(() => undefined);
+        } else if (participationPoints > 0) {
+          awardReward(`${results.runId}:response`, 'seminar', participationPoints, `${interaction.label} response`);
+        }
       }, 720);
     } catch {
       const saved = remoteSession
@@ -1530,7 +1654,6 @@ export default function StudentWelcomePage() {
         setTeamName(saved.teamName || '');
         setTeamDescription(saved.teamDescription || '');
         setSelectedTeamId(saved.teamId || '');
-        setResponseSubmittedAt(saved.submittedAt || null);
         setInteractionSubmitted(true);
         completeTransport(transportId);
       } else {
@@ -1546,7 +1669,14 @@ export default function StudentWelcomePage() {
     if (prediction !== null || lessonState.interactionResults?.revealed) return;
     setPrediction(optionIndex);
     const runId = lessonState.interactionResults?.runId;
-    if (runId) awardReward(`${runId}:prediction`, 'seminar', POINT_RULES.privatePrediction, 'Private prediction');
+    if (!runId) return;
+    if (remoteSession && lessonState.session.participationMode === 'course-record') {
+      void claimStudentMotivationEvent(remoteSession.ownerUid, remoteSession.sessionId, runId, 'prediction', optionIndex)
+        .then((profile) => mergeStoredMotivation(profile, { eventKey: `${runId}:prediction`, balance: 'seminar', label: 'Private prediction' }))
+        .catch(() => undefined);
+    } else {
+      awardReward(`${runId}:prediction`, 'seminar', POINT_RULES.privatePrediction, 'Private prediction');
+    }
   };
 
   useEffect(() => {
@@ -1555,25 +1685,29 @@ export default function StudentWelcomePage() {
     if (!interactionSubmitted || !interaction || !results?.revealed) return;
 
     if ((interaction.type === 'quiz' || interaction.type === 'peer-learning') && selectedOption === interaction.correctOptionIndex) {
-      awardReward(`${results.runId}:correct`, 'score', interaction.type === 'peer-learning' ? POINT_RULES.strongSecondAnswer : POINT_RULES.correctQuizAnswer, interaction.type === 'peer-learning' ? 'Strong second answer' : 'Correct knowledge check');
-      if (interaction.type === 'quiz' && interaction.speedBonusEnabled && responseSubmittedAt) {
-        const speedBonus = calculateSpeedBonus(
-          results.startedAt,
-          responseSubmittedAt,
-          interaction.speedBonusSeconds,
-          interaction.maxSpeedBonusPoints,
-        );
-        if (speedBonus > 0) awardReward(`${results.runId}:speed`, 'score', speedBonus, 'Speed bonus');
+      const label = interaction.type === 'peer-learning' ? 'Strong second answer' : 'Correct knowledge check';
+      if (remoteSession && lessonState.session.participationMode === 'course-record') {
+        void claimStudentMotivationEvent(remoteSession.ownerUid, remoteSession.sessionId, results.runId, 'correct')
+          .then((profile) => mergeStoredMotivation(profile, { eventKey: `${results.runId}:correct`, balance: 'score', label }))
+          .catch(() => undefined);
+      } else {
+        awardReward(`${results.runId}:correct`, 'score', interaction.type === 'peer-learning' ? POINT_RULES.strongSecondAnswer : POINT_RULES.correctQuizAnswer, label);
       }
     }
 
     if (interaction.type === 'poll' && prediction !== null && results.optionCounts.length) {
       const leadingCount = Math.max(...results.optionCounts);
       if (results.optionCounts[prediction] === leadingCount) {
-        awardReward(`${results.runId}:room-read`, 'seminar', POINT_RULES.roomRead, 'Room read');
+        if (remoteSession && lessonState.session.participationMode === 'course-record') {
+          void claimStudentMotivationEvent(remoteSession.ownerUid, remoteSession.sessionId, results.runId, 'room-read')
+            .then((profile) => mergeStoredMotivation(profile, { eventKey: `${results.runId}:room-read`, balance: 'seminar', label: 'Room read' }))
+            .catch(() => undefined);
+        } else {
+          awardReward(`${results.runId}:room-read`, 'seminar', POINT_RULES.roomRead, 'Room read');
+        }
       }
     }
-  }, [awardReward, interactionSubmitted, lessonState.activeInteraction, lessonState.interactionResults, prediction, responseSubmittedAt, selectedOption]);
+  }, [awardReward, interactionSubmitted, lessonState.activeInteraction, lessonState.interactionResults, lessonState.session.participationMode, mergeStoredMotivation, prediction, remoteSession, selectedOption]);
 
   const requestReward = async (reward: CourseReward) => {
     setRewardRequestError('');
@@ -1738,6 +1872,20 @@ export default function StudentWelcomePage() {
     rewardsLoading: remoteSession ? managedRewardsLoading : false,
     view: courseView,
     onViewChange: setCourseView,
+    standing: motivationStanding,
+    standingLoading: motivationStandingLoading,
+    onProfileChange: (profile: Pick<StudentRewardState, 'avatar' | 'alias' | 'leaderboardOptIn'>) => {
+      setRewardState((current) => {
+        const next = { ...current, ...profile };
+        if (rewardScope) saveRewardState(rewardScope, next);
+        return next;
+      });
+      if (remoteSession && lessonState.session.participationMode === 'course-record') {
+        void updateStudentMotivationProfile(remoteSession.ownerUid, remoteSession.sessionId, profile)
+          .then((stored) => mergeStoredMotivation(stored))
+          .catch(() => setRewardRequestError('Your Signal is saved on this device, but could not sync across devices yet.'));
+      }
+    },
   };
   const activePromptLength = markdownToPlainText(lessonState.activeInteraction?.prompt || '').length;
   const promptDensityClass = activePromptLength > 110 ? 'is-very-long' : activePromptLength > 70 ? 'is-long' : '';
@@ -1807,9 +1955,7 @@ export default function StudentWelcomePage() {
               markGuidanceLearned('points');
             }}
           >
-            <span className="student-profile-avatar" aria-hidden="true">
-              {studentDisplayName ? studentDisplayName.trim().charAt(0).toUpperCase() : <UserCircle size={17} />}
-            </span>
+            <span className="student-profile-avatar" aria-hidden="true"><SignalAvatarBadge avatar={rewardState.avatar} size={28} /></span>
             <span>My course</span>
             <strong>{rewardState.seminarPoints}</strong>
           </button>}
@@ -1935,7 +2081,6 @@ export default function StudentWelcomePage() {
                 </div>
                 <MarkdownContent heading className={`student-interaction-question ${promptDensityClass}`} markdown={lessonState.activeInteraction.prompt} />
                 <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Choose your team, then have one person send the response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
-                {lessonState.activeInteraction.type === 'quiz' && lessonState.activeInteraction.speedBonusEnabled && <div className="student-speed-score"><Timer size={17} /><div><strong>Correct answer: {POINT_RULES.correctQuizAnswer} points</strong><span>Answer within {lessonState.activeInteraction.speedBonusSeconds || 40} seconds for up to {lessonState.activeInteraction.maxSpeedBonusPoints || 4} more.</span></div></div>}
 
                 {lessonState.activeInteraction.type === 'team-formation' ? (
                   <div className="student-team-form">
@@ -2128,6 +2273,7 @@ export default function StudentWelcomePage() {
         <StudentCourseSheet
           points={rewardState.seminarPoints}
           studentName={studentDisplayName || (studentNumber ? `Student •${studentNumber.slice(-4)}` : 'Your course record')}
+          avatar={rewardState.avatar}
           onClose={closeCourseSpace}
         >
           <StudentCourseHome {...courseHomeProps} embedded />

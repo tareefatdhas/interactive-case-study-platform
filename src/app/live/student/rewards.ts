@@ -1,4 +1,6 @@
 import type { RewardKind } from '@/types';
+import { KNOWLEDGE_CHECK_CORRECT_POINTS } from '@/lib/knowledge-check-scoring';
+import { DEFAULT_SIGNAL_AVATAR, safeSignalAvatar, type SignalAvatar } from '@/lib/gamification';
 
 export type RewardBalance = 'seminar' | 'score';
 
@@ -25,7 +27,10 @@ export type StudentRewardState = {
   classScore: number;
   classRun: number;
   longestRun: number;
+  sessionsParticipated: number;
   alias: string;
+  avatar: SignalAvatar;
+  leaderboardOptIn: boolean;
   ledger: RewardLedgerEntry[];
   redemptions: RewardRedemption[];
 };
@@ -41,7 +46,9 @@ export type CourseReward = {
 
 export const POINT_RULES = {
   participation: {
-    pulse: 1,
+    // Wellbeing, confidence, and sentiment answers must remain intrinsically
+    // useful. Awarding points would pressure students toward a desirable answer.
+    pulse: 0,
     poll: 2,
     quiz: 2,
     'peer-learning': 2,
@@ -77,7 +84,10 @@ export function createInitialRewardState(): StudentRewardState {
     classScore: 0,
     classRun: 0,
     longestRun: 0,
+    sessionsParticipated: 0,
     alias: 'Quiet Comet',
+    avatar: DEFAULT_SIGNAL_AVATAR,
+    leaderboardOptIn: false,
     ledger: [],
     redemptions: [],
   };
@@ -100,6 +110,7 @@ export function loadRewardState(scope: string): StudentRewardState {
     return {
       ...createInitialRewardState(),
       ...parsed,
+      avatar: safeSignalAvatar(parsed.avatar),
       redemptions: (parsed.redemptions || []).map((redemption) => ({
         ...redemption,
         pointsRequired: redemption.pointsRequired ?? redemption.cost ?? 0,
@@ -157,4 +168,3 @@ export function requestCourseReward(
     }, ...state.redemptions],
   };
 }
-import { KNOWLEDGE_CHECK_CORRECT_POINTS } from '@/lib/knowledge-check-scoring';

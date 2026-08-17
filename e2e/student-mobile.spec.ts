@@ -93,8 +93,8 @@ test('course home tabs use real zero states instead of demo progress', async ({ 
   await expect(page.getByText('6 learning moments')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Standing', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'No board published' })).toBeVisible();
-  await expect(page.getByText('There is no class standing to show.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your place in the room' })).toBeVisible();
+  await expect(page.getByText('Standing is not available yet.')).toBeVisible();
   await expect(page.getByText('North Star')).toHaveCount(0);
   await expect(page.getByText('Blue Margin')).toHaveCount(0);
 
@@ -105,6 +105,11 @@ test('course home tabs use real zero states instead of demo progress', async ({ 
   await expect(page.getByText('Up to 9')).toBeVisible();
   await expect(page.getByText('No course rewards yet.')).toBeVisible();
   await expect(page.getByText('One-day deadline pass')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Signal', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Design your Signal' })).toBeVisible();
+  await expect(page.getByText('Your student number is never used on a board.')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   await expectNoHorizontalOverflow(page);
 });
 

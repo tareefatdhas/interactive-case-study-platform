@@ -352,5 +352,12 @@ service cloud.firestore {
         && (request.resource.data.status == 'approved' || request.resource.data.status == 'declined' || request.resource.data.status == 'used');
       allow delete: if false;
     }
+
+    // Course Momentum contains durable student point totals and private
+    // standing data. Every read and write goes through a callable function
+    // that verifies the session, attendance claim, and course permission.
+    match /courseMomentum/{courseId}/{document=**} {
+      allow read, write: if false;
+    }
   }
 }

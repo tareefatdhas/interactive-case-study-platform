@@ -159,8 +159,14 @@ test('the live console and projector surfaces render', async ({ browser }) => {
   await expect(consolePage.getByRole('menu', { name: 'More class controls' })).toBeVisible();
   await expect(consolePage.getByRole('menuitem', { name: /Attendance/ })).toBeVisible();
   await expect(consolePage.getByRole('menuitem', { name: /Welcome class/ })).toBeVisible();
+  await expect(consolePage.getByRole('menuitem', { name: /Celebrate momentum/ })).toBeVisible();
   await expect(consolePage.getByRole('menuitem', { name: /Check display/ })).toBeVisible();
   await expect(consolePage.getByRole('menuitem', { name: /Reset session/ })).toBeVisible();
+  await consolePage.getByRole('menuitem', { name: /Celebrate momentum/ }).click();
+  await expect(displayPage.getByRole('heading', { name: 'The room is building momentum.' })).toBeVisible();
+  await expect(displayPage.getByText('Every response moves the room forward.')).toBeVisible();
+
+  await consolePage.getByRole('button', { name: 'More', exact: true }).click();
   await consolePage.getByRole('menuitem', { name: /Reset session/ }).click();
   const resetDialog = consolePage.getByRole('dialog', { name: 'Reset this session?' });
   await expect(resetDialog).toBeVisible();

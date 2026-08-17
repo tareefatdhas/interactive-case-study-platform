@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { SessionInteraction, SessionParticipationMode } from '@/types';
+import type { CourseMotivationConfig } from '@/lib/gamification';
+import type { SignalAvatar } from '@/lib/gamification';
 
 export type MoodKey = 'energized' | 'steady' | 'tired' | 'overwhelmed' | 'private';
 
@@ -103,6 +105,18 @@ export type LiveTimer = {
   endsAt: number;
 };
 
+export type MotivationMoment = {
+  id: number;
+  mode: 'collective' | 'teams' | 'individuals';
+  title: string;
+  subtitle: string;
+  progress: number;
+  current: number;
+  goal: number;
+  students?: Array<{ alias: string; points: number; avatar: SignalAvatar }>;
+  teams?: Array<{ name: string; score: number; activeMembers: number; color: string }>;
+};
+
 export type LiveSessionContext = {
   sessionId?: string;
   courseId?: string;
@@ -114,6 +128,7 @@ export type LiveSessionContext = {
   rewardScopeId?: string;
   courseName: string;
   sessionTitle: string;
+  motivation?: CourseMotivationConfig;
 };
 
 export type LessonDisplayState = {
@@ -136,6 +151,7 @@ export type LessonDisplayState = {
   questions: LiveQuestion[];
   teams: LiveTeam[];
   timer?: LiveTimer | null;
+  motivationMoment?: MotivationMoment | null;
   updatedAt: number;
 };
 
@@ -434,9 +450,6 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       options: interaction.options,
       correctOptionIndex: interaction.correctOptionIndex,
       explanation: interaction.explanation,
-      speedBonusEnabled: interaction.speedBonusEnabled,
-      speedBonusSeconds: interaction.speedBonusSeconds,
-      maxSpeedBonusPoints: interaction.maxSpeedBonusPoints,
       durationMinutes: interaction.durationMinutes,
       discussionMinutes: interaction.discussionMinutes,
       groupSize: interaction.groupSize,

@@ -851,6 +851,356 @@ exports.claimStudentAttendance = onCall(
   },
 );
 
+const SIGNAL_FORMS = ['orb', 'pebble', 'prism', 'bloom'];
+const SIGNAL_PALETTES = ['violet', 'ocean', 'mint', 'sun', 'coral', 'midnight'];
+const SIGNAL_FACES = ['calm', 'bright', 'curious', 'focused'];
+const SIGNAL_ORBITS = ['ring', 'satellites', 'trail', 'none'];
+const DEFAULT_SIGNAL = { form: 'orb', palette: 'violet', face: 'curious', orbit: 'ring' };
+
+function cleanSignal(value = {}) {
+  return {
+    form: SIGNAL_FORMS.includes(value.form) ? value.form : DEFAULT_SIGNAL.form,
+    palette: SIGNAL_PALETTES.includes(value.palette) ? value.palette : DEFAULT_SIGNAL.palette,
+    face: SIGNAL_FACES.includes(value.face) ? value.face : DEFAULT_SIGNAL.face,
+    orbit: SIGNAL_ORBITS.includes(value.orbit) ? value.orbit : DEFAULT_SIGNAL.orbit,
+  };
+}
+
+function cleanStudentAlias(value) {
+  const alias = cleanString(value, 28).replace(/[^\p{L}\p{N} .'-]/gu, '').replace(/\s+/g, ' ');
+  return alias.length >= 2 ? alias : 'Quiet Comet';
+}
+
+async function studentMomentumContext(request) {
+  const studentUid = request.auth?.uid;
+  if (!studentUid || request.auth.token?.firebase?.sign_in_provider !== 'anonymous') {
+    throw new HttpsError('unauthenticated', 'Join from the student class page to continue.');
+  }
+  const ownerUid = cleanString(request.data?.ownerUid, 160);
+  const sessionId = cleanString(request.data?.sessionId, 160);
+  if (!ownerUid || !sessionId) throw new HttpsError('invalid-argument', 'This class link is incomplete.');
+  const firestore = getFirestore();
+  const [sessionSnapshot, attendanceSnapshot] = await Promise.all([
+    firestore.collection('sessions').doc(sessionId).get(),
+    getDatabase().ref(`liveV2/${ownerUid}/${sessionId}/attendanceClaims/${studentUid}`).once('value'),
+  ]);
+  const session = sessionSnapshot.data();
+  const attendance = attendanceSnapshot.val();
+  if (!sessionSnapshot.exists || session?.teacherId !== ownerUid) throw new HttpsError('not-found', 'This class could not be found.');
+  if (!attendance || attendance.participationMode !== 'course-record' || !attendance.studentNumber) {
+    throw new HttpsError('failed-precondition', 'Join with your student number to keep course progress.');
+  }
+  const courseId = session.courseId;
+  if (!courseId) throw new HttpsError('failed-precondition', 'This session is not connected to a course.');
+  const memberHash = createHash('sha256').update(`${ownerUid}:${courseId}:${attendance.studentNumber}`).digest('hex');
+  const profileRef = firestore.collection('courseMomentum').doc(courseId).collection('students').doc(memberHash);
+  return { firestore, studentUid, ownerUid, sessionId, session, courseId, memberHash, profileRef };
+}
+
+function studentMomentumPayload(snapshot, fallback = {}) {
+  const data = snapshot?.exists ? snapshot.data() : fallback;
+  return {
+    seminarPoints: Math.max(0, Number(data?.seminarPoints) || 0),
+    classScore: Math.max(0, Number(data?.classScore) || 0),
+    classRun: Math.max(0, Number(data?.classRun) || 0),
+    longestRun: Math.max(0, Number(data?.longestRun) || 0),
+    sessionsParticipated: Math.max(0, Number(data?.sessionsParticipated) || 0),
+    alias: cleanStudentAlias(data?.alias),
+    avatar: cleanSignal(data?.avatar),
+    leaderboardOptIn: data?.leaderboardOptIn === true,
+  };
+}
+
+exports.getStudentMotivationProfile = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  async (request) => {
+    const context = await studentMomentumContext(request);
+    const snapshot = await context.profileRef.get();
+    return studentMomentumPayload(snapshot);
+  },
+);
+
+exports.getStudentMotivationStanding = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  async (request) => {
+    const context = await studentMomentumContext(request);
+    const [courseSnapshot, profilesSnapshot] = await Promise.all([
+      context.firestore.collection('courses').doc(context.courseId).get(),
+      context.firestore.collection('courseMomentum').doc(context.courseId).collection('students').get(),
+    ]);
+    const course = courseSnapshot.data() || {};
+    const motivation = course.motivation || {};
+    const individualMode = ['private-neighborhood', 'public-aliases'].includes(motivation.individualBoard) ? motivation.individualBoard : 'off';
+    const teamMode = ['private', 'public'].includes(motivation.teamBoard) ? motivation.teamBoard : 'off';
+    const profiles = profilesSnapshot.docs
+      .map((document) => ({ id: document.id, ...studentMomentumPayload(document) }))
+      .filter((profile) => profile.sessionsParticipated > 0 || profile.seminarPoints > 0)
+      .sort((left, right) => right.seminarPoints - left.seminarPoints || left.id.localeCompare(right.id));
+    const selfIndex = profiles.findIndex((profile) => profile.id === context.memberHash);
+    const selfRank = selfIndex >= 0 ? selfIndex + 1 : null;
+    const privateRows = selfIndex < 0 ? [] : profiles.slice(Math.max(0, selfIndex - 2), selfIndex + 3);
+    const visibleProfiles = individualMode === 'public-aliases'
+      ? profiles.filter((profile) => profile.leaderboardOptIn).slice(0, 10)
+      : individualMode === 'private-neighborhood' ? privateRows : [];
+    const students = visibleProfiles.map((profile) => {
+      const rank = profiles.findIndex((candidate) => candidate.id === profile.id) + 1;
+      const isYou = profile.id === context.memberHash;
+      const identityVisible = isYou || (individualMode === 'public-aliases' && profile.leaderboardOptIn);
+      return {
+        rank,
+        isYou,
+        alias: identityVisible ? profile.alias : 'Nearby learner',
+        avatar: identityVisible ? profile.avatar : DEFAULT_SIGNAL,
+        points: isYou || individualMode === 'public-aliases' ? profile.seminarPoints : null,
+      };
+    });
+
+    const teamByMember = new Map();
+    (course.teams || []).forEach((team) => (team.members || []).forEach((member) => {
+      const studentNumber = cleanString(member.studentNumber, 32).toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9._-]/g, '');
+      if (!studentNumber) return;
+      const hash = createHash('sha256').update(`${course.teacherId}:${context.courseId}:${studentNumber}`).digest('hex');
+      teamByMember.set(hash, team.id);
+    }));
+    const ownTeamId = teamByMember.get(context.memberHash) || null;
+    const teams = (course.teams || []).map((team) => {
+      const active = profiles.filter((profile) => teamByMember.get(profile.id) === team.id);
+      return {
+        id: team.id,
+        name: team.name,
+        color: team.color || 'violet',
+        activeMembers: active.length,
+        score: active.length ? Math.round(active.reduce((sum, profile) => sum + profile.seminarPoints, 0) / active.length) : 0,
+        eligible: active.length >= 2,
+        isYourTeam: team.id === ownTeamId,
+      };
+    }).filter((team) => team.eligible).sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
+    const rankedTeams = teams.map((team, index) => ({ ...team, rank: index + 1 }));
+    const ownTeamIndex = rankedTeams.findIndex((team) => team.isYourTeam);
+    const visibleTeams = teamMode === 'public'
+      ? rankedTeams.slice(0, 10)
+      : teamMode === 'private' && ownTeamIndex >= 0 ? rankedTeams.slice(Math.max(0, ownTeamIndex - 1), ownTeamIndex + 2) : [];
+    return {
+      individualMode,
+      selfRank,
+      activeStudents: profiles.length,
+      students,
+      teamMode,
+      teams: visibleTeams,
+      updatedAt: Date.now(),
+    };
+  },
+);
+
+exports.updateStudentMotivationProfile = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  async (request) => {
+    const context = await studentMomentumContext(request);
+    const alias = cleanStudentAlias(request.data?.alias);
+    const avatar = cleanSignal(request.data?.avatar);
+    const courseSnapshot = await context.firestore.collection('courses').doc(context.courseId).get();
+    const publicAliasesEnabled = courseSnapshot.data()?.motivation?.individualBoard === 'public-aliases';
+    const leaderboardOptIn = publicAliasesEnabled && request.data?.leaderboardOptIn === true;
+    await context.profileRef.set({
+      ownerUid: context.ownerUid,
+      courseId: context.courseId,
+      memberHash: context.memberHash,
+      alias,
+      avatar,
+      leaderboardOptIn,
+      updatedAt: Timestamp.now(),
+    }, { merge: true });
+    return studentMomentumPayload(await context.profileRef.get());
+  },
+);
+
+exports.claimStudentMotivationEvent = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  async (request) => {
+    const context = await studentMomentumContext(request);
+    const runId = cleanString(request.data?.runId, 160);
+    const kind = cleanString(request.data?.kind, 32);
+    if (!runId || !['response', 'correct', 'prediction', 'room-read'].includes(kind)) throw new HttpsError('invalid-argument', 'This learning moment is incomplete.');
+    const responseSnapshot = await getDatabase().ref(`liveV2/${context.ownerUid}/${context.sessionId}/responses/${runId}/${context.studentUid}`).once('value');
+    const response = responseSnapshot.val();
+    if (!response) throw new HttpsError('failed-precondition', 'Send your response before recording this learning moment.');
+    const interaction = (context.session.interactions || []).find((item) => item.id === response.interactionId);
+    if (!interaction) throw new HttpsError('failed-precondition', 'This activity is no longer part of the session.');
+    const courseSnapshot = await context.firestore.collection('courses').doc(context.courseId).get();
+    const course = courseSnapshot.data() || {};
+    const motivation = course.motivation || {};
+    if (motivation.enabled === false || motivation.pointsEnabled === false) return studentMomentumPayload(await context.profileRef.get());
+
+    let balance = 'seminarPoints';
+    let amount = 0;
+    let label = 'Participation';
+    let optionIndex = null;
+    if (kind === 'response') {
+      amount = ({ pulse: 0, poll: 2, quiz: 2, 'peer-learning': 2, 'word-cloud': 2, 'open-response': 3, 'group-work': 5 }[interaction.type]) || 0;
+      label = `${interaction.title || 'Activity'} response`;
+    } else if (kind === 'correct') {
+      if (!['quiz', 'peer-learning'].includes(interaction.type) || response.optionIndex !== interaction.correctOptionIndex) {
+        throw new HttpsError('failed-precondition', 'This response does not qualify for a knowledge score.');
+      }
+      balance = 'classScore';
+      amount = interaction.type === 'peer-learning' ? 6 : 8;
+      label = interaction.type === 'peer-learning' ? 'Strong second answer' : 'Correct knowledge check';
+    } else if (kind === 'prediction') {
+      optionIndex = Number(request.data?.optionIndex);
+      if (interaction.type !== 'poll' || !Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= (interaction.options || []).length) {
+        throw new HttpsError('invalid-argument', 'Choose one prediction from this poll.');
+      }
+      const publicResultsSnapshot = await getDatabase().ref(`liveV2/${context.ownerUid}/${context.sessionId}/publicState/interactionResults`).once('value');
+      const publicResults = publicResultsSnapshot.val();
+      if (publicResults?.runId !== runId || publicResults?.revealed === true || publicResults?.open !== true) {
+        throw new HttpsError('failed-precondition', 'Make this prediction before the class result is revealed.');
+      }
+      amount = 1;
+      label = 'Private prediction';
+    } else {
+      if (interaction.type !== 'poll') throw new HttpsError('failed-precondition', 'Room reads are available for polls.');
+      const predictionEventId = createHash('sha256').update(`${context.sessionId}:${runId}:prediction`).digest('hex');
+      const [predictionSnapshot, publicResultsSnapshot] = await Promise.all([
+        context.profileRef.collection('events').doc(predictionEventId).get(),
+        getDatabase().ref(`liveV2/${context.ownerUid}/${context.sessionId}/publicState/interactionResults`).once('value'),
+      ]);
+      const publicResults = publicResultsSnapshot.val();
+      const predictedOption = predictionSnapshot.data()?.optionIndex;
+      const counts = Array.isArray(publicResults?.optionCounts) ? publicResults.optionCounts : Object.values(publicResults?.optionCounts || {});
+      const leadingCount = counts.length ? Math.max(...counts.map((value) => Math.max(0, Number(value) || 0))) : -1;
+      if (!predictionSnapshot.exists || publicResults?.runId !== runId || publicResults?.revealed !== true || leadingCount < 0 || Math.max(0, Number(counts[predictedOption]) || 0) !== leadingCount) {
+        throw new HttpsError('failed-precondition', 'This prediction does not match the revealed room result.');
+      }
+      amount = 3;
+      label = 'Room read';
+    }
+
+    const eventId = createHash('sha256').update(`${context.sessionId}:${runId}:${kind}`).digest('hex');
+    const eventRef = context.profileRef.collection('events').doc(eventId);
+    await context.firestore.runTransaction(async (transaction) => {
+      const [eventSnapshot, profileSnapshot] = await Promise.all([transaction.get(eventRef), transaction.get(context.profileRef)]);
+      if (eventSnapshot.exists) return;
+      const current = studentMomentumPayload(profileSnapshot);
+      const firstSessionEventRef = context.profileRef.collection('events').doc(createHash('sha256').update(`${context.sessionId}:first-response`).digest('hex'));
+      const firstSessionSnapshot = kind === 'response' ? await transaction.get(firstSessionEventRef) : null;
+      const firstSession = kind === 'response' && !firstSessionSnapshot?.exists;
+      const profileData = profileSnapshot.exists ? profileSnapshot.data() : {};
+      const sessionOrder = Array.isArray(course.sessionOrder) ? course.sessionOrder : [];
+      const currentSessionIndex = sessionOrder.indexOf(context.sessionId);
+      const previousSessionIndex = sessionOrder.indexOf(profileData.lastParticipatedSessionId);
+      const nextClassRun = firstSession && motivation.classRunsEnabled !== false
+        ? (previousSessionIndex >= 0 && currentSessionIndex === previousSessionIndex + 1 ? current.classRun + 1 : 1)
+        : current.classRun;
+      transaction.set(context.profileRef, {
+        ownerUid: context.ownerUid,
+        courseId: context.courseId,
+        memberHash: context.memberHash,
+        alias: current.alias,
+        avatar: current.avatar,
+        leaderboardOptIn: current.leaderboardOptIn,
+        seminarPoints: current.seminarPoints + (balance === 'seminarPoints' ? amount : 0),
+        classScore: current.classScore + (balance === 'classScore' ? amount : 0),
+        classRun: nextClassRun,
+        longestRun: Math.max(current.longestRun, nextClassRun),
+        sessionsParticipated: current.sessionsParticipated + (firstSession ? 1 : 0),
+        ...(firstSession ? { lastParticipatedSessionId: context.sessionId } : {}),
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+      transaction.create(eventRef, { sessionId: context.sessionId, runId, kind, balance, amount, label, ...(optionIndex !== null ? { optionIndex } : {}), createdAt: Timestamp.now() });
+      if (firstSession) transaction.create(firstSessionEventRef, { sessionId: context.sessionId, kind: 'session-participation', amount: 0, createdAt: Timestamp.now() });
+    });
+    return studentMomentumPayload(await context.profileRef.get());
+  },
+);
+
+exports.claimStudentMotivationQuestionEvent = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  async (request) => {
+    const context = await studentMomentumContext(request);
+    const eventId = cleanString(request.data?.eventId, 64);
+    const allowed = {
+      'question-asked': { amount: 1, label: 'Asked a question' },
+      'question-upvotes-2': { amount: 2, label: 'Question supported by classmates' },
+      'question-upvotes-5': { amount: 3, label: 'Question helped the room' },
+      'question-discussed': { amount: 3, label: 'Question discussed in class' },
+    };
+    if (!allowed[eventId]) throw new HttpsError('invalid-argument', 'This question contribution is not recognized.');
+    const claimSnapshot = await getDatabase().ref(`liveV2/${context.ownerUid}/${context.sessionId}/questionPointClaims/${context.studentUid}/${eventId}`).once('value');
+    const claim = claimSnapshot.val();
+    if (!claim || claim.amount !== allowed[eventId].amount || claim.label !== allowed[eventId].label) {
+      throw new HttpsError('failed-precondition', 'This question contribution has not been verified yet.');
+    }
+    const courseSnapshot = await context.firestore.collection('courses').doc(context.courseId).get();
+    const motivation = courseSnapshot.data()?.motivation || {};
+    if (motivation.enabled === false || motivation.pointsEnabled === false) return studentMomentumPayload(await context.profileRef.get());
+    const durableEventId = createHash('sha256').update(`${context.sessionId}:question:${eventId}`).digest('hex');
+    const eventRef = context.profileRef.collection('events').doc(durableEventId);
+    await context.firestore.runTransaction(async (transaction) => {
+      const [eventSnapshot, profileSnapshot] = await Promise.all([transaction.get(eventRef), transaction.get(context.profileRef)]);
+      if (eventSnapshot.exists) return;
+      const current = studentMomentumPayload(profileSnapshot);
+      transaction.set(context.profileRef, {
+        ownerUid: context.ownerUid,
+        courseId: context.courseId,
+        memberHash: context.memberHash,
+        alias: current.alias,
+        avatar: current.avatar,
+        leaderboardOptIn: current.leaderboardOptIn,
+        seminarPoints: current.seminarPoints + claim.amount,
+        classScore: current.classScore,
+        classRun: current.classRun,
+        longestRun: current.longestRun,
+        sessionsParticipated: current.sessionsParticipated,
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+      transaction.create(eventRef, { sessionId: context.sessionId, kind: 'question', eventId, amount: claim.amount, label: claim.label, createdAt: Timestamp.now() });
+    });
+    return studentMomentumPayload(await context.profileRef.get());
+  },
+);
+
+exports.getInstructorMomentumBoard = onCall(
+  { region: FUNCTION_REGION, cors: ['https://classfully.com', /localhost:\d+$/] },
+  async (request) => {
+    const instructorUid = requireInstructor(request);
+    const courseId = cleanString(request.data?.courseId, 160);
+    if (!courseId) throw new HttpsError('invalid-argument', 'Choose a class first.');
+    const firestore = getFirestore();
+    const courseSnapshot = await firestore.collection('courses').doc(courseId).get();
+    if (!courseSnapshot.exists) throw new HttpsError('not-found', 'This class could not be found.');
+    const course = courseSnapshot.data();
+    const permission = await activeInstructorMembership(firestore, instructorUid, course.teacherId, courseId);
+    if (!permission) throw new HttpsError('permission-denied', 'You do not have access to this class.');
+    const profilesSnapshot = await firestore.collection('courseMomentum').doc(courseId).collection('students').get();
+    const profiles = profilesSnapshot.docs.map((document) => ({ id: document.id, ...studentMomentumPayload(document) }));
+    const memberToTeam = new Map();
+    (course.teams || []).forEach((team) => (team.members || []).forEach((member) => {
+      const studentNumber = cleanString(member.studentNumber, 32).toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9._-]/g, '');
+      if (!studentNumber) return;
+      const memberHash = createHash('sha256').update(`${course.teacherId}:${courseId}:${studentNumber}`).digest('hex');
+      memberToTeam.set(memberHash, { id: team.id, name: team.name, color: team.color || 'violet' });
+    }));
+    const students = profiles.map((profile) => ({ ...profile, team: memberToTeam.get(profile.id) || null }));
+    const teams = (course.teams || []).map((team) => {
+      const members = students.filter((student) => student.team?.id === team.id && (student.sessionsParticipated > 0 || student.seminarPoints > 0));
+      const contributions = members.map((student) => student.seminarPoints);
+      return {
+        id: team.id,
+        name: team.name,
+        color: team.color || 'violet',
+        activeMembers: members.length,
+        score: contributions.length ? Math.round(contributions.reduce((sum, value) => sum + value, 0) / contributions.length) : 0,
+        eligible: members.length >= 2,
+      };
+    }).sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
+    return {
+      students: students.sort((left, right) => right.seminarPoints - left.seminarPoints || left.alias.localeCompare(right.alias)),
+      teams,
+      updatedAt: Date.now(),
+    };
+  },
+);
+
 async function teacherForStripeCustomer(customerId, metadata = {}) {
   const firestore = getFirestore();
   const firebaseUid = metadata.firebaseUid;
