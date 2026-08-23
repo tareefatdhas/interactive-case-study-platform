@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { 
   getSession, 
   getSessionsByTeacher,
+  getCourse,
   getCaseStudy, 
   updateSession,
   updateSessionActivity,
@@ -56,6 +57,7 @@ import {
 } from '@/lib/session-response-summary';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { claimSessionStart } from '@/lib/firebase/billing';
+import { orderCourseSessions } from '@/lib/course-session-order';
 
 interface SessionPageProps {
   params: Promise<{
@@ -154,12 +156,17 @@ export default function SessionPage({ params }: SessionPageProps) {
 
         setSession(hydratedSession);
 
-        const teacherSessions = await getSessionsByTeacher(sessionData.teacherId);
+        const [teacherSessions, courseData] = await Promise.all([
+          getSessionsByTeacher(sessionData.teacherId),
+          sessionData.courseId ? getCourse(sessionData.courseId) : Promise.resolve(null),
+        ]);
         const relatedSessions = teacherSessions
           .filter((candidate) => sessionData.courseId
             ? candidate.courseId === sessionData.courseId || (!candidate.courseId && candidate.courseCode === sessionData.courseCode)
-            : candidate.courseCode === sessionData.courseCode)
-          .sort((a, b) => {
+            : candidate.courseCode === sessionData.courseCode);
+        const orderedRelatedSessions = sessionData.courseId
+          ? orderCourseSessions(relatedSessions, courseData?.sessionOrder)
+          : relatedSessions.sort((a, b) => {
             const timeFor = (candidate: Session) => {
               if (candidate.scheduledFor) {
                 const scheduled = new Date(candidate.scheduledFor).getTime();
@@ -169,7 +176,7 @@ export default function SessionPage({ params }: SessionPageProps) {
             };
             return timeFor(a) - timeFor(b);
           });
-        setCourseSessions(relatedSessions);
+        setCourseSessions(orderedRelatedSessions);
         
         const caseStudyData = sessionData.caseStudyId ? await getCaseStudy(sessionData.caseStudyId) : null;
         if (caseStudyData) {
