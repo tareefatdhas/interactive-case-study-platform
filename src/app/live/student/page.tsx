@@ -1917,18 +1917,20 @@ export default function StudentWelcomePage() {
     if (!responseReady || interactionSubmitted) return;
 
     const frame = window.requestAnimationFrame(() => {
-      const scrollRegion = document.querySelector<HTMLElement>('.student-welcome-content');
+      const scrollRegion = contentRef.current;
       const actionDock = document.querySelector<HTMLElement>('.student-response-action.is-ready');
-      if (!scrollRegion || !actionDock) return;
+      const choices = scrollRegion?.querySelectorAll<HTMLElement>('[role="radio"]');
+      const lastChoice = choices?.[choices.length - 1];
+      if (!scrollRegion || !actionDock || !lastChoice) return;
 
-      // The action tray is fixed so it remains reachable. Settle the scroll
-      // region at its reserved bottom space as soon as the tray appears,
-      // keeping the remaining choices above the tray instead of behind it.
-      scrollRegion.scrollTop = scrollRegion.scrollHeight - scrollRegion.clientHeight;
+      const overlap = lastChoice.getBoundingClientRect().bottom - actionDock.getBoundingClientRect().top + 12;
+      if (overlap <= 0) return;
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      scrollRegion.scrollBy({ top: overlap, behavior: reducedMotion ? 'auto' : 'smooth' });
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [interactionSubmitted, responseReady, selectedOption]);
+  }, [interactionSubmitted, responseReady]);
 
   if (!classroomStateReady || (!remoteUnavailable && !rewardStateReady) || (remoteEnded && !rewardStateReady)) {
     return <ClassroomStateGate message="Loading the current activity and your private class record." />;

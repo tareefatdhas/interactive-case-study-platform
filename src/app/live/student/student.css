@@ -96,7 +96,7 @@ body:has(.student-welcome-shell) {
   min-height: 100dvh;
   overflow: hidden;
   display: grid;
-  grid-template-rows: 66px minmax(0, 1fr) 48px;
+  grid-template-rows: 66px minmax(0, 1fr) calc(48px + env(safe-area-inset-bottom));
   color: var(--student-ink);
   background: var(--student-paper);
 }
@@ -119,7 +119,7 @@ body:has(.student-welcome-shell) {
 }
 
 .student-course-trigger {
-  min-height: 34px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1846,7 +1846,7 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
   position: fixed;
   z-index: 20;
   right: 0;
-  bottom: 48px;
+  bottom: calc(48px + env(safe-area-inset-bottom));
   left: 0;
   padding: 14px 20px 15px 82px;
   pointer-events: none;
@@ -1866,7 +1866,7 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
   --tactile-depth: var(--student-press-depth);
   position: fixed;
   right: auto;
-  bottom: 68px;
+  bottom: calc(68px + env(safe-area-inset-bottom));
   left: 20px;
   width: 50px;
   min-height: 50px;
@@ -2436,7 +2436,7 @@ html[data-input-modality="keyboard"] .student-answer-summary summary:focus-visib
   z-index: 24;
   right: 18px;
   bottom: 61px;
-  min-height: 42px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2782,9 +2782,17 @@ html[data-input-modality="keyboard"] .student-course-sheet > header > button:foc
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 20px;
+  padding: 0 20px env(safe-area-inset-bottom);
   border-top: 1px solid var(--student-line);
   color: var(--student-muted);
+}
+
+.student-tactile,
+.student-course-trigger,
+.student-question-launch {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .student-welcome-footer span { display: flex; align-items: center; gap: 6px; font-size: 9px; }

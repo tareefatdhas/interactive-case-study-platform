@@ -86,13 +86,14 @@ test('instructor signup offers Google before the email form', async ({ page }) =
   expect(googleBox?.y).toBeLessThan(nameBox?.y ?? 0);
 });
 
-test('student join collects attendance identity without requiring a display name', async ({ page }) => {
+test('student join asks for a class code before requesting identity', async ({ page }) => {
   await page.goto('/join');
 
   await expect(page.getByRole('heading', { name: 'Join the class.' })).toBeVisible();
   await expect(page.getByLabel(/class code/i)).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Student number' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Preferred name (optional)' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Student number' })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Preferred name (optional)' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Join class' })).toBeDisabled();
 });
 
 test('real classroom routes never flash demo session data while loading', async ({ browser }) => {
@@ -223,7 +224,8 @@ test('the class lobby carries students from joining into the first activity with
   await expect(studentPage.locator('.student-quiet-guide')).toHaveCount(0);
 
   await consolePage.getByRole('button', { name: /Start first activity/ }).click();
-  await expect(displayPage.getByRole('heading', { name: 'How are you arriving today?' })).toBeVisible();
+  await expect(displayPage.getByText('How are you arriving today?', { exact: true })).toBeVisible();
+  await expect(displayPage.getByRole('heading', { name: 'Checking in' })).toBeVisible();
   await expect(studentPage.getByRole('heading', { name: 'How are you arriving today?' })).toBeVisible();
   await expect(studentPage.getByRole('radio', { name: /Energized/ })).toBeVisible();
   await expect(studentPage.locator('.student-quiet-guide')).toHaveCount(0);
@@ -233,7 +235,7 @@ test('the class lobby carries students from joining into the first activity with
   await expect(displayPage.getByRole('heading', { name: 'Join the room.' })).toBeVisible();
   await expect(studentPage.getByRole('radio', { name: /Energized/ })).toBeVisible();
   await consolePage.getByRole('button', { name: /Return to current activity/ }).click();
-  await expect(displayPage.getByRole('heading', { name: 'How are you arriving today?' })).toBeVisible();
+  await expect(displayPage.getByText('How are you arriving today?', { exact: true })).toBeVisible();
 
   await studentPage.getByRole('radio', { name: /Energized/ }).click();
   await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
@@ -261,8 +263,8 @@ test('an instructor can resume a saved round or start a fresh round without losi
   await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
   await expect(studentPage.getByText('Response sent', { exact: true })).toBeVisible();
 
-  await consolePage.getByRole('button', { name: 'Return to slides' }).click();
-  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await consolePage.getByRole('button', { name: /Start next interaction/ }).click();
+  await consolePage.getByRole('button', { name: 'Session plan', exact: true }).click();
   const sessionPlan = consolePage.getByRole('dialog', { name: 'Session plan' });
   const arrivalPulse = sessionPlan.locator('article').filter({ hasText: 'Arrival pulse' });
   await expect(arrivalPulse).toContainText('1 round saved');
@@ -271,15 +273,15 @@ test('an instructor can resume a saved round or start a fresh round without losi
   await arrivalPulse.getByRole('button', { name: 'Resume latest' }).click();
   await expect(studentPage.getByText('Response sent', { exact: true })).toBeVisible();
 
-  await consolePage.getByRole('button', { name: 'Return to slides' }).click();
-  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await consolePage.getByRole('button', { name: /Start next interaction/ }).click();
+  await consolePage.getByRole('button', { name: 'Session plan', exact: true }).click();
   await sessionPlan.locator('article').filter({ hasText: 'Arrival pulse' }).getByRole('button', { name: 'New round' }).click();
 
   await expect(studentPage.getByRole('heading', { name: 'How are you arriving today?' })).toBeVisible();
   await expect(studentPage.getByText('Response sent', { exact: true })).toHaveCount(0);
   await expect(studentPage.getByRole('radio', { name: /Steady/ })).toHaveAttribute('aria-checked', 'false');
 
-  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await consolePage.getByRole('button', { name: 'Session plan', exact: true }).click();
   await expect(sessionPlan.locator('article').filter({ hasText: 'Arrival pulse' })).toContainText('2 rounds saved');
 
   await context.close();
@@ -295,7 +297,7 @@ test('a custom full-screen timer launched from the instructor console reaches th
   await displayPage.goto('/live/display');
   await studentPage.goto('/live/student');
 
-  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await consolePage.getByRole('button', { name: 'Session plan', exact: true }).click();
   const sessionPlan = consolePage.getByRole('dialog', { name: 'Session plan' });
   await sessionPlan.getByRole('button', { name: 'Add interaction' }).click();
   await expect(sessionPlan.getByRole('group', { name: 'Interaction types' })).toBeVisible();
@@ -332,8 +334,8 @@ test('a custom full-screen timer launched from the instructor console reaches th
   await consolePage.keyboard.press('Escape');
   await expect(sessionPlan).toBeHidden();
 
-  await expect(consolePage.getByRole('button', { name: /Add now/ })).toBeVisible();
-  await consolePage.getByRole('button', { name: /Add now/ }).click();
+  await expect(consolePage.getByRole('button', { name: /Add interaction/ }).first()).toBeVisible();
+  await consolePage.getByRole('button', { name: /Add interaction/ }).first().click();
   const quickAdd = consolePage.getByRole('dialog', { name: 'Add something during class' });
   await expect(quickAdd.getByRole('group', { name: 'Interaction types' })).toBeVisible();
   await quickAdd.getByRole('button', { name: /Timer/ }).click();
@@ -361,7 +363,7 @@ test('a custom full-screen timer launched from the instructor console reaches th
   await expect(studentPage.locator('.student-clock-instructions strong')).toHaveText('four');
   await expect(consolePage.getByRole('timer', { name: /Team case discussion/ })).toBeVisible();
 
-  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await consolePage.getByRole('button', { name: 'Session plan', exact: true }).click();
   const liveTimerPlan = consolePage.getByRole('dialog', { name: 'Session plan' });
   const liveTimerItem = liveTimerPlan.locator('article').filter({ hasText: 'Team case discussion' });
   await liveTimerItem.getByRole('button', { name: 'Edit Team case discussion' }).click();
@@ -376,7 +378,7 @@ test('a custom full-screen timer launched from the instructor console reaches th
   await consolePage.getByRole('button', { name: /End timer/ }).click();
   await expect(displayPage.getByRole('timer', { name: /Team case decision/ })).toBeHidden();
 
-  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await consolePage.getByRole('button', { name: 'Session plan', exact: true }).click();
   const addedTimer = consolePage.getByRole('dialog', { name: 'Session plan' }).locator('article').filter({ hasText: 'Team case decision' });
   await expect(addedTimer).toBeVisible();
   await addedTimer.getByRole('button', { name: /Show|Resume latest/ }).click();
@@ -388,7 +390,7 @@ test('a custom full-screen timer launched from the instructor console reaches th
 
 test('the live session editor preserves complete quiz settings and formatted prompts', async ({ page }) => {
   await page.goto('/live');
-  await page.getByRole('button', { name: 'Session plan' }).click();
+  await page.getByRole('button', { name: 'Session plan', exact: true }).click();
   const sessionPlan = page.getByRole('dialog', { name: 'Session plan' });
   await sessionPlan.getByRole('button', { name: 'Add interaction' }).click();
   await sessionPlan.getByRole('group', { name: 'Interaction types' }).getByRole('button', { name: /Knowledge check/ }).click();
@@ -457,7 +459,7 @@ test('a student reconnects automatically without losing an unfinished answer', a
   await unfinishedAnswer.click();
   await expect(unfinishedAnswer).toHaveAttribute('aria-checked', 'true');
 
-  await consolePage.getByRole('button', { name: 'Session plan' }).click();
+  await consolePage.getByRole('button', { name: 'Session plan', exact: true }).click();
   const sessionPlan = consolePage.getByRole('dialog', { name: 'Session plan' });
   await sessionPlan.getByRole('button', { name: 'Edit Concept check' }).click();
   await expect(sessionPlan.getByText('Students keep the current version.', { exact: true })).toBeVisible();
@@ -501,14 +503,14 @@ test('pulse, poll, quiz, and short response complete across every classroom surf
     await expect(remotePage.locator('.remote-active-card')).toBeVisible();
   };
 
-  const submitSelection = async (optionName: RegExp) => {
+  const submitSelection = async (optionName: RegExp, privateCheckIn = false) => {
     await studentPage.getByRole('radio', { name: optionName }).click();
     const sendButton = studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ });
     const questionButton = studentPage.getByRole('button', { name: /^Questions/ });
     const [sendBounds, questionBounds] = await Promise.all([sendButton.boundingBox(), questionButton.boundingBox()]);
     expect(sendBounds).not.toBeNull();
     expect(questionBounds).not.toBeNull();
-    expect(Math.abs((sendBounds?.y || 0) + (sendBounds?.height || 0) - (questionBounds?.y || 0) - (questionBounds?.height || 0))).toBeLessThanOrEqual(1);
+    expect((questionBounds?.x || 0) + (questionBounds?.width || 0)).toBeLessThanOrEqual((sendBounds?.x || 0) - 8);
     await sendButton.click();
     await expect(studentPage.getByText('Response sent')).toBeVisible();
     await expect(studentPage.getByText('The room is responding')).toBeVisible();
@@ -517,12 +519,16 @@ test('pulse, poll, quiz, and short response complete across every classroom surf
     await expect(studentPage.locator('.student-room-self')).toBeVisible();
     await expect(studentPage.locator('.student-room-points > i')).toHaveCount(1);
     await expect(remotePage.locator('.remote-response-metric strong')).toHaveText('1');
-    await expect(displayPage.locator('.interaction-display-count strong')).toHaveText('1');
+    if (privateCheckIn) {
+      await expect(displayPage.getByText(/1 checked in/)).toBeVisible();
+    } else {
+      await expect(displayPage.locator('.interaction-display-count strong')).toHaveText('1');
+    }
   };
 
   await launchInteraction(/Arrival pulse/);
   await expect(studentPage.getByRole('heading', { name: 'How are you arriving today?' })).toBeVisible();
-  await submitSelection(/Steady/);
+  await submitSelection(/Steady/, true);
 
   await launchInteraction(/Concept check/);
   await expect(studentPage.getByRole('heading', { name: 'Where do network effects become most fragile?' })).toBeVisible();
@@ -563,17 +569,17 @@ test('earned participation appears on the student Home tab', async ({ browser })
   await remotePage.goto('/live/remote');
   await studentPage.goto('/live/student');
 
-  await remotePage.getByRole('button', { name: /Arrival pulse/ }).click();
-  await studentPage.getByRole('radio', { name: /Steady/ }).click();
+  await remotePage.getByRole('button', { name: /Concept check/ }).click();
+  await studentPage.getByRole('radio', { name: /Single-provider dependency/ }).click();
   await studentPage.getByRole('button', { name: /^Send (?:response|answer [A-Z])/ }).click();
   await expect(studentPage.getByText('Response sent')).toBeVisible();
   await studentPage.waitForTimeout(900);
   await remotePage.getByRole('button', { name: 'Return to slides' }).click();
 
   await expect(studentPage.getByRole('heading', { name: 'Your semester is taking shape.' })).toBeVisible();
-  await expect(studentPage.locator('#student-progress-title')).toHaveText('1');
+  await expect.poll(async () => Number(await studentPage.locator('#student-progress-title').innerText())).toBeGreaterThanOrEqual(1);
   await expect(studentPage.getByRole('heading', { name: 'Recent points' })).toBeVisible();
-  await expect(studentPage.getByText('Pulse response', { exact: true })).toBeVisible();
+  await expect(studentPage.getByText('Poll response', { exact: true })).toBeVisible();
 
   await context.close();
 });

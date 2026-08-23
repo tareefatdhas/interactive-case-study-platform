@@ -29,6 +29,8 @@ type RememberedStudent = {
   rememberedAt: number;
 };
 
+type ClassLookupStatus = 'idle' | 'checking' | 'ready' | 'not-found';
+
 function maskStudentNumber(studentNumber: string) {
   if (studentNumber.length <= 4) return studentNumber;
   return `${'•'.repeat(Math.min(4, studentNumber.length - 4))}${studentNumber.slice(-4)}`;
@@ -55,7 +57,7 @@ export default function JoinPage() {
   const [rememberedStudentNumber, setRememberedStudentNumber] = useState('');
   const [codeFromLink, setCodeFromLink] = useState(false);
   const [participationMode, setParticipationMode] = useState<SessionParticipationMode | null>(null);
-  const [checkingClass, setCheckingClass] = useState(false);
+  const [classLookupStatus, setClassLookupStatus] = useState<ClassLookupStatus>('idle');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const codeInputRef = useRef<HTMLInputElement>(null);
@@ -86,28 +88,54 @@ export default function JoinPage() {
     }
 
     window.requestAnimationFrame(() => {
-      if (normalizedCode) studentNumberInputRef.current?.focus();
-      else codeInputRef.current?.focus();
+      if (!normalizedCode) codeInputRef.current?.focus();
     });
   }, []);
+
+  useEffect(() => {
+    if (!codeFromLink || participationMode !== 'course-record') return;
+    window.requestAnimationFrame(() => studentNumberInputRef.current?.focus());
+  }, [codeFromLink, participationMode]);
 
   useEffect(() => {
     const normalizedCode = sessionCode.replace(/[^a-z0-9]/gi, '').toUpperCase();
     if (normalizedCode.length !== 6) {
       setParticipationMode(null);
+      setClassLookupStatus('idle');
       return;
     }
     let cancelled = false;
     const timer = window.setTimeout(async () => {
-      setCheckingClass(true);
+      setClassLookupStatus('checking');
+      setError('');
       try {
         await ensureStudentAnonymousAuth();
         const liveClassroom = await getLiveClassroomByCode(normalizedCode);
-        if (!cancelled) setParticipationMode(liveClassroom?.participationMode || 'course-record');
+        if (cancelled) return;
+        if (liveClassroom) {
+          setParticipationMode(liveClassroom.participationMode || 'course-record');
+          setClassLookupStatus('ready');
+          return;
+        }
+
+        const session = await getSessionByCodeStudent(normalizedCode);
+        if (cancelled) return;
+        if (session?.active) {
+          setParticipationMode('course-record');
+          setClassLookupStatus('ready');
+          return;
+        }
+
+        setParticipationMode(null);
+        setClassLookupStatus('not-found');
+        setError(session
+          ? 'This class has ended. Ask your instructor for the current code.'
+          : 'We could not find that class. Check the code on the projector and try again.');
       } catch {
-        if (!cancelled) setParticipationMode(null);
-      } finally {
-        if (!cancelled) setCheckingClass(false);
+        if (cancelled) return;
+        setParticipationMode(null);
+        setClassLookupStatus('idle');
+        setError('We could not check the class yet. Check your connection and try again.');
       }
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); };
@@ -150,13 +178,18 @@ export default function JoinPage() {
       return setError('Enter the class code shown by your instructor.');
     }
 
+    const normalizedCode = sessionCode.replace(/[^a-z0-9]/gi, '').toUpperCase();
+    if (normalizedCode.length !== 6) {
+      track('join_failed', { failure_reason: 'incomplete_code', entry_method: entryMethod });
+      return setError('Enter the full six-character class code.');
+    }
+
     setLoading(true);
     setError('');
     track('join_started', { entry_method: entryMethod });
 
     try {
       await ensureStudentAnonymousAuth();
-      const normalizedCode = sessionCode.replace(/[^a-z0-9]/gi, '').toUpperCase();
       const normalizedStudentNumber = normalizeStudentNumber(studentNumber);
       const normalizedDisplayName = normalizeStudentDisplayName(studentDisplayName);
       const liveClassroom = await getLiveClassroomByCode(normalizedCode);
@@ -190,6 +223,15 @@ export default function JoinPage() {
         throw joinFailure('session_ended', 'This class session has ended. Ask your instructor for the current code.');
       }
 
+      if (normalizedStudentNumber.length < 3) {
+        track('join_failed', { failure_reason: 'missing_student_number', entry_method: entryMethod });
+        return setError('Enter your student number so this session can join your course record.');
+      }
+      if (!privacyAcknowledged) {
+        track('join_failed', { failure_reason: 'privacy_not_acknowledged', entry_method: entryMethod });
+        return setError('Review the privacy notice before joining.');
+      }
+
       saveRememberedStudent(normalizedStudentNumber, normalizedDisplayName);
       window.sessionStorage.setItem('living-seminar-pending-student-number', normalizedStudentNumber);
       window.sessionStorage.setItem('classfully-pending-student-display-name', normalizedDisplayName);
@@ -204,6 +246,8 @@ export default function JoinPage() {
     }
   };
 
+  const normalizedSessionCode = sessionCode.replace(/[^a-z0-9]/gi, '').toUpperCase();
+
   return (
     <main className="min-h-screen bg-[#fffefa]">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
@@ -211,8 +255,8 @@ export default function JoinPage() {
         <Link href="/login" className="seminar-focus inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-semibold text-[#697087] hover:text-[#101a38]">Instructor sign in</Link>
       </header>
 
-      <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-10 sm:px-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(380px,0.7fr)] lg:pt-20">
-        <section className="order-2 lg:order-1">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-10 pt-3 sm:px-8 sm:pt-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(380px,0.7fr)] lg:pb-16 lg:pt-20">
+        <section className="order-2 hidden lg:order-1 lg:block">
           <div className="mb-7 flex h-12 w-12 items-center justify-center rounded-xl bg-[#f0efff] text-[#5146e5]">
             <Users className="h-5 w-5" aria-hidden="true" />
           </div>
@@ -253,7 +297,10 @@ export default function JoinPage() {
                     label="Class code"
                     ref={codeInputRef}
                     value={sessionCode}
-                    onChange={(e) => setSessionCode(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase())}
+                    onChange={(e) => {
+                      setError('');
+                      setSessionCode(e.target.value.replace(/[^a-z0-9]/gi, '').toUpperCase());
+                    }}
                     placeholder="ABC123"
                     maxLength={6}
                     autoCapitalize="characters"
@@ -264,7 +311,7 @@ export default function JoinPage() {
                   />
                 )}
 
-                {checkingClass && <p className="text-sm text-[#697087]">Checking how this class is joining…</p>}
+                {classLookupStatus === 'checking' && <p role="status" aria-live="polite" className="text-sm text-[#697087]">Checking the class…</p>}
                 {participationMode && <div className="rounded-xl border border-[#dcd8ff] bg-[#f7f5ff] p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#5146e5]">{participationMode === 'course-record' ? 'Course record' : participationMode === 'session-name' ? 'Names for this session' : 'Anonymous session'}</p>
                   <p className="mt-1 text-sm leading-6 text-[#555d73]">{participationMode === 'course-record' ? 'Your attendance, progress, points, and rewards can carry into future sessions.' : participationMode === 'session-name' ? 'Your nickname helps the instructor recognize you today. This session will not be added to a course-long record.' : 'No name or student number is collected. Responses contribute only to this session’s class results.'}</p>
@@ -289,7 +336,7 @@ export default function JoinPage() {
 
                 {(participationMode === 'course-record' || participationMode === 'session-name') && <div>
                   <Input
-                    label="Name or nickname (if requested)"
+                    label={participationMode === 'course-record' ? 'Preferred name (optional)' : 'Name or nickname'}
                     value={studentDisplayName}
                     onChange={(e) => setStudentDisplayName(e.target.value.slice(0, 60))}
                     placeholder="What your instructor should call you"
@@ -329,14 +376,20 @@ export default function JoinPage() {
                 </label>}
 
                 {error && (
-                  <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md">
+                  <div role="alert" className="rounded-xl border border-[#f0b9ad] bg-[#fff5f1] p-3 text-sm leading-6 text-[#a83d2a]">
                     {error}
                   </div>
                 )}
 
                 <div>
-                  <Button type="submit" loading={loading} className="flex w-full items-center justify-center">
-                    Join class
+                  <Button
+                    type="submit"
+                    loading={loading}
+                    disabled={loading || normalizedSessionCode.length !== 6 || classLookupStatus === 'checking' || classLookupStatus === 'not-found'}
+                    aria-busy={loading || classLookupStatus === 'checking'}
+                    className="flex min-h-12 w-full items-center justify-center"
+                  >
+                    {classLookupStatus === 'checking' ? 'Checking class' : error && classLookupStatus === 'idle' ? 'Try again' : 'Join class'}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>

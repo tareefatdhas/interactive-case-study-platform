@@ -8,11 +8,14 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
 }
 
-test('join flow fits a phone and keeps primary fields usable', async ({ page }) => {
+test('join flow keeps the first mobile step focused on the class code', async ({ page }) => {
   await page.goto('/join');
 
-  await expect(page.getByRole('heading', { name: 'Join the class.' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Student number' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Join this class' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Class code' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Student number' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Join class' })).toBeDisabled();
+  await expect(page.getByText('Keep this page open')).toBeHidden();
   await expectNoHorizontalOverflow(page);
 });
 
@@ -132,7 +135,8 @@ test('my course opens over a live activity and returns focus to class', async ({
   const courseSheet = studentPage.getByRole('dialog', { name: 'Profile and progress' });
   await expect(courseSheet).toBeVisible();
   await courseSheet.getByRole('button', { name: 'Standing', exact: true }).click();
-  await expect(courseSheet.getByRole('heading', { name: 'No board published' })).toBeVisible();
+  await expect(courseSheet.getByRole('heading', { name: 'Your place in the room' })).toBeVisible();
+  await expect(courseSheet.getByText('Standing is not available yet.')).toBeVisible();
   await courseSheet.getByRole('button', { name: /Back to class/ }).click();
   await expect(courseSheet).toBeHidden();
   await expect(studentPage.getByText('Where do network effects become most fragile?', { exact: true })).toBeVisible();
