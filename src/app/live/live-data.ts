@@ -133,6 +133,8 @@ export type LiveSessionContext = {
 
 export type LessonDisplayState = {
   session: LiveSessionContext;
+  checkInMode: 'first' | 'returning';
+  checkInBenchmark: number;
   lobbyOpen: boolean;
   connectedStudents: number;
   counts: Counts;
@@ -170,7 +172,7 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
     title: 'Arrival pulse',
     prompt: 'How are you arriving today?',
     options: ['Energized', 'Steady', 'A little tired', 'Overwhelmed', 'Prefer not to say'],
-    resultVisibility: 'live',
+    resultVisibility: 'instructor-only',
     plannedTime: 'Start of class',
   },
   {
@@ -458,8 +460,10 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       wheelSource: interaction.wheelSource,
       wheelItems: interaction.wheelItems,
       wheelRemoveSelected: interaction.wheelRemoveSelected,
-      resultVisibility: interaction.resultVisibility
-        || (type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live'),
+      resultVisibility: type === 'pulse'
+        ? 'instructor-only'
+        : interaction.resultVisibility
+          || (type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live'),
       plannedTime: interaction.plannedTime || 'During class',
     } satisfies LiveInteraction];
   });

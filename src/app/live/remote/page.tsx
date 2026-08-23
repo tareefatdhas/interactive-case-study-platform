@@ -24,6 +24,7 @@ import {
   LESSON_STORAGE_KEY,
   createInteractionResults,
   prepareLiveInteractions,
+  total,
   type LessonDisplayState,
   type LiveInteraction,
   type LiveQuestion,
@@ -44,6 +45,8 @@ function protectStudentView(state: LessonDisplayState): LessonDisplayState {
 function createDemoState(): LessonDisplayState {
   return {
     session: DEMO_SESSION,
+    checkInMode: 'returning',
+    checkInBenchmark: total(HISTORY[1].counts),
     lobbyOpen: false,
     connectedStudents: 0,
     counts: HISTORY[0].counts,

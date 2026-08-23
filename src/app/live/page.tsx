@@ -44,7 +44,7 @@ import {
   type StoredAttendanceClaim,
 } from '@/lib/firebase/live-classroom';
 import { Timestamp } from 'firebase/firestore';
-import type { SessionInteractionRun } from '@/types';
+import type { Session, SessionInteractionRun } from '@/types';
 import { interactionRunSummariesDiffer, reconcileInteractionRuns } from '@/lib/session-response-summary';
 import { claimSessionStart } from '@/lib/firebase/billing';
 import { bucketDuration, bucketParticipants, setInstructorPlan, track } from '@/lib/analytics/events';
@@ -132,6 +132,40 @@ const NAV_ITEMS = [
 
 const SESSION_PLAN = DEMO_LIVE_INTERACTIONS;
 
+function checkInCountForSession(session: Session) {
+  const pulseIds = new Set((session.interactions || [])
+    .filter((interaction) => interaction.type === 'pulse')
+    .map((interaction) => interaction.id));
+  const pulseResponses = (session.interactionRuns || [])
+    .filter((run) => pulseIds.has(run.interactionId) && run.status !== 'archived')
+    .map((run) => run.responseCount || 0);
+  return Math.max(0, session.studentsJoined?.length || 0, ...pulseResponses);
+}
+
+function recentCheckInBaseline(sessions: Session[], currentSessionId: string, courseId?: string) {
+  if (!courseId) return { mode: 'first' as const, benchmark: 0 };
+  const counts = sessions
+    .filter((candidate) => (
+      candidate.id !== currentSessionId
+      && candidate.courseId === courseId
+      && !candidate.active
+      && Boolean(candidate.startedAt || candidate.endedAt)
+    ))
+    .sort((left, right) => (
+      (right.endedAt?.toMillis?.() || right.startedAt?.toMillis?.() || right.createdAt?.toMillis?.() || 0)
+      - (left.endedAt?.toMillis?.() || left.startedAt?.toMillis?.() || left.createdAt?.toMillis?.() || 0)
+    ))
+    .map(checkInCountForSession)
+    .filter((count) => count > 0)
+    .slice(0, 3);
+
+  if (!counts.length) return { mode: 'first' as const, benchmark: 0 };
+  return {
+    mode: 'returning' as const,
+    benchmark: Math.max(1, Math.round(counts.reduce((sum, count) => sum + count, 0) / counts.length)),
+  };
+}
+
 const ACTIVITY_TYPES: Array<{
   type: LiveInteraction['type'];
   label: string;
@@ -187,7 +221,9 @@ const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInt
     wheelSource: type === 'spin-wheel' ? 'students' : undefined,
     wheelItems: type === 'spin-wheel' ? [] : undefined,
     wheelRemoveSelected: type === 'spin-wheel' ? true : undefined,
-    resultVisibility: type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live',
+    resultVisibility: type === 'pulse' || type === 'open-response' || type === 'group-work'
+      ? 'instructor-only'
+      : type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : 'live',
     plannedTime: 'Added during class',
   };
 };
@@ -416,7 +452,11 @@ function InteractionComposer({
       {type === 'group-work' && <label><span>Students per group</span><input inputMode="numeric" value={groupSize} onChange={(event) => setGroupSize(event.target.value.replace(/\D/g, '').slice(0, 2))} /></label>}
       {type === 'team-formation' && <label><span>Course tags <small>Separate with commas</small></span><input value={teamTags} onChange={(event) => setTeamTags(event.target.value)} placeholder="Theme 1, Theme 2, Theme 3" /></label>}
       {type === 'spin-wheel' && <div className="interaction-composer-wheel"><label><span>Choose from</span><select value={wheelSource} onChange={(event) => setWheelSource(event.target.value as NonNullable<LiveInteraction['wheelSource']>)}><option value="students">Students who joined</option><option value="teams">Teams created in class</option><option value="custom">A custom list</option></select></label>{wheelSource === 'custom' && <label><span>Items · one per line</span><textarea value={wheelItems} onChange={(event) => setWheelItems(event.target.value)} rows={6} maxLength={1000} placeholder={'Topic A\nTopic B\nTopic C'} /></label>}<label className="interaction-wheel-checkbox"><input type="checkbox" checked={wheelRemoveSelected} onChange={(event) => setWheelRemoveSelected(event.target.checked)} /> Remove each selection before the next spin</label></div>}
-      {type !== 'timer' && type !== 'team-formation' && type !== 'spin-wheel' && <label><span>When students see results</span><select value={resultVisibility} onChange={(event) => setResultVisibility(event.target.value as NonNullable<LiveInteraction['resultVisibility']>)}><option value="live">As responses arrive</option><option value="after-reveal">When I reveal them</option><option value="instructor-only">Instructor only</option></select></label>}
+      {type === 'pulse' ? (
+        <div className="activity-privacy-note"><Lock size={15} /><span><strong>Answers stay private</strong><small>The projector shows check-in progress. Only the instructor sees how students responded.</small></span></div>
+      ) : type !== 'timer' && type !== 'team-formation' && type !== 'spin-wheel' ? (
+        <label><span>When students see results</span><select value={resultVisibility} onChange={(event) => setResultVisibility(event.target.value as NonNullable<LiveInteraction['resultVisibility']>)}><option value="live">As responses arrive</option><option value="after-reveal">When I reveal them</option><option value="instructor-only">Instructor only</option></select></label>
+      ) : null}
       <button className="interaction-composer-submit" type="button" onClick={submit} disabled={busy || !title.trim() || (type !== 'timer' && !prompt.trim())}>{busy ? 'Saving…' : submitLabel} <ArrowRight size={15} /></button>
     </div>
   );
@@ -548,8 +588,10 @@ function InstructorInteractionStage({
               ? 'Written responses stay on your screen until you choose one to share.'
               : isTeamFormation
                 ? 'Teams appear here as coordinators register them.'
-              : isWordCloud
+            : isWordCloud
                 ? 'Repeated answers grow as the class cloud forms on the projector.'
+              : interaction.type === 'pulse'
+                ? 'You can see how students responded. The projector only shows check-in progress.'
               : 'The class distribution updates as responses arrive.'}</p>
         </div>
         {!isClock && !isWheel && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{isTeamFormation ? 'students joined' : interaction.type === 'group-work' ? 'teams' : 'responses'}</span></div>}
@@ -643,6 +685,8 @@ export default function LiveLessonPrototype() {
   const [classroomStateReady, setClassroomStateReady] = useState(false);
   const [classroomStateError, setClassroomStateError] = useState('');
   const [sessionContext, setSessionContext] = useState<LiveSessionContext>(DEMO_SESSION);
+  const [checkInMode, setCheckInMode] = useState<'first' | 'returning'>('returning');
+  const [checkInBenchmark, setCheckInBenchmark] = useState(total(HISTORY[1].counts));
   const [sessionPlan, setSessionPlan] = useState(SESSION_PLAN);
   const [liveCounts, setLiveCounts] = useState<Counts>(HISTORY[0].counts);
   const [paused, setPaused] = useState(false);
@@ -823,6 +867,8 @@ export default function LiveLessonPrototype() {
 
     return {
       session: sessionContext,
+      checkInMode,
+      checkInBenchmark,
       lobbyOpen,
       connectedStudents,
       counts: selectedCounts,
@@ -851,7 +897,7 @@ export default function LiveLessonPrototype() {
       motivationMoment,
       updatedAt: Date.now(),
     };
-  }, [activeInteraction, activeQuestion, classQuestions, comparisonCounts, connectedStudents, formedTeams, incomingMood, interactionResults, liveTimer, lobbyOpen, motivationMoment, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
+  }, [activeInteraction, activeQuestion, checkInBenchmark, checkInMode, classQuestions, comparisonCounts, connectedStudents, formedTeams, incomingMood, interactionResults, liveTimer, lobbyOpen, motivationMoment, onboardingMoodCounts, onboardingRunId, onboardingStep, paused, playingHistory, selectedCounts, selectedWeek, sessionContext, showComparison]);
   const displayStateRef = useRef(displayState);
 
   useEffect(() => {
@@ -873,7 +919,7 @@ export default function LiveLessonPrototype() {
 
     let cancelled = false;
     const loadPreparedSession = async () => {
-      const { getCourse, getSession, updateSession } = await import('@/lib/firebase/firestore');
+      const { getCourse, getSession, getSessionsByTeacher, updateSession } = await import('@/lib/firebase/firestore');
       const session = await getSession(sessionId);
       if (cancelled) return;
       if (!session) {
@@ -899,6 +945,15 @@ export default function LiveLessonPrototype() {
       classStartedAtRef.current = session.startedAt?.toMillis?.() || Date.now();
 
       const course = session.courseId ? await getCourse(session.courseId) : null;
+      const teacherSessions = course?.id
+        ? await getSessionsByTeacher(session.teacherId).catch((error) => {
+            console.warn('Could not load the recent check-in benchmark.', error);
+            return [];
+          })
+        : [];
+      const checkInContext = recentCheckInBaseline(teacherSessions, sessionId, course?.id);
+      setCheckInMode(checkInContext.mode);
+      setCheckInBenchmark(checkInContext.benchmark);
       let courseTeams = course?.teams || [];
       if (course) {
         try {
@@ -960,6 +1015,8 @@ export default function LiveLessonPrototype() {
       const remoteState = await initializeInstructorClassroom(sessionId, context, {
         ...displayStateRef.current,
         session: context,
+        checkInMode: checkInContext.mode,
+        checkInBenchmark: checkInContext.benchmark,
         lobbyOpen: true,
         connectedStudents: 0,
         counts: { ...EMPTY_ONBOARDING_COUNTS },
@@ -998,6 +1055,8 @@ export default function LiveLessonPrototype() {
       interactionRunsRef.current = restoredRuns;
       setInteractionRuns(restoredRuns);
       setLiveCounts(remoteState.counts || { ...EMPTY_ONBOARDING_COUNTS });
+      setCheckInMode(remoteState.checkInMode || checkInContext.mode);
+      setCheckInBenchmark(remoteState.checkInBenchmark || checkInContext.benchmark);
       setSelectedWeek(remoteState.selectedWeek || 0);
       setShowComparison(Boolean(remoteState.showComparison));
       setPlayingHistory(Boolean(remoteState.playingHistory));
@@ -1977,6 +2036,8 @@ export default function LiveLessonPrototype() {
     const resetState: LessonDisplayState = {
       ...displayStateRef.current,
       session: sessionContext,
+      checkInMode,
+      checkInBenchmark,
       lobbyOpen: true,
       connectedStudents,
       counts: { ...EMPTY_ONBOARDING_COUNTS },

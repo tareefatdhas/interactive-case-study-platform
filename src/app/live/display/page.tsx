@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'react-qr-code';
-import { Activity, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Sparkles, Smartphone, Timer, Users, Waves } from 'lucide-react';
-import LivingMoodField from '@/components/live/LivingMoodField';
+import { Activity, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Sparkles, Smartphone, Timer, Users } from 'lucide-react';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import SignalAvatarBadge from '@/components/gamification/SignalAvatarBadge';
+import CollectiveVisual from '../pulse-preview/CollectiveVisual';
 import { joinDisplayPresence, subscribeToStudentPublicState } from '@/lib/firebase/live-classroom';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
 import {
@@ -20,7 +20,6 @@ import {
   buildWordCloudItems,
   dotStyle,
   formatSessionCode,
-  percent,
   resultPercent,
   total,
   type LessonDisplayState,
@@ -29,6 +28,8 @@ import './display.css';
 
 const DEFAULT_STATE: LessonDisplayState = {
   session: DEMO_SESSION,
+  checkInMode: 'returning',
+  checkInBenchmark: total(HISTORY[1].counts),
   lobbyOpen: false,
   connectedStudents: 0,
   counts: HISTORY[0].counts,
@@ -477,6 +478,54 @@ function ClassroomLobby({ lessonState, joinUrl }: { lessonState: LessonDisplaySt
   );
 }
 
+function PrivateCheckInProjector({
+  lessonState,
+  joinUrl,
+  prompt,
+  responses,
+}: {
+  lessonState: LessonDisplayState;
+  joinUrl: string;
+  prompt: string;
+  responses: number;
+}) {
+  const joinLink = new URL(joinUrl);
+  joinLink.searchParams.set('code', lessonState.session.sessionCode.replace(/\s/g, ''));
+  const returning = lessonState.checkInMode === 'returning' && lessonState.checkInBenchmark > 0;
+  const theme = returning ? 'launch' : 'constellation';
+
+  return (
+    <section className="private-check-in-stage" aria-live="polite">
+      <aside className="private-check-in-join">
+        <span className="private-check-in-eyebrow">Join the class</span>
+        <h1>Scan to check in</h1>
+        <p>Your answer stays between you and your instructor.</p>
+        <div className="private-check-in-qr" aria-label="Scan to join this class">
+          <QRCode value={joinLink.toString()} title="Scan to join this class" level="M" size={230} bgColor="#fffefa" fgColor="#101a38" />
+        </div>
+        <span className="private-check-in-url">{joinUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+        <span className="private-check-in-code-label">Class code</span>
+        <strong className="private-check-in-code">{formatSessionCode(lessonState.session.sessionCode)}</strong>
+      </aside>
+
+      <div className="private-check-in-collective">
+        <header>
+          <div><span>Private check-in</span><strong>{prompt}</strong></div>
+          <p><strong>{responses}</strong> checked in{returning ? <small> · around {lessonState.checkInBenchmark} usually join</small> : null}</p>
+        </header>
+        <div className="private-check-in-visual">
+          <CollectiveVisual
+            benchmark={returning ? lessonState.checkInBenchmark : Math.max(responses, 24)}
+            mode={returning ? 'returning' : 'first'}
+            responses={responses}
+            theme={theme}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CourseMomentumMoment({ moment }: { moment: NonNullable<LessonDisplayState['motivationMoment']> }) {
   const progress = Math.min(100, Math.max(0, moment.progress));
   return (
@@ -650,7 +699,7 @@ export default function ClassroomDisplayPage() {
 
     if (current.runId && current.runId === prior.runId && current.responseCount > prior.responseCount) {
       const interaction = lessonState.activeInteraction;
-      const canShowChoice = interaction?.resultVisibility === 'live' || interaction?.type === 'pulse';
+      const canShowChoice = interaction?.resultVisibility === 'live' && interaction?.type !== 'pulse';
       const changedOption = canShowChoice
         ? current.optionCounts.findIndex((count, index) => count > (prior.optionCounts[index] || 0))
         : -1;
@@ -830,12 +879,6 @@ export default function ClassroomDisplayPage() {
   const responseTotal = total(lessonState.counts);
   const joinDisplayUrl = joinUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
   const featuredQuestion = lessonState.questions.find((question) => question.id === lessonState.featuredQuestionId) || null;
-  const selectedDate = HISTORY[lessonState.selectedWeek]?.date ?? 'Today';
-  const roomSignal = useMemo(() => {
-    const overwhelmed = lessonState.counts.overwhelmed;
-    return overwhelmed >= 12 ? 'The room is settling in' : 'The room feels steady';
-  }, [lessonState.counts.overwhelmed]);
-
   const enterFullscreen = async () => {
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
     else await document.exitFullscreen();
@@ -924,65 +967,35 @@ export default function ClassroomDisplayPage() {
         </>
       ) : lessonState.activeInteraction ? (
         <>
-          <ClassroomInteraction lessonState={lessonState} />
+          {lessonState.activeInteraction.type === 'pulse' && lessonState.interactionResults ? (
+            <PrivateCheckInProjector
+              lessonState={lessonState}
+              joinUrl={joinUrl}
+              prompt={lessonState.activeInteraction.prompt}
+              responses={lessonState.interactionResults.responseCount}
+            />
+          ) : <ClassroomInteraction lessonState={lessonState} />}
           <footer className="display-footer">
             <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.activeInteraction.type === 'spin-wheel' ? lessonState.interactionResults?.wheelSelectedLabel ? 'Selection complete' : 'Wheel ready' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
             <div className="display-footer-insight remote-control-hint"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
-            <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
+            {lessonState.activeInteraction.type === 'pulse'
+              ? <div className="display-footer-insight"><Lock size={16} /><span>Answers stay private</span></div>
+              : <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>}
           </footer>
         </>
       ) : (
         <>
-          <section className="display-content">
-        <div className="display-prompt">
-          <div>
-            <span className="display-eyebrow"><Waves size={20} /> Class Pulse</span>
-            <h1>How are you arriving today?</h1>
-            <p><Lock size={16} /> Your response is private. Only the class total is shown.</p>
-          </div>
-          <div className="display-response-count"><Users size={22} /><strong>{responseTotal}</strong><span>{responseTotal === 1 ? 'response' : 'responses'}</span></div>
-        </div>
-
-        <div className="projector-chart" aria-live="polite">
-          <div className="projector-key">
-            <span><i className="solid" /> {selectedDate}</span>
-            {lessonState.showComparison && <span><i className="outline" /> Prior class</span>}
-          </div>
-
-          {MOODS.map((mood) => {
-            const value = lessonState.counts[mood.key];
-            const currentPercent = percent(value, lessonState.counts);
-            const previousPercent = percent(lessonState.comparisonCounts[mood.key], lessonState.comparisonCounts);
-            return (
-              <div
-                className="projector-row"
-                key={mood.key}
-                style={{ '--mood-color': mood.color } as CSSProperties}
-              >
-                <div className="projector-label"><i /><span>{mood.label}</span></div>
-                <div className="projector-cluster">
-                  <LivingMoodField
-                    color={mood.color}
-                    currentPercent={currentPercent}
-                    previousPercent={previousPercent}
-                    showComparison={lessonState.showComparison}
-                    incoming={lessonState.incomingMood === mood.key}
-                    replaying={lessonState.playingHistory}
-                    projector
-                    animationKey={lessonState.selectedWeek}
-                  />
-                </div>
-                <div className="projector-value"><strong>{currentPercent}%</strong><span>{value} students</span></div>
-              </div>
-            );
-          })}
-        </div>
-          </section>
+          <PrivateCheckInProjector
+            lessonState={lessonState}
+            joinUrl={joinUrl}
+            prompt="How are you arriving today?"
+            responses={responseTotal}
+          />
 
           <footer className="display-footer">
-            <div className="room-rhythm"><i /><span><strong>{roomSignal}</strong><small>{lessonState.paused ? 'Responses are paused' : 'New responses appear as they arrive'}</small></span></div>
-            <div className="display-history"><MonitorUp size={18} /><span>{lessonState.playingHistory ? `Replaying ${selectedDate}` : 'Live class pulse'}</span></div>
-            <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>
+            <div className="room-rhythm"><i /><span><strong>{lessonState.paused ? 'Check-in paused' : 'Check-in is open'}</strong><small>{lessonState.paused ? 'No new answers are being collected' : 'Each arrival adds to the shared visual'}</small></span></div>
+            <div className="display-history"><Lock size={18} /><span>Individual answers stay private</span></div>
+            <div className="display-footer-insight"><Users size={16} /><span>{responseTotal} checked in</span></div>
           </footer>
         </>
       )}

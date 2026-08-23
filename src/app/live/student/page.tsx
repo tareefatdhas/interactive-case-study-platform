@@ -55,6 +55,7 @@ import {
   LESSON_STORAGE_KEY,
   MOODS,
   buildWordCloudItems,
+  total,
   type LessonDisplayState,
   type InteractionResponse,
   type LiveInteraction,
@@ -79,6 +80,8 @@ import {
 
 const DEFAULT_STATE: LessonDisplayState = {
   session: DEMO_SESSION,
+  checkInMode: 'returning',
+  checkInBenchmark: total(HISTORY[1].counts),
   lobbyOpen: false,
   connectedStudents: 0,
   counts: HISTORY[0].counts,
@@ -1610,7 +1613,7 @@ export default function StudentWelcomePage() {
       response.teamName = team?.name;
       response.teamTag = team?.tag;
     }
-    const canShowChoiceColor = interaction.resultVisibility === 'live' || interaction.type === 'pulse';
+    const canShowChoiceColor = interaction.resultVisibility === 'live' && interaction.type !== 'pulse';
     const transportColor = canShowChoiceColor && selectedOption !== null
       ? OPTION_COLORS[selectedOption % OPTION_COLORS.length]
       : '#6654e9';
@@ -2150,7 +2153,7 @@ export default function StudentWelcomePage() {
                     </HapticButton>
                   </div>
                 )}
-                <div className="student-private-line"><ShieldCheck size={16} /> The projector shows the class result, not your name.</div>
+                <div className="student-private-line"><ShieldCheck size={16} /> {lessonState.activeInteraction.type === 'pulse' ? 'The projector shows check-in progress, not your answer.' : 'The projector shows the class result, not your name.'}</div>
               </>
             )}
             {submissionError && <div className="student-response-error" role="alert">{submissionError}</div>}
@@ -2182,7 +2185,7 @@ export default function StudentWelcomePage() {
               <article><span><MessageCircle size={21} /></span><div><strong>Ask or upvote</strong><small>Surface a question without interrupting.</small></div></article>
               <article><span><Activity size={21} /></span><div><strong>Signal the pace</strong><small>Let the instructor know you need a pause.</small></div></article>
             </div>
-            <div className="student-privacy-note"><Lock size={16} /><span><strong>Your pulse response stays private.</strong> The projector shows class totals only.</span></div>
+            <div className="student-privacy-note"><Lock size={16} /><span><strong>Your pulse response stays private.</strong> The projector only shows how many students have checked in.</span></div>
           </div>
         )}
 
