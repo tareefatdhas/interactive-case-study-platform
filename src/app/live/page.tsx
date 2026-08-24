@@ -216,6 +216,7 @@ const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInt
     durationMinutes: type === 'timer' ? 5 : type === 'group-work' ? 8 : undefined,
     discussionMinutes: type === 'peer-learning' ? 2 : undefined,
     groupSize: type === 'group-work' ? 4 : undefined,
+    groupingMode: type === 'group-work' ? 'course-teams' : undefined,
     teamTags: type === 'team-formation' ? ['Theme 1', 'Theme 2', 'Theme 3'] : undefined,
     requireTeamTag: type === 'team-formation' ? true : undefined,
     wheelSource: type === 'spin-wheel' ? 'students' : undefined,
@@ -333,6 +334,7 @@ function InteractionComposer({
   type,
   initial,
   submitLabel,
+  teamCount = 0,
   busy = false,
   onCancel,
   onSubmit,
@@ -340,6 +342,7 @@ function InteractionComposer({
   type: LiveInteraction['type'];
   initial?: LiveInteraction;
   submitLabel: string;
+  teamCount?: number;
   busy?: boolean;
   onCancel: () => void;
   onSubmit: (interaction: LiveInteraction) => void;
@@ -352,6 +355,7 @@ function InteractionComposer({
   const [explanation, setExplanation] = useState(initialDraft.explanation || '');
   const [discussionMinutes, setDiscussionMinutes] = useState(String(initialDraft.discussionMinutes || 2));
   const [groupSize, setGroupSize] = useState(String(initialDraft.groupSize || 4));
+  const [groupingMode, setGroupingMode] = useState<NonNullable<LiveInteraction['groupingMode']>>(initialDraft.groupingMode || (teamCount ? 'course-teams' : 'ad-hoc'));
   const [teamTags, setTeamTags] = useState((initialDraft.teamTags || []).join(', '));
   const [wheelSource, setWheelSource] = useState<NonNullable<LiveInteraction['wheelSource']>>(initialDraft.wheelSource || 'students');
   const [wheelItems, setWheelItems] = useState((initialDraft.wheelItems || []).join('\n'));
@@ -396,6 +400,7 @@ function InteractionComposer({
       durationMinutes: usesTimer ? durationSeconds / 60 : initialDraft.durationMinutes,
       discussionMinutes: type === 'peer-learning' ? Math.max(1, Number.parseInt(discussionMinutes || '2', 10) || 2) : undefined,
       groupSize: type === 'group-work' ? Math.max(2, Number.parseInt(groupSize || '4', 10) || 4) : undefined,
+      groupingMode: type === 'group-work' ? groupingMode : undefined,
       teamTags: type === 'team-formation' ? teamTags.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8) : undefined,
       requireTeamTag: type === 'team-formation' ? teamTags.split(',').some((tag) => tag.trim()) : undefined,
       wheelSource: type === 'spin-wheel' ? wheelSource : undefined,
@@ -449,7 +454,7 @@ function InteractionComposer({
         </div>
       )}
       {type === 'peer-learning' && <label><span>Discussion time in minutes</span><input inputMode="numeric" value={discussionMinutes} onChange={(event) => setDiscussionMinutes(event.target.value.replace(/\D/g, '').slice(0, 2))} /></label>}
-      {type === 'group-work' && <label><span>Students per group</span><input inputMode="numeric" value={groupSize} onChange={(event) => setGroupSize(event.target.value.replace(/\D/g, '').slice(0, 2))} /></label>}
+      {type === 'group-work' && <div className="interaction-composer-wheel"><label><span>How students will work</span><select value={groupingMode} onChange={(event) => setGroupingMode(event.target.value as NonNullable<LiveInteraction['groupingMode']>)}><option value="course-teams">Use their saved class teams</option><option value="ad-hoc">Make temporary groups now</option></select></label>{groupingMode === 'ad-hoc' ? <label><span>Students per group</span><input inputMode="numeric" value={groupSize} onChange={(event) => setGroupSize(event.target.value.replace(/\D/g, '').slice(0, 2))} /></label> : <p className="interaction-composer-note">{teamCount ? `${teamCount} class ${teamCount === 1 ? 'team is' : 'teams are'} ready. Each student will see their saved team.` : 'No class teams are available yet. Add teams to the class or use temporary groups.'}</p>}</div>}
       {type === 'team-formation' && <label><span>Course tags <small>Separate with commas</small></span><input value={teamTags} onChange={(event) => setTeamTags(event.target.value)} placeholder="Theme 1, Theme 2, Theme 3" /></label>}
       {type === 'spin-wheel' && <div className="interaction-composer-wheel"><label><span>Choose from</span><select value={wheelSource} onChange={(event) => setWheelSource(event.target.value as NonNullable<LiveInteraction['wheelSource']>)}><option value="students">Students who joined</option><option value="teams">Teams created in class</option><option value="custom">A custom list</option></select></label>{wheelSource === 'custom' && <label><span>Items · one per line</span><textarea value={wheelItems} onChange={(event) => setWheelItems(event.target.value)} rows={6} maxLength={1000} placeholder={'Topic A\nTopic B\nTopic C'} /></label>}<label className="interaction-wheel-checkbox"><input type="checkbox" checked={wheelRemoveSelected} onChange={(event) => setWheelRemoveSelected(event.target.checked)} /> Remove each selection before the next spin</label></div>}
       {type === 'pulse' ? (
@@ -592,9 +597,11 @@ function InstructorInteractionStage({
                 ? 'Repeated answers grow as the class cloud forms on the projector.'
               : interaction.type === 'pulse'
                 ? 'You can see how students responded. The projector only shows check-in progress.'
+              : interaction.type === 'group-work'
+                ? interaction.groupingMode === 'ad-hoc' || !teams.length ? `Students form temporary groups of about ${interaction.groupSize || 4}.` : `${teams.length} class ${teams.length === 1 ? 'team is' : 'teams are'} available for this activity.`
               : 'The class distribution updates as responses arrive.'}</p>
         </div>
-        {!isClock && !isWheel && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{isTeamFormation ? 'students joined' : interaction.type === 'group-work' ? 'teams' : 'responses'}</span></div>}
+        {!isClock && !isWheel && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{isTeamFormation ? 'students joined' : interaction.type === 'group-work' ? interaction.groupingMode === 'ad-hoc' || !teams.length ? 'groups' : 'teams' : 'responses'}</span></div>}
       </header>
 
       {isClock ? (
@@ -2470,6 +2477,7 @@ export default function LiveLessonPrototype() {
                     key={`quick-${quickAddType}`}
                     type={quickAddType}
                     submitLabel="Show now"
+                    teamCount={formedTeams.length}
                     onCancel={() => setQuickAddType(null)}
                     onSubmit={(interaction) => {
                       const plannedInteraction = { ...interaction, id: `live-${interaction.type}-${Date.now()}` };
@@ -2659,6 +2667,7 @@ export default function LiveLessonPrototype() {
                     type={planEditingInteraction.type}
                     initial={planEditingInteraction}
                     submitLabel="Save changes"
+                    teamCount={formedTeams.length}
                     busy={planSaving}
                     onCancel={() => setPlanEditingInteraction(null)}
                     onSubmit={updatePlannedInteraction}
@@ -2669,6 +2678,7 @@ export default function LiveLessonPrototype() {
                   key={`plan-${planComposerType}`}
                   type={planComposerType}
                   submitLabel="Add to plan"
+                  teamCount={formedTeams.length}
                   busy={planSaving}
                   onCancel={() => setPlanComposerType(null)}
                   onSubmit={addInteractionToPlan}
@@ -2839,6 +2849,7 @@ export default function LiveLessonPrototype() {
           activeInteraction={activeInteraction}
           results={interactionResults}
           connectedStudents={connectedStudents}
+          teamCount={formedTeams.length}
           questionCount={classQuestions.length}
           questions={classQuestions}
           featuredQuestionId={activeQuestion}

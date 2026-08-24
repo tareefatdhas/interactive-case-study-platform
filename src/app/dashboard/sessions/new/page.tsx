@@ -279,6 +279,7 @@ function NewSessionContent() {
         durationMinutes: type === 'case-study' ? 15 : type === 'group-work' ? 8 : type === 'timer' ? 5 : type === 'word-cloud' || type === 'spin-wheel' ? 2 : 3,
         discussionMinutes: type === 'peer-learning' ? 2 : undefined,
         groupSize: type === 'group-work' ? 4 : undefined,
+        groupingMode: type === 'group-work' ? (selectedCourse?.teams?.length ? 'course-teams' : 'ad-hoc') : undefined,
         teamTags: type === 'team-formation' ? (selectedCourse?.teamTags?.length ? selectedCourse.teamTags : ['Theme 1', 'Theme 2', 'Theme 3']) : undefined,
         requireTeamTag: type === 'team-formation' ? true : undefined,
         caseStudyId: caseStudy?.id,
@@ -780,12 +781,31 @@ function NewSessionContent() {
                             <textarea aria-label="Answer explanation" value={interaction.explanation || ''} onChange={(event) => updateInteraction(interaction.id, { explanation: event.target.value })} rows={2} placeholder="Explain the answer after students respond" className="w-full resize-none rounded-xl border border-[#d7dae5] bg-white px-3.5 py-3 text-sm leading-6 text-[#313950] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
                           )}
                           {interaction.type === 'peer-learning' && <label className="flex items-center gap-3 rounded-xl bg-[#f7f6ff] px-3.5 py-3 text-xs font-semibold text-[#4f576d]"><Repeat2 className="h-4 w-4 text-[#5146e5]" /> Partner discussion <input aria-label="Partner discussion minutes" type="number" min={1} max={10} value={interaction.discussionMinutes || 2} onChange={(event) => updateInteraction(interaction.id, { discussionMinutes: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5 text-[#313950]" /> min</label>}
-                          {interaction.type === 'group-work' && <label className="flex items-center gap-3 rounded-xl bg-[#fff7f2] px-3.5 py-3 text-xs font-semibold text-[#4f576d]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested group size <input aria-label="Suggested group size" type="number" min={2} max={10} value={interaction.groupSize || 4} onChange={(event) => updateInteraction(interaction.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5 text-[#313950]" /> students</label>}
+                          {interaction.type === 'group-work' && (
+                            <fieldset className="rounded-xl border border-[#eadfd9] bg-[#fff9f5] p-3.5">
+                              <legend className="px-1 text-xs font-bold text-[#4f576d]">How students will work</legend>
+                              <div className="mt-1 grid gap-2 sm:grid-cols-2">
+                                <button type="button" aria-pressed={(interaction.groupingMode || 'course-teams') === 'course-teams'} onClick={() => updateInteraction(interaction.id, { groupingMode: 'course-teams' })} className={`seminar-focus rounded-xl border p-3 text-left transition ${(interaction.groupingMode || 'course-teams') === 'course-teams' ? 'border-[#5146e5] bg-white text-[#101a38] shadow-sm' : 'border-transparent bg-[#f8f3ef] text-[#697087] hover:bg-white'}`}>
+                                  <span className="flex items-center gap-2 text-xs font-bold"><UsersRound className="h-4 w-4 text-[#5146e5]" /> Use class teams</span>
+                                  <small className="mt-1.5 block text-[11px] font-normal leading-4">Students use their saved team. One person submits for everyone.</small>
+                                </button>
+                                <button type="button" aria-pressed={interaction.groupingMode === 'ad-hoc'} onClick={() => updateInteraction(interaction.id, { groupingMode: 'ad-hoc' })} className={`seminar-focus rounded-xl border p-3 text-left transition ${interaction.groupingMode === 'ad-hoc' ? 'border-[#5146e5] bg-white text-[#101a38] shadow-sm' : 'border-transparent bg-[#f8f3ef] text-[#697087] hover:bg-white'}`}>
+                                  <span className="flex items-center gap-2 text-xs font-bold"><UsersRound className="h-4 w-4 text-[#c85540]" /> Make groups now</span>
+                                  <small className="mt-1.5 block text-[11px] font-normal leading-4">Students form temporary groups for this activity.</small>
+                                </button>
+                              </div>
+                              {(interaction.groupingMode || 'course-teams') === 'course-teams' ? (
+                                <p className="mt-2.5 text-[11px] leading-4 text-[#6a554e]">{selectedCourse?.teams?.length ? `${selectedCourse.teams.length} class ${selectedCourse.teams.length === 1 ? 'team is' : 'teams are'} ready.` : 'No class teams are saved yet. Add them from the Teams tab before class.'}</p>
+                              ) : (
+                                <label className="mt-2.5 flex items-center gap-3 text-xs font-semibold text-[#4f576d]"><UsersRound className="h-4 w-4 text-[#c85540]" /> Suggested group size <input aria-label="Suggested group size" type="number" min={2} max={10} value={interaction.groupSize || 4} onChange={(event) => updateInteraction(interaction.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5 text-[#313950]" /> students</label>
+                              )}
+                            </fieldset>
+                          )}
                           {interaction.type === 'timer' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">The clock starts when you launch this activity. Students see the prompt and the same countdown on their phones.</p>}
                           {interaction.type === 'open-response' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Written responses stay on the instructor screen. You choose what appears on the projector.</p>}
                           {interaction.type === 'word-cloud' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Students send one word or a short phrase. Repeated answers grow larger in the live projector cloud.</p>}
                           {interaction.type === 'team-formation' && <label className="grid gap-2 rounded-lg bg-[#f7f6ff] px-3 py-3 text-xs font-semibold text-[#4f576d]"><span>Course tags <small className="font-normal">Separate with commas</small></span><input defaultValue={(interaction.teamTags || []).join(', ')} onBlur={(event) => { const teamTags = event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8); updateInteraction(interaction.id, { teamTags, requireTeamTag: teamTags.length > 0 }); }} placeholder="Theme 1, Theme 2, Theme 3" className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal" /></label>}
-                          {interaction.type === 'group-work' && <p className="rounded-lg bg-[#fff7f2] px-3 py-2 text-xs leading-5 text-[#6a554e]">Ask each group to choose one note-taker. The projector shows the number of group submissions, not individual names.</p>}
+                          {interaction.type === 'group-work' && <p className="rounded-lg bg-[#fff7f2] px-3 py-2 text-xs leading-5 text-[#6a554e]">{interaction.groupingMode === 'ad-hoc' ? 'One student submits for each temporary group. The projector shows group submissions, not student names.' : 'Each student sees their saved team. One person submits for the team.'}</p>}
                           {interaction.type === 'spin-wheel' && (
                             <div className="space-y-3 rounded-xl border border-[#dedaf8] bg-[#f8f7ff] p-4">
                               <label className="grid gap-1.5 text-xs font-semibold text-[#4f576d]">

@@ -42,7 +42,7 @@ import {
   type StoredStudentMotivationProfile,
 } from '@/lib/firebase/student-motivation';
 import type { RewardDefinition, RewardRequest, RewardRequestStatus } from '@/types';
-import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
+import { ensureStudentAnonymousAuth, studentAuth } from '@/lib/firebase/student-config';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { triggerStudentHaptic } from '@/lib/student-haptics';
 import { motivationConfig } from '@/lib/gamification';
@@ -1524,11 +1524,19 @@ export default function StudentWelcomePage() {
 
   const availableTeamIds = lessonState.teams.map((team) => team.id).join('|');
   useEffect(() => {
-    if (lessonState.activeInteraction?.type !== 'group-work') return;
+    if (lessonState.activeInteraction?.type !== 'group-work' || lessonState.activeInteraction.groupingMode === 'ad-hoc') return;
+    const currentStudentUid = studentAuth.currentUser?.uid;
+    const rosterTeam = currentStudentUid
+      ? lessonState.teams.find((team) => team.members?.some((member) => member.studentUid === currentStudentUid))
+      : null;
+    if (rosterTeam) {
+      setSelectedTeamId(rosterTeam.id);
+      return;
+    }
     const teamStorageScope = lessonState.session.courseId || lessonState.session.rewardScopeId || lessonState.session.courseCode;
     const savedTeamId = window.localStorage.getItem(`classfully-team:${teamStorageScope}`) || '';
     if (availableTeamIds.split('|').includes(savedTeamId)) setSelectedTeamId(savedTeamId);
-  }, [availableTeamIds, lessonState.activeInteraction?.type, lessonState.interactionResults?.runId, lessonState.session.courseCode, lessonState.session.courseId, lessonState.session.rewardScopeId]);
+  }, [availableTeamIds, lessonState.activeInteraction?.groupingMode, lessonState.activeInteraction?.type, lessonState.interactionResults?.runId, lessonState.session.courseCode, lessonState.session.courseId, lessonState.session.rewardScopeId, lessonState.teams]);
 
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1607,7 +1615,7 @@ export default function StudentWelcomePage() {
         response.teamDescription = teamDescription.trim() || undefined;
         response.teamTag = selectedOption !== null ? interaction.teamTags?.[selectedOption] : undefined;
       }
-    } else if (interaction.type === 'group-work' && selectedTeamId) {
+    } else if (interaction.type === 'group-work' && interaction.groupingMode !== 'ad-hoc' && selectedTeamId) {
       const team = lessonState.teams.find((item) => item.id === selectedTeamId);
       response.teamId = selectedTeamId;
       response.teamName = team?.name;
@@ -1892,10 +1900,15 @@ export default function StudentWelcomePage() {
   };
   const activePromptLength = markdownToPlainText(lessonState.activeInteraction?.prompt || '').length;
   const promptDensityClass = activePromptLength > 110 ? 'is-very-long' : activePromptLength > 70 ? 'is-long' : '';
+  const groupUsesCourseTeams = Boolean(
+    lessonState.activeInteraction?.type === 'group-work'
+    && lessonState.activeInteraction.groupingMode !== 'ad-hoc'
+    && lessonState.teams.length,
+  );
   const responseReady = Boolean(
     lessonState.activeInteraction?.type === 'team-formation'
       ? selectedTeamId || (teamName.trim().length >= 2 && (!lessonState.activeInteraction.requireTeamTag || selectedOption !== null))
-      : lessonState.activeInteraction?.type === 'group-work' && lessonState.teams.length
+      : lessonState.activeInteraction?.type === 'group-work' && groupUsesCourseTeams
         ? selectedTeamId && writtenResponse.trim()
         : lessonState.activeInteraction?.options?.length ? selectedOption !== null : writtenResponse.trim(),
   );
@@ -1908,7 +1921,7 @@ export default function StudentWelcomePage() {
       : lessonState.activeInteraction?.type === 'team-formation'
         ? selectedTeamId ? `Join ${lessonState.teams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : 'Create team'
       : lessonState.activeInteraction?.type === 'group-work'
-        ? selectedTeamId ? `Send for ${lessonState.teams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : lessonState.teams.length ? 'Send team response' : 'Send group response'
+        ? selectedTeamId && groupUsesCourseTeams ? `Send for ${lessonState.teams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : groupUsesCourseTeams ? 'Send team response' : 'Send group response'
         : lessonState.activeInteraction?.type === 'word-cloud'
           ? 'Add to word cloud'
           : 'Send response';
@@ -2085,7 +2098,7 @@ export default function StudentWelcomePage() {
                   <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
                 </div>
                 <MarkdownContent heading className={`student-interaction-question ${promptDensityClass}`} markdown={lessonState.activeInteraction.prompt} />
-                <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Choose your team, then have one person send the response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
+                <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'You are working with your class team. One person sends the team’s response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
 
                 {lessonState.activeInteraction.type === 'team-formation' ? (
                   <div className="student-team-form">
@@ -2134,8 +2147,8 @@ export default function StudentWelcomePage() {
                   </label>
                 ) : (
                   <div className="student-group-response">
-                  {lessonState.activeInteraction.type === 'group-work' && lessonState.teams.length > 0 && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); persistResponseDraft({ selectedTeamId: event.target.value }); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseId || lessonState.session.rewardScopeId || lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{lessonState.teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
-                    <textarea value={writtenResponse} onChange={(event) => { const value = event.target.value.slice(0, 280); setWrittenResponse(value); persistResponseDraft({ writtenResponse: value }); }} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'One response from your team' : 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? lessonState.teams.length ? 'Your team response' : 'Your group response' : 'Your response'} />
+                  {groupUsesCourseTeams && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); persistResponseDraft({ selectedTeamId: event.target.value }); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseId || lessonState.session.rewardScopeId || lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{lessonState.teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
+                    <textarea value={writtenResponse} onChange={(event) => { const value = event.target.value.slice(0, 280); setWrittenResponse(value); persistResponseDraft({ writtenResponse: value }); }} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'One response from your team' : 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'Your team response' : 'Your group response' : 'Your response'} />
                   </div>
                 )}
 

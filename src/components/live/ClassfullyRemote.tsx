@@ -36,6 +36,7 @@ type ClassfullyRemoteProps = {
   activeInteraction: LiveInteraction | null;
   results: InteractionResults | null;
   connectedStudents: number;
+  teamCount?: number;
   questionCount: number;
   questions: LiveQuestion[];
   featuredQuestionId: number | null;
@@ -63,6 +64,7 @@ export default function ClassfullyRemote({
   activeInteraction,
   results,
   connectedStudents,
+  teamCount = 0,
   questionCount,
   questions,
   featuredQuestionId,
@@ -88,6 +90,7 @@ export default function ClassfullyRemote({
   const [showQuestions, setShowQuestions] = useState(false);
   const [quickAskOpen, setQuickAskOpen] = useState(false);
   const [quickToolsOpen, setQuickToolsOpen] = useState(false);
+  const groupUsesCourseTeams = activeInteraction?.type === 'group-work' && activeInteraction.groupingMode !== 'ad-hoc' && teamCount > 0;
   const [quickAsk, setQuickAsk] = useState('');
   const [projectorCheckOpen, setProjectorCheckOpen] = useState(false);
   const [clockNow, setClockNow] = useState(Date.now());
@@ -208,7 +211,7 @@ export default function ClassfullyRemote({
             {!isClock && !isWheel && <div className="remote-response-metric">
               <div>
                 <strong key={results.responseCount}>{results.responseCount}</strong>
-                <span>{isTeamFormation ? 'students joined a team' : isGroupWork ? 'team submissions' : `of ${responseTarget || 'the class'} responded`}</span>
+                <span>{isTeamFormation ? 'students joined a team' : isGroupWork ? groupUsesCourseTeams ? 'team submissions' : 'group submissions' : `of ${responseTarget || 'the class'} responded`}</span>
               </div>
               <span className="remote-response-status">{isPeerLearning && peerPhase === 'discuss' ? 'Partner discussion' : isPeerLearning && peerPhase === 'respond-again' ? 'Second answer' : results.open ? 'Collecting' : results.revealed ? 'Revealed' : 'Locked'}</span>
             </div>}
@@ -217,7 +220,7 @@ export default function ClassfullyRemote({
             </div>}
 
             {isPeerLearning && <div className="remote-module-steps" aria-label="Peer learning stages"><span className="is-complete">1 Answer</span><span className={peerPhase === 'discuss' || peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>2 Discuss</span><span className={peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>3 Answer again</span></div>}
-            {isGroupWork && <p className="remote-module-note">Groups of about {activeInteraction.groupSize || 4}. Ask each group to choose one note-taker.</p>}
+            {isGroupWork && <p className="remote-module-note">{groupUsesCourseTeams ? 'Students work with their saved class teams. One person submits for the team.' : `Temporary groups of about ${activeInteraction.groupSize || 4}. Ask each group to choose one note-taker.`}</p>}
             {isClock && <div className="remote-clock-focus"><Timer size={22} /><span><small>{timerSeconds === 0 ? 'Time is up' : 'Shared clock'}</small><strong>{timerText}</strong></span></div>}
             {isWheel && <div className="remote-wheel-focus"><Dices size={22} /><span><small>{results.wheelSelectedLabel ? 'Selected' : `${results.wheelItems?.length || 0} items ready`}</small><strong>{results.wheelSelectedLabel || 'Ready to spin'}</strong></span></div>}
 

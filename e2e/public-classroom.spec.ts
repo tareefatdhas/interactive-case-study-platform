@@ -753,7 +753,7 @@ test('group work collects one group submission beside a shared clock', async ({ 
   await expect(studentPage.getByRole('status', { name: 'Reaching the room' })).toBeVisible();
   await expect(studentPage.getByRole('status', { name: 'Response joined the room' })).toBeVisible();
 
-  await expect(remotePage.getByText('team submissions')).toBeVisible();
+  await expect(remotePage.getByText('group submissions')).toBeVisible();
   await expect(consolePage.getByText('The platform depends on one payment provider.')).toBeVisible();
   await expect(displayPage.getByRole('complementary', { name: /Group work/ })).toBeVisible();
 

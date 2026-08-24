@@ -24,6 +24,7 @@ export type LiveInteraction = {
   durationMinutes?: number;
   discussionMinutes?: number;
   groupSize?: number;
+  groupingMode?: 'course-teams' | 'ad-hoc';
   teamTags?: string[];
   requireTeamTag?: boolean;
   wheelSource?: 'students' | 'teams' | 'custom';
@@ -246,6 +247,7 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
     title: 'Apply the idea',
     prompt: 'In groups of four, choose a platform and identify its most fragile dependency.',
     groupSize: 4,
+    groupingMode: 'course-teams',
     durationMinutes: 8,
     resultVisibility: 'instructor-only',
     plannedTime: 'Application',
@@ -455,6 +457,7 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       durationMinutes: interaction.durationMinutes,
       discussionMinutes: interaction.discussionMinutes,
       groupSize: interaction.groupSize,
+      groupingMode: interaction.groupingMode,
       teamTags: interaction.teamTags,
       requireTeamTag: interaction.requireTeamTag,
       wheelSource: interaction.wheelSource,

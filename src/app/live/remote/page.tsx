@@ -413,6 +413,7 @@ export default function InstructorRemotePage() {
       activeInteraction={state.activeInteraction}
       results={state.interactionResults}
       connectedStudents={connectedStudents}
+      teamCount={state.teams.length}
       questionCount={state.questions.length}
       questions={state.questions}
       featuredQuestionId={state.featuredQuestionId}

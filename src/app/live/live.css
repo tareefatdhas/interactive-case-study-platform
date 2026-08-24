@@ -488,6 +488,7 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 
 .interaction-composer-wheel { display: grid; gap: 14px; padding: 16px; border: 1px solid #dedaf8; border-radius: 14px; background: #f8f7ff; }
 .interaction-composer-wheel > label { margin: 0; }
+.interaction-composer-note { margin: 0; color: #697087; font-size: 12px; line-height: 1.55; }
 .interaction-composer-wheel .interaction-wheel-checkbox {
   display: flex;
   grid-template-columns: none;

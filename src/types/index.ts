@@ -75,6 +75,7 @@ export interface SessionInteraction {
   maxSpeedBonusPoints?: number;
   discussionMinutes?: number;
   groupSize?: number;
+  groupingMode?: 'course-teams' | 'ad-hoc';
   teamTags?: string[];
   requireTeamTag?: boolean;
   wheelSource?: 'students' | 'teams' | 'custom';
