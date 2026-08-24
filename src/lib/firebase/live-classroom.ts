@@ -236,7 +236,7 @@ export async function initializeInstructorClassroom(
   const result = await runTransaction(metaRef, (current: LiveClassroomMeta | null) => {
     if (current && current.ownerUid !== ownerUid) return;
     const now = Date.now();
-    return {
+    return cleanFirebaseValue({
       ...(current || {}),
       ...session,
       ownerUid,
@@ -244,7 +244,7 @@ export async function initializeInstructorClassroom(
       createdAt: current?.createdAt || now,
       updatedAt: now,
       expiresAt: current?.expiresAt && current.expiresAt > now ? current.expiresAt : now + 12 * 60 * 60 * 1000,
-    } satisfies LiveClassroomMeta;
+    } satisfies LiveClassroomMeta);
   }, { applyLocally: false });
 
   const meta = result.snapshot.val() as LiveClassroomMeta | null;

@@ -20,6 +20,8 @@ const technicalMessagePatterns = [
   /json/i,
   /status\s?\d{3}/i,
   /internal server error/i,
+  /transaction failed/i,
+  /data returned contains undefined/i,
   /^internal$/i,
 ];
 
