@@ -995,7 +995,6 @@ export default function LiveLessonPrototype() {
       setShowComparison(false);
       setPlayingHistory(false);
       setLiveQuestions([]);
-      setFormedTeams([]);
       setQuestionVoteCounts({});
       setDiscussedQuestions([]);
       setActiveQuestion(null);
@@ -1075,7 +1074,7 @@ export default function LiveLessonPrototype() {
       setActiveInteraction(privateActiveInteraction);
       setInteractionResults(remoteState.interactionResults || null);
       setLiveQuestions((remoteState.questions || []).map((question) => ({ ...question, votes: 0 })));
-      setFormedTeams(remoteState.teams || []);
+      setFormedTeams(courseTeams.length ? courseTeams : remoteState.teams || []);
       setActiveQuestion(remoteState.featuredQuestionId || null);
       setLiveTimer(remoteState.timer || null);
       if (!cancelled) {

@@ -210,6 +210,7 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   const isWordCloud = interaction.type === 'word-cloud';
   const isTeamFormation = interaction.type === 'team-formation';
   const isWheel = interaction.type === 'spin-wheel';
+  const isGroupWork = interaction.type === 'group-work';
   const wordCloudItems = buildWordCloudItems(results.writtenResponses);
   const repeatedWordCloudItems = wordCloudItems.filter((item) => item.count > 1).slice(0, 3);
   const wordCloudDensity = wordCloudDensityClass(wordCloudItems.length);
@@ -218,12 +219,12 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   ];
 
   return (
-    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : isTeamFormation ? 'is-team-formation' : isWheel ? 'is-spin-wheel' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
+    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : isTeamFormation ? 'is-team-formation' : isWheel ? 'is-spin-wheel' : isGroupWork ? 'is-group-work' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
       <div className="interaction-display-heading">
         <div>
           <span className="display-eyebrow"><ListChecks size={20} /> {interaction.label}</span>
-          {isClock ? <h1>{interaction.title}</h1> : <MarkdownContent heading className="interaction-display-question" markdown={interaction.prompt} />}
-          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : <p>{isWheel ? results.wheelSelectedLabel ? 'The wheel has spoken.' : 'The instructor will spin when the room is ready.' : isTeamFormation ? 'Choose your team on your phone. New teams will appear here as they are created.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? interaction.type === 'group-work' ? interaction.groupingMode === 'ad-hoc' || !lessonState.teams.length ? `Work in groups of about ${interaction.groupSize || 4}. One person submits for each group.` : 'Work with your class team. One person submits for the team.' : 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
+          {isClock || isGroupWork ? <h1>{interaction.title}</h1> : <MarkdownContent heading className="interaction-display-question" markdown={interaction.prompt} />}
+          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : isGroupWork ? <MarkdownContent className="display-group-work-instructions" markdown={interaction.prompt} /> : <p>{isWheel ? results.wheelSelectedLabel ? 'The wheel has spoken.' : 'The instructor will spin when the room is ready.' : isTeamFormation ? 'Choose your team on your phone. New teams will appear here as they are created.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
         </div>
         {!isClock && !isWheel && <div className="interaction-display-count">
           <Users size={21} />
@@ -499,7 +500,7 @@ function PrivateCheckInProjector({
       <aside className="private-check-in-join">
         <span className="private-check-in-eyebrow">Join the class</span>
         <h1>Scan to check in</h1>
-        <p>Your answer stays between you and your instructor.</p>
+        <p>Your individual answer stays private. Only the check-in count appears here.</p>
         <div className="private-check-in-qr" aria-label="Scan to join this class">
           <QRCode value={joinLink.toString()} title="Scan to join this class" level="M" size={230} bgColor="#fffefa" fgColor="#101a38" />
         </div>
@@ -979,7 +980,7 @@ export default function ClassroomDisplayPage() {
             <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.activeInteraction.type === 'spin-wheel' ? lessonState.interactionResults?.wheelSelectedLabel ? 'Selection complete' : 'Wheel ready' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
             <div className="display-footer-insight remote-control-hint"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
             {lessonState.activeInteraction.type === 'pulse'
-              ? <div className="display-footer-insight"><Lock size={16} /><span>Answers stay private</span></div>
+              ? <div className="display-footer-insight"><Lock size={16} /><span>Individual answers stay private</span></div>
               : <div className="join-code"><span><small>Join at</small><strong className="join-url">{joinDisplayUrl}</strong></span><span><small>Class code</small><strong>{formatSessionCode(lessonState.session.sessionCode)}</strong></span></div>}
           </footer>
         </>

@@ -760,6 +760,41 @@ test('group work collects one group submission beside a shared clock', async ({ 
   await context.close();
 });
 
+test('formatted group-work instructions stay readable on a short classroom projector', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const displayPage = await context.newPage();
+  await displayPage.setViewportSize({ width: 1366, height: 768 });
+
+  await consolePage.goto('/live');
+  await displayPage.goto('/live/display');
+
+  await consolePage.getByRole('button', { name: /Add interaction/ }).first().click();
+  const quickAdd = consolePage.getByRole('dialog', { name: 'Add something during class' });
+  await quickAdd.getByRole('button', { name: /Group work/ }).click();
+  await quickAdd.getByLabel('Title').fill('Choose and profile your beachhead');
+  await quickAdd.getByLabel('Instructions').fill([
+    'Work as a **team**:',
+    '1. List three plausible market segments.',
+    '2. Select one beachhead and explain why you are choosing it now.',
+    '3. Draft an end-user profile with shared needs and behaviors.',
+    '4. Name the biggest assumption you need to test.',
+  ].join('\n'));
+  await expect(quickAdd.locator('.interaction-markdown-preview strong')).toHaveText('team');
+  await expect(quickAdd.locator('.interaction-markdown-preview ol li')).toHaveCount(4);
+  await quickAdd.getByRole('button', { name: 'Show now' }).click();
+
+  await expect(displayPage.getByRole('heading', { name: 'Choose and profile your beachhead' })).toBeVisible();
+  const instructions = displayPage.locator('.display-group-work-instructions');
+  await expect(instructions.locator('strong')).toHaveText('team');
+  await expect(instructions.locator('ol li')).toHaveCount(4);
+  await expect(displayPage.locator('.interaction-display-question')).toHaveCount(0);
+  expect(await displayPage.evaluate(() => document.documentElement.scrollWidth)).toBe(await displayPage.evaluate(() => window.innerWidth));
+  expect(await displayPage.evaluate(() => document.documentElement.scrollHeight)).toBe(await displayPage.evaluate(() => window.innerHeight));
+
+  await context.close();
+});
+
 test('students form a named team and use it for later group work', async ({ browser }) => {
   const context = await browser.newContext();
   const consolePage = await context.newPage();
@@ -791,6 +826,18 @@ test('students form a named team and use it for later group work', async ({ brow
   await studentPage.getByRole('textbox', { name: 'Your team response' }).fill('A shared internship matching space.');
   await studentPage.getByRole('button', { name: 'Send for Bright Sparks' }).click();
   await expect(consolePage.getByText('A shared internship matching space.')).toBeVisible();
+
+  await consolePage.getByRole('button', { name: /Add interaction/ }).first().click();
+  const quickAdd = consolePage.getByRole('dialog', { name: 'Add something during class' });
+  await quickAdd.getByRole('button', { name: /Spin the wheel/ }).click();
+  await quickAdd.getByLabel('Title').fill('Choose a course team');
+  await quickAdd.getByLabel('Question or instruction').fill('Which team will share next?');
+  await quickAdd.getByLabel('Choose from').selectOption('teams');
+  await quickAdd.getByRole('button', { name: 'Show now' }).click();
+
+  await expect(displayPage.locator('.display-wheel-center strong')).toHaveText('1');
+  await expect(displayPage.locator('.display-wheel-center')).toContainText('teams');
+  await expect(remotePage.getByRole('button', { name: 'Spin the wheel' })).toBeEnabled();
 
   await context.close();
 });
