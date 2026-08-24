@@ -35,6 +35,8 @@ import {
   CalendarPlus,
   CalendarSync,
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
   Check,
   CircleHelp,
   Clock3,
@@ -53,6 +55,7 @@ import {
   Play,
   Radio,
   Save,
+  Search,
   ShieldCheck,
   Sparkles,
   Repeat2,
@@ -192,6 +195,9 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   const [newTeamTag, setNewTeamTag] = useState('');
   const [newTeamColor, setNewTeamColor] = useState<TeamColorId>('violet');
   const [memberEditorTeamId, setMemberEditorTeamId] = useState('');
+  const [expandedTeamId, setExpandedTeamId] = useState('');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [teamSort, setTeamSort] = useState<'name' | 'largest' | 'smallest'>('name');
   const [newMemberNumber, setNewMemberNumber] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
   const [memberSaving, setMemberSaving] = useState(false);
@@ -318,6 +324,25 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   }, [course, user, workspaceView]);
 
   const studentCount = useMemo(() => new Set(sessions.flatMap((session) => session.studentsJoined || [])).size, [sessions]);
+  const teamMemberCount = useMemo(() => teamRoster.reduce((total, team) => total + team.memberCount, 0), [teamRoster]);
+  const unassignedStudentCount = Math.max(studentCount - teamMemberCount, 0);
+  const visibleTeams = useMemo(() => {
+    const query = teamSearch.trim().toLocaleLowerCase();
+    const matchingTeams = query
+      ? teamRoster.filter((team) => [
+          team.name,
+          team.description,
+          team.tag,
+          ...team.members.flatMap((member) => [member.displayName, member.studentNumber]),
+        ].some((value) => value?.toLocaleLowerCase().includes(query)))
+      : [...teamRoster];
+
+    return matchingTeams.sort((first, second) => {
+      if (teamSort === 'largest') return second.memberCount - first.memberCount || first.name.localeCompare(second.name);
+      if (teamSort === 'smallest') return first.memberCount - second.memberCount || first.name.localeCompare(second.name);
+      return first.name.localeCompare(second.name);
+    });
+  }, [teamRoster, teamSearch, teamSort]);
   const normalizedNewTeamName = normalizeTeamName(newTeamName);
   const duplicateTeam = teamRoster.find((team) => team.normalizedName === normalizedNewTeamName && team.id !== editingTeamId);
   const orderedSessions = useMemo(
@@ -402,6 +427,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
   };
 
   const openMemberEditor = (teamId: string) => {
+    setExpandedTeamId(teamId);
     setMemberEditorTeamId((current) => current === teamId ? '' : teamId);
     setNewMemberNumber('');
     setNewMemberName('');
@@ -451,6 +477,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
       await deleteInstructorCourseTeam(teamToDelete);
       if (editingTeamId === deletedTeamId) resetTeamCreator();
       if (memberEditorTeamId === deletedTeamId) setMemberEditorTeamId('');
+      if (expandedTeamId === deletedTeamId) setExpandedTeamId('');
       setTeamToDelete(null);
     } catch (deleteError) {
       console.error('Could not delete team:', deleteError);
@@ -911,30 +938,66 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                       <fieldset className="mt-5"><legend className="text-sm font-bold text-[#313950]">Pick a team color</legend><div className="mt-3 flex flex-wrap gap-2">{TEAM_COLORS.map((item) => <button key={item.id} type="button" onClick={() => setNewTeamColor(item.id)} aria-label={item.label} aria-pressed={newTeamColor === item.id} className={`seminar-focus grid h-11 w-11 place-items-center rounded-xl border-2 transition ${newTeamColor === item.id ? 'border-[#101a38] bg-white' : 'border-transparent hover:bg-white'}`}><span className="grid h-7 w-7 place-items-center rounded-full" style={{ background: item.value }}>{newTeamColor === item.id && <Check className="h-4 w-4 text-white" />}</span></button>)}</div></fieldset>
                       <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" onClick={resetTeamCreator}>Cancel</Button><Button onClick={createTeamForClass} loading={creatingTeam} disabled={normalizedNewTeamName.length < 2 || Boolean(duplicateTeam)} className="gap-2">{editingTeamId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />} {editingTeamId ? 'Save changes' : 'Add team'}</Button></div>
                     </div>}
-                    {teamRoster.length ? <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-7">{teamRoster.map((team) => {
-                      const teamColor = TEAM_COLORS.find((item) => item.id === team.color)?.value || '#5146e5';
-                      return <article key={team.id} className="rounded-2xl border border-[#e3e5ed] bg-[#fffefa] p-5" style={{ borderTop: `5px solid ${teamColor}` }}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div><h3 className="text-lg font-bold text-[#101a38]">{team.name}</h3>{team.tag && <span className="mt-2 inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-[#555d73]">{team.tag}</span>}</div>
-                          <div className="flex items-center gap-1">
-                            <span className="rounded-full bg-[#f0efff] px-2.5 py-1 text-xs font-bold text-[#5146e5]">{team.memberCount} {team.memberCount === 1 ? 'member' : 'members'}</span>
-                            {!course.archived && <button type="button" onClick={() => editTeamForClass(team)} className="seminar-focus rounded-lg p-2 text-[#697087] hover:bg-white hover:text-[#5146e5]" aria-label={`Edit ${team.name}`}><Pencil className="h-4 w-4" /></button>}
-                            {!course.archived && <button type="button" onClick={() => setTeamToDelete(team)} className="seminar-focus rounded-lg p-2 text-[#9b6b62] hover:bg-[#fff1ee] hover:text-[#b64936]" aria-label={`Delete ${team.name}`}><Trash2 className="h-4 w-4" /></button>}
+                    {teamRoster.length ? <div className="p-5 sm:p-7">
+                      <div className="grid gap-3 rounded-2xl border border-[#e3e5ed] bg-[#faf9ff] p-4 sm:grid-cols-3">
+                        <div><strong className="block text-2xl text-[#101a38]">{teamRoster.length}</strong><span className="text-xs font-semibold text-[#697087]">Teams</span></div>
+                        <div><strong className="block text-2xl text-[#101a38]">{teamMemberCount}</strong><span className="text-xs font-semibold text-[#697087]">Students assigned</span></div>
+                        <div><strong className={`block text-2xl ${unassignedStudentCount ? 'text-[#b64936]' : 'text-[#28733a]'}`}>{unassignedStudentCount}</strong><span className="text-xs font-semibold text-[#697087]">Students not yet assigned</span></div>
+                      </div>
+
+                      <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+                        <label className="relative block">
+                          <span className="sr-only">Search teams or students</span>
+                          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7d8498]" />
+                          <input value={teamSearch} onChange={(event) => setTeamSearch(event.target.value)} placeholder="Search teams or students" className="min-h-12 w-full rounded-xl border border-[#d7dae5] bg-white pl-10 pr-4 text-sm text-[#101a38] outline-none transition focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" />
+                        </label>
+                        <label className="block">
+                          <span className="sr-only">Sort teams</span>
+                          <select value={teamSort} onChange={(event) => setTeamSort(event.target.value as typeof teamSort)} className="min-h-12 w-full cursor-pointer rounded-xl border border-[#d7dae5] bg-white px-3 text-sm font-semibold text-[#313950] outline-none transition focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]">
+                            <option value="name">Team name</option>
+                            <option value="largest">Most members</option>
+                            <option value="smallest">Fewest members</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      {visibleTeams.length ? <div className="mt-5 overflow-hidden rounded-2xl border border-[#e3e5ed] bg-white">{visibleTeams.map((team, index) => {
+                        const teamColor = TEAM_COLORS.find((item) => item.id === team.color)?.value || '#5146e5';
+                        const expanded = expandedTeamId === team.id;
+                        const previewMembers = team.members.slice(0, 4);
+                        return <article key={team.id} className={index ? 'border-t border-[#e8e8ee]' : ''}>
+                          <div className="grid min-h-[84px] grid-cols-[5px_minmax(0,1fr)_auto] items-stretch">
+                            <span aria-hidden="true" style={{ backgroundColor: teamColor }} />
+                            <button type="button" onClick={() => { setExpandedTeamId(expanded ? '' : team.id); if (expanded) setMemberEditorTeamId(''); }} aria-expanded={expanded} aria-controls={`team-details-${team.id}`} className="seminar-focus grid min-w-0 cursor-pointer gap-3 px-4 py-4 text-left transition-colors hover:bg-[#faf9ff] sm:grid-cols-[minmax(180px,0.8fr)_minmax(220px,1.2fr)] sm:items-center sm:px-5">
+                              <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><strong className="truncate text-base text-[#101a38]">{team.name}</strong>{team.tag && <span className="rounded-full bg-[#f0efff] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.05em] text-[#5146e5]">{team.tag}</span>}</span>{team.description && <small className="mt-1 block truncate text-xs text-[#697087]">{team.description}</small>}</span>
+                              <span className="flex min-w-0 items-center gap-3">
+                                <span className="flex -space-x-2" aria-hidden="true">{previewMembers.map((member) => <span key={member.membershipId} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-white bg-[#f0efff] text-[10px] font-bold text-[#5146e5]">{(member.displayName || member.studentNumber || 'S').slice(0, 1).toUpperCase()}</span>)}</span>
+                                <span className={`text-xs font-bold ${team.memberCount ? 'text-[#555d73]' : 'text-[#b64936]'}`}>{team.memberCount ? `${team.memberCount} ${team.memberCount === 1 ? 'member' : 'members'}` : 'No members yet'}</span>
+                              </span>
+                            </button>
+                            <button type="button" onClick={() => { setExpandedTeamId(expanded ? '' : team.id); if (expanded) setMemberEditorTeamId(''); }} aria-label={`${expanded ? 'Close' : 'Manage'} ${team.name}`} className="seminar-focus grid min-h-11 min-w-12 cursor-pointer place-items-center px-4 text-[#697087] transition-colors hover:bg-[#faf9ff] hover:text-[#5146e5]">{expanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}</button>
                           </div>
-                        </div>
-                        {team.description && <p className="mt-3 text-sm leading-6 text-[#697087]">{team.description}</p>}
-                        <div className="mt-4 border-t border-[#e8e8ee] pt-4">
-                          <div className="flex items-center justify-between gap-3"><strong className="text-xs uppercase tracking-[0.07em] text-[#697087]">Members</strong>{!course.archived && <button type="button" onClick={() => openMemberEditor(team.id)} className="seminar-focus inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold text-[#5146e5] hover:bg-white"><Plus className="h-3.5 w-3.5" /> {memberEditorTeamId === team.id ? 'Close' : 'Add member'}</button>}</div>
-                          {memberEditorTeamId === team.id && <div className="mt-3 grid gap-3 rounded-xl border border-[#dedaf8] bg-[#f7f6ff] p-3 animate-[fadeIn_180ms_ease-out]">
-                            <label className="grid gap-1.5 text-xs font-bold text-[#555d73]">Student number<input autoFocus value={newMemberNumber} onChange={(event) => { setNewMemberNumber(normalizeTeamStudentNumber(event.target.value)); setMemberError(''); }} placeholder="For example, 67123456" className="min-h-11 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
-                            <label className="grid gap-1.5 text-xs font-bold text-[#555d73]">Preferred name <span className="font-normal text-[#697087]">Optional</span><input value={newMemberName} onChange={(event) => setNewMemberName(event.target.value.slice(0, 60))} placeholder="Name shown to the instructor" className="min-h-11 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
-                            {memberError && <p className="text-xs leading-5 text-[#b64936]" role="alert">{memberError}</p>}
-                            <Button size="sm" onClick={() => addMemberToTeam(team)} loading={memberSaving} disabled={newMemberNumber.length < 3} className="w-full gap-2"><Plus className="h-3.5 w-3.5" /> Add to {team.name}</Button>
+
+                          {expanded && <div id={`team-details-${team.id}`} className="border-t border-[#e8e8ee] bg-[#fcfcfe] p-4 animate-[fadeIn_180ms_ease-out] sm:p-5">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div><strong className="text-xs uppercase tracking-[0.07em] text-[#697087]">Team members</strong><p className="mt-1 text-xs text-[#697087]">Review the roster or add someone who could not use the sign-up link.</p></div>
+                              {!course.archived && <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => editTeamForClass(team)} className="gap-2"><Pencil className="h-3.5 w-3.5" /> Edit details</Button><Button size="sm" variant="outline" onClick={() => openMemberEditor(team.id)} className="gap-2"><Plus className="h-3.5 w-3.5" /> {memberEditorTeamId === team.id ? 'Close form' : 'Add member'}</Button></div>}
+                            </div>
+
+                            {memberEditorTeamId === team.id && <div className="mt-4 grid gap-3 rounded-xl border border-[#dedaf8] bg-[#f7f6ff] p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                              <label className="grid gap-1.5 text-xs font-bold text-[#555d73]">Student number<input autoFocus value={newMemberNumber} onChange={(event) => { setNewMemberNumber(normalizeTeamStudentNumber(event.target.value)); setMemberError(''); }} placeholder="For example, 67123456" className="min-h-11 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                              <label className="grid gap-1.5 text-xs font-bold text-[#555d73]">Preferred name <span className="font-normal text-[#697087]">Optional</span><input value={newMemberName} onChange={(event) => setNewMemberName(event.target.value.slice(0, 60))} placeholder="Name shown to the instructor" className="min-h-11 rounded-lg border border-[#d7dae5] bg-white px-3 text-sm font-medium text-[#101a38] outline-none focus:border-[#5146e5] focus:ring-2 focus:ring-[#dcd8ff]" /></label>
+                              <Button size="sm" onClick={() => addMemberToTeam(team)} loading={memberSaving} disabled={newMemberNumber.length < 3} className="min-h-11 gap-2"><Plus className="h-3.5 w-3.5" /> Add member</Button>
+                              {memberError && <p className="text-xs leading-5 text-[#b64936] sm:col-span-3" role="alert">{memberError}</p>}
+                            </div>}
+
+                            {team.members.length ? <ul className="mt-4 grid gap-2 sm:grid-cols-2">{team.members.map((member) => <li key={member.membershipId} className="flex min-h-12 items-center gap-3 rounded-xl border border-[#ececf1] bg-white px-3 py-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f0efff] text-[11px] font-bold text-[#5146e5]">{(member.displayName || member.studentNumber || 'S').slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#101a38]">{member.displayName || member.studentNumber || 'Student'}</strong>{member.displayName && member.studentNumber && <small className="block truncate text-[11px] text-[#697087]">{member.studentNumber}</small>}</span>{!course.archived && member.studentNumber && <button type="button" disabled={removingMemberNumber === member.studentNumber} onClick={() => removeMemberFromTeam(team, member.studentNumber!)} className="seminar-focus rounded-lg p-2 text-[#9aa0b1] hover:bg-[#fff1ee] hover:text-[#b64936] disabled:opacity-40" aria-label={`Remove ${member.displayName || member.studentNumber} from ${team.name}`}>{removingMemberNumber === member.studentNumber ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}</button>}</li>)}</ul> : <div className="mt-4 rounded-xl border border-dashed border-[#d7dae5] bg-white px-4 py-5 text-center text-sm text-[#697087]">No students have joined this team yet.</div>}
+
+                            {!course.archived && <div className="mt-4 flex justify-end border-t border-[#e8e8ee] pt-4"><button type="button" onClick={() => setTeamToDelete(team)} className="seminar-focus inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-3 text-xs font-bold text-[#b64936] hover:bg-[#fff1ee]"><Trash2 className="h-3.5 w-3.5" /> Delete team</button></div>}
                           </div>}
-                          {team.members.length ? <ul className="mt-3 space-y-1.5">{team.members.map((member) => <li key={member.membershipId} className="flex min-h-10 items-center gap-3 rounded-xl bg-white px-3 py-2"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#f0efff] text-[11px] font-bold text-[#5146e5]">{(member.displayName || member.studentNumber || 'S').slice(0, 1).toUpperCase()}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#101a38]">{member.displayName || member.studentNumber || 'Student'}</strong>{member.displayName && member.studentNumber && <small className="block truncate text-[11px] text-[#697087]">{member.studentNumber}</small>}</span>{!course.archived && member.studentNumber && <button type="button" disabled={removingMemberNumber === member.studentNumber} onClick={() => removeMemberFromTeam(team, member.studentNumber!)} className="seminar-focus rounded-lg p-2 text-[#9aa0b1] hover:bg-[#fff1ee] hover:text-[#b64936] disabled:opacity-40" aria-label={`Remove ${member.displayName || member.studentNumber} from ${team.name}`}>{removingMemberNumber === member.studentNumber ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}</button>}</li>)}</ul> : <p className="mt-3 text-xs leading-5 text-[#697087]">No students have joined yet.</p>}
-                        </div>
-                      </article>;
-                    })}</div> : !teamCreatorOpen && <div className="px-6 py-14 text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f0efff] text-[#5146e5]"><UsersRound className="h-7 w-7" /></span><h3 className="seminar-display mt-5 text-3xl text-[#101a38]">Start with the first team.</h3><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#697087]">Create it here, or share the sign-up link and let each group add its own.</p><Button variant="outline" onClick={() => { setEditingTeamId(''); setTeamCreatorOpen(true); }} className="mt-6 gap-2"><Plus className="h-4 w-4" /> Create the first team</Button></div>}
+                        </article>;
+                      })}</div> : <div className="mt-5 rounded-2xl border border-dashed border-[#d7dae5] px-5 py-10 text-center"><Search className="mx-auto h-6 w-6 text-[#9aa0b1]" /><h3 className="mt-3 font-bold text-[#101a38]">No matching teams</h3><p className="mt-1 text-sm text-[#697087]">Try a team name, student name, or student number.</p><button type="button" onClick={() => setTeamSearch('')} className="seminar-focus mt-4 min-h-10 cursor-pointer rounded-lg px-3 text-sm font-bold text-[#5146e5] hover:bg-[#f0efff]">Clear search</button></div>}
+                    </div> : !teamCreatorOpen && <div className="px-6 py-14 text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f0efff] text-[#5146e5]"><UsersRound className="h-7 w-7" /></span><h3 className="seminar-display mt-5 text-3xl text-[#101a38]">Start with the first team.</h3><p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#697087]">Create it here, or share the sign-up link and let each group add its own.</p><Button variant="outline" onClick={() => { setEditingTeamId(''); setTeamCreatorOpen(true); }} className="mt-6 gap-2"><Plus className="h-4 w-4" /> Create the first team</Button></div>}
                   </section>
                   <aside className="space-y-5 xl:sticky xl:top-6">
                     <section className="rounded-3xl border border-[#dcd8ff] bg-[#f7f6ff] p-6">
