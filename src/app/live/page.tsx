@@ -1109,6 +1109,31 @@ export default function LiveLessonPrototype() {
   }, [remoteClassroomReady, sessionContext.sessionId]);
 
   useEffect(() => {
+    if (!remoteClassroomReady || !sessionContext.courseId || !sessionContext.ownerUid) return;
+
+    const courseId = sessionContext.courseId;
+    const ownerUid = sessionContext.ownerUid;
+    let stopRoster: (() => void) | null = null;
+    import('@/lib/firebase/course-teams')
+      .then(({ subscribeInstructorTeamRoster }) => {
+        stopRoster = subscribeInstructorTeamRoster(
+          courseId,
+          ownerUid,
+          (roster) => {
+            // Team sign-up stays open while a class is running. Keep the live
+            // room on the canonical course roster so newly created teams and
+            // newly registered members are available without restarting class.
+            persistedTeamsKeyRef.current = JSON.stringify(roster);
+            setFormedTeams(roster);
+          },
+        );
+      })
+      .catch((error) => console.error('Could not keep the live team roster updated:', error));
+
+    return () => stopRoster?.();
+  }, [remoteClassroomReady, sessionContext.courseId, sessionContext.ownerUid]);
+
+  useEffect(() => {
     if (!courseIdRef.current || !formedTeams.length) return;
     const teamsKey = JSON.stringify(formedTeams);
     if (teamsKey === persistedTeamsKeyRef.current) return;

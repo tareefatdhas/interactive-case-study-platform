@@ -43,6 +43,7 @@ import {
 } from '@/lib/firebase/student-motivation';
 import type { RewardDefinition, RewardRequest, RewardRequestStatus } from '@/types';
 import { ensureStudentAnonymousAuth, studentAuth } from '@/lib/firebase/student-config';
+import { subscribeStudentTeams, type CourseTeamRecord } from '@/lib/firebase/course-teams';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { triggerStudentHaptic } from '@/lib/student-haptics';
 import { motivationConfig } from '@/lib/gamification';
@@ -830,6 +831,7 @@ export default function StudentWelcomePage() {
   const [teamName, setTeamName] = useState('');
   const [teamDescription, setTeamDescription] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [courseTeams, setCourseTeams] = useState<CourseTeamRecord[]>([]);
   const [creatingNewTeam, setCreatingNewTeam] = useState(false);
   const [interactionSubmitted, setInteractionSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1310,6 +1312,25 @@ export default function StudentWelcomePage() {
   }, [remoteSession]);
 
   useEffect(() => {
+    const courseId = lessonState.session.courseId;
+    if (!remoteSession || !courseId) {
+      setCourseTeams([]);
+      return;
+    }
+
+    let stopTeams: (() => void) | null = null;
+    ensureStudentAnonymousAuth()
+      .then(() => {
+        stopTeams = subscribeStudentTeams(courseId, setCourseTeams);
+      })
+      .catch(() => {
+        // The published classroom roster remains a safe fallback if the
+        // course roster cannot be refreshed directly on this device.
+      });
+    return () => stopTeams?.();
+  }, [lessonState.session.courseId, remoteSession]);
+
+  useEffect(() => {
     if (!remoteSession || lessonState.session.participationMode !== 'course-record' || !studentNumber) return;
     let cancelled = false;
     getStudentMotivationProfile(remoteSession.ownerUid, remoteSession.sessionId)
@@ -1522,7 +1543,8 @@ export default function StudentWelcomePage() {
     }
   }, [responseScope, lessonState.interactionResults?.runId, remoteSession]);
 
-  const availableTeamIds = lessonState.teams.map((team) => team.id).join('|');
+  const availableTeams = courseTeams.length ? courseTeams : lessonState.teams;
+  const availableTeamIds = availableTeams.map((team) => team.id).join('|');
   useEffect(() => {
     if (lessonState.activeInteraction?.type !== 'group-work' || lessonState.activeInteraction.groupingMode === 'ad-hoc') return;
     const currentStudentUid = studentAuth.currentUser?.uid;
@@ -1600,7 +1622,7 @@ export default function StudentWelcomePage() {
       text: writtenResponse.trim() || undefined,
     };
     if (interaction.type === 'team-formation') {
-      const existingTeam = lessonState.teams.find((team) => team.id === selectedTeamId);
+      const existingTeam = availableTeams.find((team) => team.id === selectedTeamId);
       if (existingTeam) {
         response.teamId = existingTeam.id;
         response.teamName = existingTeam.name;
@@ -1616,7 +1638,7 @@ export default function StudentWelcomePage() {
         response.teamTag = selectedOption !== null ? interaction.teamTags?.[selectedOption] : undefined;
       }
     } else if (interaction.type === 'group-work' && interaction.groupingMode !== 'ad-hoc' && selectedTeamId) {
-      const team = lessonState.teams.find((item) => item.id === selectedTeamId);
+      const team = availableTeams.find((item) => item.id === selectedTeamId);
       response.teamId = selectedTeamId;
       response.teamName = team?.name;
       response.teamTag = team?.tag;
@@ -1903,7 +1925,7 @@ export default function StudentWelcomePage() {
   const groupUsesCourseTeams = Boolean(
     lessonState.activeInteraction?.type === 'group-work'
     && lessonState.activeInteraction.groupingMode !== 'ad-hoc'
-    && lessonState.teams.length,
+    && availableTeams.length,
   );
   const responseReady = Boolean(
     lessonState.activeInteraction?.type === 'team-formation'
@@ -1919,9 +1941,9 @@ export default function StudentWelcomePage() {
     : lessonState.activeInteraction?.options?.length && selectedAnswerLetter
       ? `Send answer ${selectedAnswerLetter}`
       : lessonState.activeInteraction?.type === 'team-formation'
-        ? selectedTeamId ? `Join ${lessonState.teams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : 'Create team'
+        ? selectedTeamId ? `Join ${availableTeams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : 'Create team'
       : lessonState.activeInteraction?.type === 'group-work'
-        ? selectedTeamId && groupUsesCourseTeams ? `Send for ${lessonState.teams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : groupUsesCourseTeams ? 'Send team response' : 'Send group response'
+        ? selectedTeamId && groupUsesCourseTeams ? `Send for ${availableTeams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : groupUsesCourseTeams ? 'Send team response' : 'Send group response'
         : lessonState.activeInteraction?.type === 'word-cloud'
           ? 'Add to word cloud'
           : 'Send response';
@@ -2045,7 +2067,7 @@ export default function StudentWelcomePage() {
             {interactionSubmitted ? (
               <StudentPostSubmit
                 interaction={lessonState.activeInteraction}
-                answer={lessonState.activeInteraction.type === 'team-formation' ? lessonState.teams.find((team) => team.id === selectedTeamId)?.name || teamName || 'Team saved' : lessonState.activeInteraction.options?.[selectedOption ?? -1] || writtenResponse || 'Response saved'}
+                answer={lessonState.activeInteraction.type === 'team-formation' ? availableTeams.find((team) => team.id === selectedTeamId)?.name || teamName || 'Team saved' : lessonState.activeInteraction.options?.[selectedOption ?? -1] || writtenResponse || 'Response saved'}
                 questions={lessonState.questions}
                 selectedQuestionVotes={selectedQuestionVotes}
                 ownQuestionIds={ownQuestionIds}
@@ -2102,9 +2124,9 @@ export default function StudentWelcomePage() {
 
                 {lessonState.activeInteraction.type === 'team-formation' ? (
                   <div className="student-team-form">
-                    {lessonState.teams.length > 0 && <fieldset className="student-team-picker"><legend>Which team are you on?</legend><div>{lessonState.teams.map((team) => <HapticButton key={team.id} type="button" role="radio" aria-checked={selectedTeamId === team.id} className={selectedTeamId === team.id ? 'is-selected' : ''} onClick={() => { setSelectedTeamId(team.id); persistResponseDraft({ selectedTeamId: team.id }); setCreatingNewTeam(false); }}><span><strong>{team.name}</strong>{team.tag && <small>{team.tag}</small>}</span><b>{team.memberCount || 0} joined</b>{selectedTeamId === team.id && <Check size={18} />}</HapticButton>)}</div></fieldset>}
-                    {lessonState.teams.length > 0 && <button type="button" className="student-create-team-toggle" onClick={() => { setCreatingNewTeam((current) => !current); setSelectedTeamId(''); persistResponseDraft({ selectedTeamId: '' }); }}>{creatingNewTeam ? 'Choose a team already here' : 'My team is not listed'}</button>}
-                    {(lessonState.teams.length === 0 || creatingNewTeam || teamName.trim().length > 0) && <div className="student-new-team-fields">
+                    {availableTeams.length > 0 && <fieldset className="student-team-picker"><legend>Which team are you on?</legend><div>{availableTeams.map((team) => <HapticButton key={team.id} type="button" role="radio" aria-checked={selectedTeamId === team.id} className={selectedTeamId === team.id ? 'is-selected' : ''} onClick={() => { setSelectedTeamId(team.id); persistResponseDraft({ selectedTeamId: team.id }); setCreatingNewTeam(false); }}><span><strong>{team.name}</strong>{team.tag && <small>{team.tag}</small>}</span><b>{'memberCount' in team ? team.memberCount || 0 : 0} joined</b>{selectedTeamId === team.id && <Check size={18} />}</HapticButton>)}</div></fieldset>}
+                    {availableTeams.length > 0 && <button type="button" className="student-create-team-toggle" onClick={() => { setCreatingNewTeam((current) => !current); setSelectedTeamId(''); persistResponseDraft({ selectedTeamId: '' }); }}>{creatingNewTeam ? 'Choose a team already here' : 'My team is not listed'}</button>}
+                    {(availableTeams.length === 0 || creatingNewTeam || teamName.trim().length > 0) && <div className="student-new-team-fields">
                       <label><span>Team name</span><input value={teamName} onChange={(event) => { const value = event.target.value.slice(0, 48); setTeamName(value); persistResponseDraft({ teamName: value }); }} maxLength={48} placeholder="Give your team a name" autoComplete="off" /></label>
                       <label><span>What are you working on? <small>Optional</small></span><textarea value={teamDescription} onChange={(event) => { const value = event.target.value.slice(0, 160); setTeamDescription(value); persistResponseDraft({ teamDescription: value }); }} maxLength={160} rows={3} placeholder="Add a short note for the class" /></label>
                       {Boolean(lessonState.activeInteraction.teamTags?.length) && <fieldset><legend>Choose your focus</legend><div className="student-team-tags">{lessonState.activeInteraction.teamTags?.map((tag, index) => <HapticButton key={tag} type="button" className={selectedOption === index ? 'is-selected' : ''} aria-pressed={selectedOption === index} onClick={() => { setSelectedOption(index); persistResponseDraft({ selectedOption: index }); }}>{tag}{selectedOption === index && <Check size={16} />}</HapticButton>)}</div></fieldset>}
@@ -2147,7 +2169,7 @@ export default function StudentWelcomePage() {
                   </label>
                 ) : (
                   <div className="student-group-response">
-                  {groupUsesCourseTeams && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); persistResponseDraft({ selectedTeamId: event.target.value }); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseId || lessonState.session.rewardScopeId || lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{lessonState.teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
+                  {groupUsesCourseTeams && <label><span>Your team</span><select value={selectedTeamId} onChange={(event) => { setSelectedTeamId(event.target.value); persistResponseDraft({ selectedTeamId: event.target.value }); if (event.target.value) window.localStorage.setItem(`classfully-team:${lessonState.session.courseId || lessonState.session.rewardScopeId || lessonState.session.courseCode}`, event.target.value); }}><option value="">Choose your team</option>{availableTeams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.tag ? ` · ${team.tag}` : ''}</option>)}</select></label>}
                     <textarea value={writtenResponse} onChange={(event) => { const value = event.target.value.slice(0, 280); setWrittenResponse(value); persistResponseDraft({ writtenResponse: value }); }} disabled={!lessonState.interactionResults?.open} rows={5} maxLength={280} placeholder={lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'One response from your team' : 'One response from your group' : 'Type your response here'} aria-label={lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'Your team response' : 'Your group response' : 'Your response'} />
                   </div>
                 )}

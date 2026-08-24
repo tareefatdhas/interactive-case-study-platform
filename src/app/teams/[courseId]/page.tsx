@@ -111,6 +111,7 @@ export default function TeamRegistrationPage({ params }: PageProps) {
     try {
       await joinCourseTeam({ courseId, teacherId: module.teacherId, teamId: team.id, studentNumber, displayName });
       setMembership({ id: `${courseId}__${studentUid}`, courseId, teacherId: module.teacherId, teamId: team.id, studentUid, studentNumber, displayName });
+      window.localStorage.setItem(`classfully-team:${courseId}`, team.id);
       window.localStorage.setItem(`classfully-team:${module.courseCode}`, team.id);
       setSearch('');
       setCreating(false);
@@ -138,6 +139,7 @@ export default function TeamRegistrationPage({ params }: PageProps) {
     try {
       const teamId = await createCourseTeam({ module, name: teamName, description, tag, color, studentNumber, displayName });
       setMembership({ id: `${courseId}__${studentUid}`, courseId, teacherId: module.teacherId, teamId, studentUid, studentNumber, displayName });
+      window.localStorage.setItem(`classfully-team:${courseId}`, teamId);
       window.localStorage.setItem(`classfully-team:${module.courseCode}`, teamId);
       setCreating(false);
       setSearch('');
