@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import MarkdownContent from '@/components/live/MarkdownContent';
+import { interactionAcceptsResponses } from '@/app/live/live-data';
 import type { InteractionResults, LiveInteraction, LiveQuestion, LiveSessionContext, LiveTimer } from '@/app/live/live-data';
 import ProjectorPreflight from './ProjectorPreflight';
 import './classfully-remote.css';
@@ -46,6 +47,7 @@ type ClassfullyRemoteProps = {
   onLaunch: (interaction: LiveInteraction) => void;
   onToggleResponses: () => void;
   onReveal: () => void;
+  onShareResponse: (responseId: string) => void;
   onAdvanceModule: () => void;
   onSpinWheel: () => void;
   onFinish: () => void;
@@ -74,6 +76,7 @@ export default function ClassfullyRemote({
   onLaunch,
   onToggleResponses,
   onReveal,
+  onShareResponse,
   onAdvanceModule,
   onSpinWheel,
   onFinish,
@@ -140,6 +143,8 @@ export default function ClassfullyRemote({
   const isGroupWork = activeInteraction?.type === 'group-work';
   const isTeamFormation = activeInteraction?.type === 'team-formation';
   const isWheel = activeInteraction?.type === 'spin-wheel';
+  const isCaseMaterial = activeInteraction?.type === 'case-study';
+  const acceptsResponses = activeInteraction ? interactionAcceptsResponses(activeInteraction) : false;
   const peerPhase = results?.phase || 'respond';
 
   const submitQuickAsk = () => {
@@ -205,27 +210,42 @@ export default function ClassfullyRemote({
                 {showPlan ? 'Back to live' : 'Choose interaction'}
               </button>
             </div>
-            <h2>{activeInteraction.type === 'timer' ? activeInteraction.title : activeInteraction.prompt}</h2>
-            {activeInteraction.type === 'timer' && <MarkdownContent className="remote-clock-instructions" markdown={activeInteraction.prompt} />}
+            <h2>{isClock || isGroupWork || isTeamFormation || isCaseMaterial ? activeInteraction.title : activeInteraction.prompt}</h2>
+            {(isClock || isGroupWork || isTeamFormation || isCaseMaterial) && <MarkdownContent className="remote-clock-instructions" markdown={activeInteraction.prompt} />}
 
-            {!isClock && !isWheel && <div className="remote-response-metric">
+            {acceptsResponses && <div className="remote-response-metric">
               <div>
                 <strong key={results.responseCount}>{results.responseCount}</strong>
                 <span>{isTeamFormation ? 'students joined a team' : isGroupWork ? groupUsesCourseTeams ? 'team submissions' : 'group submissions' : `of ${responseTarget || 'the class'} responded`}</span>
               </div>
               <span className="remote-response-status">{isPeerLearning && peerPhase === 'discuss' ? 'Partner discussion' : isPeerLearning && peerPhase === 'respond-again' ? 'Second answer' : results.open ? 'Collecting' : results.revealed ? 'Revealed' : 'Locked'}</span>
             </div>}
-            {!isClock && !isWheel && <div className="remote-progress" aria-label={`${responseProgress}% of connected students responded`}>
+            {acceptsResponses && <div className="remote-progress" aria-label={`${responseProgress}% of connected students responded`}>
               <i style={{ width: `${responseProgress}%` }} />
             </div>}
 
             {isPeerLearning && <div className="remote-module-steps" aria-label="Peer learning stages"><span className="is-complete">1 Answer</span><span className={peerPhase === 'discuss' || peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>2 Discuss</span><span className={peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>3 Answer again</span></div>}
             {isGroupWork && <p className="remote-module-note">{groupUsesCourseTeams ? 'Students work with their saved class teams. One person submits for the team.' : `Temporary groups of about ${activeInteraction.groupSize || 4}. Ask each group to choose one note-taker.`}</p>}
+            {(isGroupWork || activeInteraction.type === 'open-response') && results.writtenResponses.length > 0 && (
+              <div className="remote-submission-review" aria-label="Submissions ready to present">
+                <div><small>Submissions</small><strong>Choose one to show</strong></div>
+                {results.writtenResponses.map((response) => {
+                  const isShown = results.sharedResponseId === response.id;
+                  return (
+                    <article className={isShown ? 'is-shown' : ''} key={response.id}>
+                      {response.teamName && <small>{response.teamName}</small>}
+                      <p>{response.text}</p>
+                      <button type="button" onClick={() => onShareResponse(response.id)} aria-label={`${isShown ? 'Shown on presentation' : 'Show on presentation'}: ${response.teamName || response.text}`}><MonitorUp size={14} /> {isShown ? 'Shown on presentation' : 'Show on presentation'}</button>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
             {isClock && <div className="remote-clock-focus"><Timer size={22} /><span><small>{timerSeconds === 0 ? 'Time is up' : 'Shared clock'}</small><strong>{timerText}</strong></span></div>}
             {isWheel && <div className="remote-wheel-focus"><Dices size={22} /><span><small>{results.wheelSelectedLabel ? 'Selected' : `${results.wheelItems?.length || 0} items ready`}</small><strong>{results.wheelSelectedLabel || 'Ready to spin'}</strong></span></div>}
 
             <div className="remote-primary-actions">
-              {!isClock && !isPeerLearning && !isWheel && <button type="button" className="remote-lock" onClick={onToggleResponses}>
+              {acceptsResponses && !isPeerLearning && <button type="button" className="remote-lock" onClick={onToggleResponses}>
                 {results.open ? <Pause size={18} /> : <Play size={18} />}
                 <span>{results.open ? 'Lock responses' : 'Reopen responses'}</span>
               </button>}

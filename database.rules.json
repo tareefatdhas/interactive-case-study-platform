@@ -55,6 +55,16 @@
             }
           },
 
+          "teamSubmissionClaims": {
+            "$runId": {
+              "$teamId": {
+                ".read": "auth != null",
+                ".write": "auth != null && auth.token.firebase.sign_in_provider === 'anonymous' && ((!data.exists() && newData.exists() && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('status').val() === 'live' && root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('expiresAt').val() >= now && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('activeInteraction').child('type').val() === 'group-work' && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('activeInteraction').child('groupingMode').val() !== 'ad-hoc' && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('interactionResults').child('runId').val() === $runId && root.child('liveV2').child($ownerUid).child($sessionId).child('publicState').child('interactionResults').child('open').val() === true) || (data.exists() && data.child('studentUid').val() === auth.uid && !newData.exists()))",
+                ".validate": "!newData.exists() || (newData.hasChildren(['studentUid', 'claimedAt']) && newData.child('studentUid').val() === auth.uid && newData.child('claimedAt').isNumber() && newData.child('claimedAt').val() >= now - 60000 && newData.child('claimedAt').val() <= now + 5000)"
+              }
+            }
+          },
+
           "welcomeResponses": {
             ".read": "auth != null && (auth.uid === $ownerUid || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('workspaceRole').exists() || root.child('instructorAccess').child($ownerUid).child(auth.uid).child('courses').child(root.child('liveV2').child($ownerUid).child($sessionId).child('meta').child('courseId').val()).exists()) && auth.token.firebase.sign_in_provider !== 'anonymous'",
             "$runId": {

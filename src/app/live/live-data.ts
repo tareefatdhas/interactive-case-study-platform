@@ -11,7 +11,7 @@ export type OnboardingStep = 0 | 1 | 2 | 3 | 4;
 
 export type LiveInteraction = {
   id: string;
-  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'word-cloud' | 'peer-learning' | 'team-formation' | 'group-work' | 'timer' | 'spin-wheel';
+  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'word-cloud' | 'peer-learning' | 'team-formation' | 'group-work' | 'timer' | 'spin-wheel' | 'case-study';
   label: string;
   title: string;
   prompt: string;
@@ -31,6 +31,7 @@ export type LiveInteraction = {
   wheelItems?: string[];
   wheelItemColors?: string[];
   wheelRemoveSelected?: boolean;
+  caseStudyId?: string;
   resultVisibility?: 'live' | 'after-reveal' | 'instructor-only';
   plannedTime?: string;
 };
@@ -45,6 +46,13 @@ export type InteractionResponse = {
   teamName?: string;
   teamDescription?: string;
   teamTag?: string;
+};
+
+export type WrittenResponse = {
+  id: string;
+  text: string;
+  teamId?: string;
+  teamName?: string;
 };
 
 export type LiveTeam = {
@@ -68,7 +76,8 @@ export type InteractionResults = {
   open: boolean;
   responseCount: number;
   optionCounts: number[];
-  writtenResponses: Array<{ id: string; text: string }>;
+  writtenResponses: WrittenResponse[];
+  submittedTeamIds?: string[];
   revealed: boolean;
   sharedResponseId: string | null;
   phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
@@ -274,6 +283,16 @@ export const DEMO_LIVE_INTERACTIONS: LiveInteraction[] = [
     resultVisibility: 'instructor-only',
     plannedTime: 'Discussion',
   },
+  {
+    id: 'platform-governance-case',
+    type: 'case-study',
+    label: 'Case material',
+    title: 'Platform governance case',
+    prompt: 'Review the case on the classroom screen. Identify the decision, the competing interests, and the evidence you would want before choosing a path.',
+    caseStudyId: 'demo-platform-governance',
+    resultVisibility: 'instructor-only',
+    plannedTime: 'Deeper application',
+  },
 ];
 
 export const LESSON_CHANNEL = 'living-seminar-live-lesson';
@@ -365,10 +384,11 @@ export function createInteractionResults(interaction: LiveInteraction): Interact
   return {
     runId: `${interaction.id}-${startedAt}`,
     startedAt,
-    open: interaction.type !== 'timer' && interaction.type !== 'spin-wheel',
+    open: interactionAcceptsResponses(interaction),
     responseCount: 0,
     optionCounts: interaction.options?.map(() => 0) ?? [],
     writtenResponses: [],
+    submittedTeamIds: interaction.type === 'group-work' ? [] : undefined,
     revealed: interaction.resultVisibility === 'live',
     sharedResponseId: null,
     phase: interaction.type === 'group-work' ? 'work' : 'respond',
@@ -378,6 +398,118 @@ export function createInteractionResults(interaction: LiveInteraction): Interact
     wheelSpinCount: interaction.type === 'spin-wheel' ? 0 : undefined,
     wheelRotation: interaction.type === 'spin-wheel' ? 0 : undefined,
     wheelHistory: interaction.type === 'spin-wheel' ? [] : undefined,
+  };
+}
+
+type SummarizableResponse = InteractionResponse & {
+  studentUid?: string;
+  submittedAt?: number;
+};
+
+export function summarizeInteractionResponses(
+  interaction: LiveInteraction,
+  responses: SummarizableResponse[],
+) {
+  const ordered = [...responses].sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0));
+  const canonical = interaction.type === 'group-work'
+    ? Array.from(ordered.reduce((byGroup, response) => {
+      const key = response.teamId ? `team:${response.teamId}` : `student:${response.studentUid || response.id}`;
+      if (!byGroup.has(key)) byGroup.set(key, response);
+      return byGroup;
+    }, new Map<string, SummarizableResponse>()).values())
+    : ordered;
+  const optionCounts = interaction.options?.map(() => 0) ?? [];
+  canonical.forEach((response) => {
+    if (typeof response.optionIndex === 'number' && optionCounts[response.optionIndex] !== undefined) {
+      optionCounts[response.optionIndex] += 1;
+    }
+  });
+  const writtenResponses = canonical
+    .filter((response) => Boolean(response.text?.trim()))
+    .map((response) => ({
+      id: response.id,
+      text: response.text!.trim(),
+      ...(response.teamId ? { teamId: response.teamId } : {}),
+      ...(response.teamName ? { teamName: response.teamName } : {}),
+    }))
+    .reverse()
+    .slice(0, 60);
+
+  return {
+    responseCount: canonical.length,
+    optionCounts,
+    writtenResponses,
+    submittedTeamIds: interaction.type === 'group-work'
+      ? [...new Set(canonical.flatMap((response) => response.teamId ? [response.teamId] : []))]
+      : undefined,
+  };
+}
+
+export function interactionAcceptsResponses(interaction: LiveInteraction) {
+  return interaction.type !== 'timer'
+    && interaction.type !== 'spin-wheel'
+    && interaction.type !== 'case-study';
+}
+
+export function shouldShowClassDistribution(
+  interaction: LiveInteraction,
+  results: Pick<InteractionResults, 'revealed'>,
+) {
+  if (!interaction.options?.length || interaction.type === 'pulse') return false;
+  if (interaction.resultVisibility === 'instructor-only') return false;
+  return interaction.resultVisibility === 'live' || results.revealed;
+}
+
+export function createPublicInteraction(
+  interaction: LiveInteraction | null,
+  results: Pick<InteractionResults, 'revealed'> | null,
+): LiveInteraction | null {
+  if (!interaction) return null;
+  if ((interaction.type !== 'quiz' && interaction.type !== 'peer-learning') || results?.revealed) {
+    return interaction;
+  }
+  const safeInteraction = { ...interaction };
+  delete safeInteraction.correctOptionIndex;
+  delete safeInteraction.explanation;
+  return safeInteraction;
+}
+
+export function createPublicInteractionResults(
+  interaction: LiveInteraction | null,
+  results: InteractionResults | null,
+): InteractionResults | null {
+  if (!interaction || !results) return results;
+
+  const showDistribution = shouldShowClassDistribution(interaction, results);
+  const sharedResponse = results.writtenResponses.find((response) => response.id === results.sharedResponseId);
+  const sharedResponseIndex = sharedResponse
+    ? results.writtenResponses.findIndex((response) => response.id === sharedResponse.id)
+    : -1;
+  const publicSharedResponseId = sharedResponse
+    ? `shared-${results.runId}-${Math.max(0, sharedResponseIndex)}`
+    : null;
+  const showWordCloud = interaction.type === 'word-cloud' && interaction.resultVisibility === 'live';
+  const publicWrittenResponses = showWordCloud
+    ? results.writtenResponses.map((response, index) => ({
+      id: `word-${results.runId}-${index}`,
+      text: response.text,
+    }))
+    : sharedResponse && publicSharedResponseId
+      ? [{
+        id: publicSharedResponseId,
+        text: sharedResponse.text,
+        ...(interaction.type === 'group-work' && sharedResponse.teamName ? { teamName: sharedResponse.teamName } : {}),
+      }]
+      : [];
+
+  return {
+    ...results,
+    optionCounts: showDistribution ? [...results.optionCounts] : interaction.options?.map(() => 0) ?? [],
+    firstOptionCounts: showDistribution && results.firstOptionCounts
+      ? [...results.firstOptionCounts]
+      : undefined,
+    writtenResponses: publicWrittenResponses,
+    sharedResponseId: publicSharedResponseId,
   };
 }
 
@@ -423,9 +555,12 @@ export function buildWordCloudItems(
 
 export function prepareLiveInteractions(interactions: SessionInteraction[] = []): LiveInteraction[] {
   return interactions.flatMap((interaction) => {
-    if (interaction.type === 'case-study') return [];
     const type = interaction.type === 'reflection' ? 'open-response' : interaction.type;
-    const label = type === 'pulse'
+    const label = interaction.type === 'reflection'
+      ? 'Reflection'
+      : type === 'case-study'
+        ? 'Case material'
+      : type === 'pulse'
       ? 'Pulse'
       : type === 'poll'
         ? 'Poll'
@@ -463,10 +598,15 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       wheelSource: interaction.wheelSource,
       wheelItems: interaction.wheelItems,
       wheelRemoveSelected: interaction.wheelRemoveSelected,
-      resultVisibility: type === 'pulse'
+      caseStudyId: interaction.caseStudyId,
+      resultVisibility: type === 'pulse' || type === 'open-response' || type === 'group-work' || type === 'case-study'
         ? 'instructor-only'
+        : type === 'word-cloud' || type === 'team-formation'
+          ? 'live'
+        : type === 'quiz' || type === 'peer-learning'
+          ? 'after-reveal'
         : interaction.resultVisibility
-          || (type === 'quiz' || type === 'peer-learning' ? 'after-reveal' : type === 'open-response' || type === 'group-work' ? 'instructor-only' : 'live'),
+          || 'live',
       plannedTime: interaction.plannedTime || 'During class',
     } satisfies LiveInteraction];
   });

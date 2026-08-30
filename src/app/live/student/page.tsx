@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UsersThree as Users, X } from '@phosphor-icons/react';
+import { IconContext, Pulse as Activity, ArrowClockwise, ArrowRight, ArrowFatUp as ArrowUp, Medal as Award, BookOpen, Check, CaretDown as ChevronDown, ClipboardText as ClipboardCheck, DiceFive, Gift, Heartbeat as HeartPulse, ListChecks, LockKey as Lock, ChatCircleDots as MessageCircle, PaperPlaneTilt as Send, ShieldCheck, Sparkle as Sparkles, Timer, Trophy, UsersThree as Users, X } from '@phosphor-icons/react';
 import HapticButton from '@/components/student/HapticButton';
 import SignalAvatarBadge from '@/components/gamification/SignalAvatarBadge';
 import { SharedMomentEffect, RESPONSE_TRANSFER_DEPART_MS, RESPONSE_TRANSFER_LIFETIME_MS, type ResponseTransferSignal } from '@/components/motion';
@@ -1613,6 +1613,10 @@ export default function StudentWelcomePage() {
     const interaction = lessonState.activeInteraction;
     const results = lessonState.interactionResults;
     if (!interaction || !results?.open || interactionSubmitted || isSubmitting) return;
+    if (interaction.type === 'group-work' && selectedTeamId && results.submittedTeamIds?.includes(selectedTeamId)) {
+      setSubmissionError('Your team already has a submission. Ask your instructor to reopen it if the team needs to make a change.');
+      return;
+    }
 
     const response: InteractionResponse = {
       id: crypto.randomUUID(),
@@ -1657,7 +1661,9 @@ export default function StudentWelcomePage() {
     setIsSubmitting(true);
     try {
       if (remoteSession) {
-        await submitStudentInteractionResponse(remoteSession.ownerUid, remoteSession.sessionId, response);
+        await submitStudentInteractionResponse(remoteSession.ownerUid, remoteSession.sessionId, response, {
+          claimTeamSubmission: interaction.type === 'group-work' && interaction.groupingMode !== 'ad-hoc',
+        });
       } else {
         const submittedAt = Date.now();
         channelRef.current?.postMessage({ type: 'student-interaction-response', response });
@@ -1677,7 +1683,12 @@ export default function StudentWelcomePage() {
           awardReward(`${results.runId}:response`, 'seminar', participationPoints, `${interaction.label} response`);
         }
       }, 720);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('TEAM_SUBMISSION_EXISTS')) {
+        failTransport(transportId);
+        setSubmissionError('Your team already has a submission. Ask your instructor to reopen it if the team needs to make a change.');
+        return;
+      }
       const saved = remoteSession
         ? await getStudentResponse(remoteSession.ownerUid, remoteSession.sessionId, results.runId).catch(() => null)
         : null;
@@ -1927,11 +1938,16 @@ export default function StudentWelcomePage() {
     && lessonState.activeInteraction.groupingMode !== 'ad-hoc'
     && availableTeams.length,
   );
+  const selectedTeamHasSubmission = Boolean(
+    groupUsesCourseTeams
+    && selectedTeamId
+    && lessonState.interactionResults?.submittedTeamIds?.includes(selectedTeamId),
+  );
   const responseReady = Boolean(
     lessonState.activeInteraction?.type === 'team-formation'
       ? selectedTeamId || (teamName.trim().length >= 2 && (!lessonState.activeInteraction.requireTeamTag || selectedOption !== null))
       : lessonState.activeInteraction?.type === 'group-work' && groupUsesCourseTeams
-        ? selectedTeamId && writtenResponse.trim()
+        ? selectedTeamId && writtenResponse.trim() && !selectedTeamHasSubmission
         : lessonState.activeInteraction?.options?.length ? selectedOption !== null : writtenResponse.trim(),
   );
   const selectedAnswerLetter = selectedOption !== null ? String.fromCharCode(65 + selectedOption) : '';
@@ -2113,14 +2129,22 @@ export default function StudentWelcomePage() {
                 {lessonState.timer && <StudentTimerBanner timer={lessonState.timer} />}
                 <div className="student-clock-note"><Lock size={16} /><span>No response is needed. Look up when the clock ends.</span></div>
               </div>
+            ) : lessonState.activeInteraction.type === 'case-study' ? (
+              <div className="student-case-material">
+                <span className="student-round-icon"><BookOpen size={28} /></span>
+                <div className="student-kicker">Case material · Live now</div>
+                <h1>{lessonState.activeInteraction.title}</h1>
+                <MarkdownContent className="student-case-instructions" markdown={lessonState.activeInteraction.prompt} />
+                <div className="student-clock-note"><BookOpen size={16} /><span>Follow the case on the classroom screen. No response is needed yet.</span></div>
+              </div>
             ) : (
               <>
                 <div className="student-interaction-meta">
                   <span className="student-interaction-type-icon"><ListChecks size={16} /></span>
                   <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
                 </div>
-                <MarkdownContent heading className={`student-interaction-question ${promptDensityClass}`} markdown={lessonState.activeInteraction.prompt} />
-                <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'You are working with your class team. One person sends the team’s response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response, then send it to the class.'}</p>
+                {lessonState.activeInteraction.type === 'team-formation' || lessonState.activeInteraction.type === 'group-work' ? <><h1 className="student-interaction-question">{lessonState.activeInteraction.title}</h1><MarkdownContent className="student-activity-instructions" markdown={lessonState.activeInteraction.prompt} /></> : <MarkdownContent heading className={`student-interaction-question ${promptDensityClass}`} markdown={lessonState.activeInteraction.prompt} />}
+                <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'You are working with your class team. One person sends the team’s response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response for your instructor.'}</p>
 
                 {lessonState.activeInteraction.type === 'team-formation' ? (
                   <div className="student-team-form">
@@ -2176,6 +2200,8 @@ export default function StudentWelcomePage() {
 
                 {!lessonState.interactionResults.open ? (
                   <div className="student-submitted is-locked" role="status"><Lock size={18} /><span><strong>Responses are locked.</strong> Look up for the class discussion.</span></div>
+                ) : selectedTeamHasSubmission ? (
+                  <div className="student-submitted" role="status"><Check size={18} /><span><strong>{availableTeams.find((team) => team.id === selectedTeamId)?.name || 'Your team'} has submitted.</strong> Only one response is collected for each team.</span></div>
                 ) : (
                   <div className="student-response-action is-ready">
                     <HapticButton
@@ -2190,7 +2216,7 @@ export default function StudentWelcomePage() {
                     </HapticButton>
                   </div>
                 )}
-                <div className="student-private-line"><ShieldCheck size={16} /> {lessonState.activeInteraction.type === 'pulse' ? 'The projector shows check-in progress, not your answer.' : 'The projector shows the class result, not your name.'}</div>
+                <div className="student-private-line"><ShieldCheck size={16} /> {lessonState.activeInteraction.type === 'pulse' ? 'The projector shows check-in progress, not your answer.' : lessonState.activeInteraction.type === 'open-response' || lessonState.activeInteraction.type === 'group-work' ? 'Nothing appears on the projector unless your instructor shares it.' : lessonState.activeInteraction.type === 'word-cloud' ? 'Your words join the projector without your name.' : lessonState.activeInteraction.type === 'team-formation' ? 'The projector shows team names, not individual student names.' : 'The projector shows the class result, not your name.'}</div>
               </>
             )}
             {submissionError && <div className="student-response-error" role="alert">{submissionError}</div>}

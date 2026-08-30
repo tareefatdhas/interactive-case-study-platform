@@ -1352,8 +1352,12 @@ html[data-input-modality="keyboard"] .presentation-navigator button:focus-visibl
 .display-wheel-selection { display: grid; align-content: center; min-height: 220px; padding: clamp(28px, 4vw, 58px); border: 1px solid #dedaf8; border-radius: 32px; background: linear-gradient(145deg, rgba(247,246,255,.96), rgba(255,255,255,.98)); box-shadow: 0 22px 65px rgba(52,43,119,.09); }
 .display-wheel-selection small { color: #7067d8; font-size: 12px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
 .display-wheel-selection strong { margin-top: 14px; color: #111b39; font-family: var(--seminar-font-display); font-size: clamp(38px, 5vw, 76px); font-weight: 500; letter-spacing: -.04em; line-height: 1; overflow-wrap: anywhere; }
-.display-wheel-selection.has-result { animation: wheel-result-arrive 680ms 3000ms cubic-bezier(.16,1,.3,1) both; }
+.display-wheel-selection.is-spinning { border-color: #cbc6ff; background: linear-gradient(145deg, #f1efff, #fff); }
+.display-wheel-selection.is-spinning strong { animation: wheel-name-tick 110ms ease-out both; }
+.display-wheel-selection.has-result:not(.is-spinning) { animation: wheel-result-arrive 520ms cubic-bezier(.16,1,.3,1) both; }
+.display-wheel-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 @keyframes wheel-result-arrive { from { opacity: 0; transform: translateY(20px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes wheel-name-tick { from { opacity: .28; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
 .interaction-display-stage.is-group-work {
   justify-content: flex-start;
@@ -1393,6 +1397,12 @@ html[data-input-modality="keyboard"] .presentation-navigator button:focus-visibl
 .display-team-meta { grid-column: 2; display: flex; align-items: center; gap: 9px; }
 .display-team-board article small { justify-self: start; border-radius: 999px; background: #fff4c9; color: #75560b; padding: 7px 11px; font-size: 12px; font-weight: 750; }
 .display-team-board article b { color: var(--display-muted); font-size: 12px; }
+.display-case-material { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(24px, 3vw, 52px); align-items: start; align-content: center; min-height: 48vh; border: 1px solid #dedaf8; border-radius: 34px; background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(244,242,255,.92)); padding: clamp(36px, 5vw, 80px); box-shadow: 0 26px 70px rgba(44,39,112,.1); }
+.display-case-material > span { display: grid; place-items: center; width: clamp(84px, 8vw, 126px); height: clamp(84px, 8vw, 126px); border-radius: 30px; color: #5146e5; background: #efedff; }
+.display-case-material > div { display: grid; gap: clamp(10px, 1.3vw, 20px); }
+.display-case-material small { color: #5146e5; font-size: clamp(13px, 1.1vw, 17px); font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.display-case-material strong { color: var(--display-ink); font-family: var(--seminar-font-display); font-size: clamp(42px, 5.2vw, 78px); font-weight: 550; line-height: .98; }
+.display-case-material p { max-width: 50ch; margin: 0; color: var(--display-muted); font-size: clamp(20px, 2vw, 30px); line-height: 1.45; }
 .display-team-empty { grid-column: 1 / -1; display: grid; justify-items: center; gap: 12px; color: #5146e5; text-align: center; }
 .display-team-empty strong { color: var(--display-ink); font-family: var(--seminar-font-display); font-size: clamp(30px,3vw,46px); font-weight: 500; }
 .display-team-empty span { color: var(--display-muted); font-size: 15px; }
@@ -1808,7 +1818,14 @@ html[data-input-modality="keyboard"] .presentation-navigator button:focus-visibl
 }
 .full-screen-projector-timer svg circle { fill: rgba(255,255,255,.72); stroke: #deddea; stroke-width: 7; }
 .full-screen-projector-timer svg .is-progress { fill: none; stroke: var(--display-violet); stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 500ms linear; }
-.full-screen-projector-timer > div { position: absolute; display: grid; place-items: center; width: min(42vmin, 480px); }
+.full-screen-projector-timer > div {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  place-items: center;
+  text-align: center;
+}
 .full-screen-projector-timer small { margin-bottom: clamp(8px, 1.2vmin, 14px); color: #696f83; font-size: clamp(13px, 1.35vmin, 17px); font-weight: 820; letter-spacing: .12em; text-transform: uppercase; }
 .full-screen-projector-timer strong {
   color: var(--display-ink);

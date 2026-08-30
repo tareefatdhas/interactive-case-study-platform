@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { deleteApp, initializeApp } from 'firebase/app';
 import { createUserWithEmailAndPassword, deleteUser, getAuth, signInAnonymously } from 'firebase/auth';
-import { arrayUnion, deleteDoc, doc, getDoc, getFirestore, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { get, getDatabase, ref, remove, runTransaction, set, update } from 'firebase/database';
+import { deleteDoc, doc, getDoc, getFirestore, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { get, getDatabase, ref, remove, set, update } from 'firebase/database';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 loadEnv({ path: '.env.local', quiet: true });
 
@@ -27,15 +28,17 @@ if (firebaseConfig.projectId !== 'interactive-case-study-2aff7') {
 
 const runId = `contract-${Date.now()}`;
 const sessionId = `e2e-${randomUUID()}`;
-const courseId = `e2e-${randomUUID()}`;
 const sessionCode = randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase();
+let courseId = '';
 const teacherApp = initializeApp(firebaseConfig, `teacher-${runId}`);
 const studentApp = initializeApp(firebaseConfig, `student-${runId}`);
 const teacherAuth = getAuth(teacherApp);
 const studentAuth = getAuth(studentApp);
 const teacherDb = getFirestore(teacherApp);
 const teacherRealtime = getDatabase(teacherApp);
+const teacherFunctions = getFunctions(teacherApp, 'asia-southeast1');
 const studentRealtime = getDatabase(studentApp);
+const studentFunctions = getFunctions(studentApp, 'asia-southeast1');
 
 let teacherUser;
 let studentUser;
@@ -53,18 +56,20 @@ try {
   );
   teacherUser = credential.user;
 
-  await setDoc(doc(teacherDb, 'teachers', teacherUser.uid), {
-    email: teacherUser.email,
+  const registerInstructor = httpsCallable(teacherFunctions, 'getInstructorBilling');
+  await registerInstructor({
+    teachingTeamAction: 'register',
     name: 'Classfully contract check',
-    courseIds: [courseId],
-    createdAt: serverTimestamp(),
+    timeZone: 'UTC',
   });
-  await setDoc(doc(teacherDb, 'courses', courseId), {
-    teacherId: teacherUser.uid,
-    code: 'E2E 101',
+
+  const createCourse = httpsCallable(teacherFunctions, 'createInstructorCourse');
+  const courseResult = await createCourse({
     name: 'Classroom contract check',
-    createdAt: serverTimestamp(),
+    code: `E2E${sessionCode}`,
+    term: 'Contract check',
   });
+  courseId = courseResult.data.courseId;
   const sourceId = `source-${randomUUID()}`;
   await updateDoc(doc(teacherDb, 'courses', courseId), {
     courseSources: [{
@@ -87,9 +92,14 @@ try {
     sessionType: 'standalone',
     sessionCode,
     title: 'Live contract check',
-    active: true,
+    active: false,
+    participationMode: 'course-record',
+    studentsJoined: [],
     createdAt: serverTimestamp(),
   });
+
+  const startSession = httpsCallable(teacherFunctions, 'startInstructorSession');
+  await startSession({ sessionId });
 
   const now = Date.now();
   const expiresAt = now + 60 * 60 * 1000;
@@ -104,10 +114,12 @@ try {
       ownerUid: teacherUser.uid,
       status: 'live',
       sessionCode,
+      courseId,
       courseCode: 'E2E 101',
       courseName: 'Classroom contract check',
       sessionTitle: 'Live contract check',
       instructorName: 'Classfully contract check',
+      participationMode: 'course-record',
       createdAt: now,
       updatedAt: now,
       expiresAt,
@@ -159,10 +171,12 @@ try {
     sessionId,
     ownerUid: teacherUser.uid,
     sessionCode,
+    courseId,
     courseCode: 'E2E 101',
     courseName: 'Classroom contract check',
     sessionTitle: 'Live contract check',
     instructorName: 'Classfully contract check',
+    participationMode: 'course-record',
     status: 'live',
     expiresAt,
   });
@@ -173,16 +187,13 @@ try {
   const publicStateSnapshot = await get(ref(studentRealtime, `${roomPath}/publicState`));
   assertContract(publicStateSnapshot.val()?.activeInteraction?.id === interactionId, 'Student could not read the active interaction.');
 
-  const studentNow = Date.now();
-  await set(ref(studentRealtime, `${roomPath}/attendanceClaims/${studentUser.uid}`), {
-    studentUid: studentUser.uid,
+  const claimAttendance = httpsCallable(studentFunctions, 'claimStudentAttendance');
+  await claimAttendance({
+    ownerUid: teacherUser.uid,
+    sessionId,
     studentNumber: 'E2E0001',
     studentDisplayName: 'Contract student',
-    status: 'claimed',
-    joinedAt: studentNow,
-    updatedAt: studentNow,
-    privacyNoticeVersion: 'contract-check',
-    privacyNoticeAcknowledgedAt: studentNow,
+    participationMode: 'course-record',
   });
   await set(ref(studentRealtime, `${roomPath}/welcomeResponses/1/${studentUser.uid}`), {
     runId: 1,
@@ -197,10 +208,6 @@ try {
     studentUid: studentUser.uid,
     optionIndex: 0,
     submittedAt: Date.now(),
-  });
-  await updateDoc(doc(teacherDb, 'sessions', sessionId), {
-    studentsJoined: arrayUnion('E2E0001'),
-    lastActivityAt: serverTimestamp(),
   });
 
   const responseContracts = [
@@ -223,6 +230,7 @@ try {
         title: `Contract ${contract.label.toLowerCase()}`,
         prompt: `Can a ${contract.label.toLowerCase()} response cross the live classroom rules?`,
         options: contract.options || [],
+        ...(contract.type === 'group-work' ? { groupingMode: 'course-teams' } : {}),
         resultVisibility: contract.type === 'open-response' || contract.type === 'group-work' ? 'instructor-only' : 'live',
       },
       interactionResults: {
@@ -239,12 +247,19 @@ try {
     const answer = typeof contract.optionIndex === 'number'
       ? { optionIndex: contract.optionIndex }
       : { text: contract.text };
+    if (contract.type === 'group-work') {
+      await set(ref(studentRealtime, `${roomPath}/teamSubmissionClaims/${contractRunId}/contract-team`), {
+        studentUid: studentUser.uid,
+        claimedAt: Date.now(),
+      });
+    }
     await set(ref(studentRealtime, `${roomPath}/responses/${contractRunId}/${studentUser.uid}`), {
       id: `${contractRunId}-${studentUser.uid}`,
       runId: contractRunId,
       interactionId: contract.id,
       studentUid: studentUser.uid,
       ...answer,
+      ...(contract.type === 'group-work' ? { teamId: 'contract-team', teamName: 'Contract team' } : {}),
       submittedAt: Date.now(),
     });
     responseContractRuns.push({ ...contract, runId: contractRunId });
@@ -332,7 +347,6 @@ try {
   assertContract(selfQuestionVoteWasRejected, 'A student was able to upvote their own question.');
   assertContract(questionVote.val() === true, 'Instructor could not receive the student question vote.');
   assertContract(sessionDocument.exists(), 'The prepared session did not persist in Firestore.');
-  assertContract(sessionDocument.data()?.studentsJoined?.includes('E2E0001'), 'The durable session roster did not include the joined student.');
 
   await set(ref(studentRealtime, `${roomPath}/questionVotes/1/${studentUser.uid}`), null);
   await set(ref(teacherRealtime, `${roomPath}/dismissedQuestions/1`), true);
@@ -345,51 +359,51 @@ try {
   const resetAt = Date.now();
   const resetExpiresAt = resetAt + 60 * 60 * 1000;
   const resetArchiveId = `reset-${resetAt}`;
-  const resetResult = await runTransaction(ref(teacherRealtime, roomPath), (current) => {
-    if (!current) return;
-    const {
-      responses,
-      welcomeResponses,
-      studentQuestions,
-      questionVotes,
-      dismissedQuestions,
-      questionPointClaims,
-      recognizedQuestions,
-      ...roomWithoutCollectedData
-    } = current;
-    return {
-      ...roomWithoutCollectedData,
-      archives: {
-        ...(current.archives || {}),
-        [resetArchiveId]: {
-          createdAt: resetAt,
-          reason: 'session-reset',
-          responses: responses || {},
-          welcomeResponses: welcomeResponses || {},
-          studentQuestions: studentQuestions || {},
-          questionVotes: questionVotes || {},
-          dismissedQuestions: dismissedQuestions || {},
-          questionPointClaims: questionPointClaims || {},
-          recognizedQuestions: recognizedQuestions || {},
-        },
-      },
-      publicState: {
-        ...current.publicState,
-        counts: emptyCounts,
-        comparisonCounts: emptyCounts,
-        onboardingStep: 0,
-        onboardingRunId: 0,
-        onboardingMoodCounts: emptyCounts,
-        activeInteraction: null,
-        interactionResults: null,
-        featuredQuestionId: null,
-        questions: [],
-        updatedAt: resetAt,
-      },
-      meta: { ...current.meta, status: 'live', updatedAt: resetAt, expiresAt: resetExpiresAt },
-    };
-  }, { applyLocally: false });
-  assertContract(resetResult.committed, 'Reset transaction did not commit.');
+  const [metaBeforeReset, publicStateBeforeReset, responsesBeforeReset, welcomeBeforeReset, questionsBeforeReset, votesBeforeReset, dismissedBeforeReset, claimsBeforeReset, recognizedBeforeReset] = await Promise.all([
+    get(ref(teacherRealtime, `${roomPath}/meta`)),
+    get(ref(teacherRealtime, `${roomPath}/publicState`)),
+    get(ref(teacherRealtime, `${roomPath}/responses`)),
+    get(ref(teacherRealtime, `${roomPath}/welcomeResponses`)),
+    get(ref(teacherRealtime, `${roomPath}/studentQuestions`)),
+    get(ref(teacherRealtime, `${roomPath}/questionVotes`)),
+    get(ref(teacherRealtime, `${roomPath}/dismissedQuestions`)),
+    get(ref(teacherRealtime, `${roomPath}/questionPointClaims`)),
+    get(ref(teacherRealtime, `${roomPath}/recognizedQuestions`)),
+  ]);
+  await update(ref(teacherRealtime), {
+    [`${roomPath}/archives/${resetArchiveId}`]: {
+      createdAt: resetAt,
+      reason: 'session-reset',
+      responses: responsesBeforeReset.val() || {},
+      welcomeResponses: welcomeBeforeReset.val() || {},
+      studentQuestions: questionsBeforeReset.val() || {},
+      questionVotes: votesBeforeReset.val() || {},
+      dismissedQuestions: dismissedBeforeReset.val() || {},
+      questionPointClaims: claimsBeforeReset.val() || {},
+      recognizedQuestions: recognizedBeforeReset.val() || {},
+    },
+    [`${roomPath}/responses`]: null,
+    [`${roomPath}/welcomeResponses`]: null,
+    [`${roomPath}/studentQuestions`]: null,
+    [`${roomPath}/questionVotes`]: null,
+    [`${roomPath}/dismissedQuestions`]: null,
+    [`${roomPath}/questionPointClaims`]: null,
+    [`${roomPath}/recognizedQuestions`]: null,
+    [`${roomPath}/publicState`]: {
+      ...publicStateBeforeReset.val(),
+      counts: emptyCounts,
+      comparisonCounts: emptyCounts,
+      onboardingStep: 0,
+      onboardingRunId: 0,
+      onboardingMoodCounts: emptyCounts,
+      activeInteraction: null,
+      interactionResults: null,
+      featuredQuestionId: null,
+      questions: [],
+      updatedAt: resetAt,
+    },
+    [`${roomPath}/meta`]: { ...metaBeforeReset.val(), status: 'live', updatedAt: resetAt, expiresAt: resetExpiresAt },
+  });
   await update(ref(teacherRealtime, `liveJoinCodes/${sessionCode}`), {
     status: 'live',
     expiresAt: resetExpiresAt,
@@ -474,7 +488,7 @@ try {
   console.log('PASS Pulse, poll, quiz, peer learning, open response, word cloud, and group work crossed the production rules.');
   console.log('PASS The shared clock correctly rejected an unexpected student response.');
   console.log('PASS Instructor received the student records.');
-  console.log('PASS Progress can read attendance and responses, with a durable session roster fallback.');
+  console.log('PASS Progress can read the live attendance and response records.');
   console.log('PASS Dismissed questions reject new student votes.');
   console.log('PASS Session reset archived collected data while preserving attendance and presence.');
   console.log('PASS Session ending settled final question points and closed both live records.');

@@ -4,6 +4,7 @@ import {
   onDisconnect,
   onValue,
   ref,
+  remove,
   runTransaction,
   serverTimestamp,
   set,
@@ -406,6 +407,7 @@ export async function resetInstructorClassroom(
   await update(ref(realtimeDb), {
     [`${basePath}/archives/${archiveId}`]: archive,
     [`${basePath}/responses`]: null,
+    [`${basePath}/teamSubmissionClaims`]: null,
     [`${basePath}/welcomeResponses`]: null,
     [`${basePath}/studentQuestions`]: null,
     [`${basePath}/questionVotes`]: null,
@@ -546,8 +548,19 @@ export async function submitStudentInteractionResponse(
   ownerUid: string,
   sessionId: string,
   response: InteractionResponse,
+  options: { claimTeamSubmission?: boolean } = {},
 ) {
   const student = await ensureStudentAnonymousAuth();
+  const teamClaimRef = options.claimTeamSubmission && response.teamId
+    ? ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/teamSubmissionClaims/${response.runId}/${response.teamId}`)
+    : null;
+  if (teamClaimRef) {
+    const claim = await runTransaction(teamClaimRef, (current) => {
+      if (!current) return { studentUid: student.uid, claimedAt: serverTimestamp() };
+      return current.studentUid === student.uid ? current : undefined;
+    });
+    if (!claim.committed) throw new Error('TEAM_SUBMISSION_EXISTS');
+  }
   const answer = typeof response.optionIndex === 'number'
     ? { optionIndex: response.optionIndex }
     : { text: response.text?.trim().slice(0, 280) || '' };
@@ -564,10 +577,17 @@ export async function submitStudentInteractionResponse(
     submittedAt: Date.now(),
   } as StoredLiveResponse);
   const responseRef = ref(studentRealtimeDb, `${roomPath(ownerUid, sessionId)}/responses/${response.runId}/${student.uid}`);
-  const result = await runTransaction(responseRef, (current) => current || {
-    ...storedResponse,
-    submittedAt: serverTimestamp(),
-  });
+  let result;
+  try {
+    result = await runTransaction(responseRef, (current) => current || {
+      ...storedResponse,
+      submittedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    const savedResponse = await get(responseRef).catch(() => null);
+    if (teamClaimRef && !savedResponse?.exists()) await remove(teamClaimRef).catch(() => undefined);
+    throw error;
+  }
   await markCurrentStudentParticipated(ownerUid, sessionId).catch(() => undefined);
   return (result.snapshot.val() || storedResponse) as StoredLiveResponse;
 }

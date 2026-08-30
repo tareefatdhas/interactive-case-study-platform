@@ -12,8 +12,10 @@ import {
   subscribeToInstructorDisplayPresence,
   subscribeToInstructorPresence,
   subscribeToInstructorPublicState,
+  subscribeToInstructorResponses,
   setInstructorQuestionDismissed,
   setInstructorQuestionRecognized,
+  type StoredLiveResponse,
 } from '@/lib/firebase/live-classroom';
 import {
   DEMO_LIVE_INTERACTIONS,
@@ -22,8 +24,11 @@ import {
   HISTORY,
   LESSON_CHANNEL,
   LESSON_STORAGE_KEY,
+  createPublicInteraction,
+  createPublicInteractionResults,
   createInteractionResults,
   prepareLiveInteractions,
+  summarizeInteractionResponses,
   total,
   type LessonDisplayState,
   type LiveInteraction,
@@ -33,13 +38,12 @@ import {
 import './remote.css';
 
 function protectStudentView(state: LessonDisplayState): LessonDisplayState {
-  let publicInteraction = state.activeInteraction;
-  if ((publicInteraction?.type === 'quiz' || publicInteraction?.type === 'peer-learning') && !state.interactionResults?.revealed) {
-    publicInteraction = { ...publicInteraction };
-    delete publicInteraction.correctOptionIndex;
-    delete publicInteraction.explanation;
-  }
-  return { ...state, activeInteraction: publicInteraction, updatedAt: Date.now() };
+  return {
+    ...state,
+    activeInteraction: createPublicInteraction(state.activeInteraction, state.interactionResults),
+    interactionResults: createPublicInteractionResults(state.activeInteraction, state.interactionResults),
+    updatedAt: Date.now(),
+  };
 }
 
 function createDemoState(): LessonDisplayState {
@@ -81,6 +85,7 @@ export default function InstructorRemotePage() {
   const [error, setError] = useState('');
   const channelRef = useRef<BroadcastChannel | null>(null);
   const stateRef = useRef(state);
+  const privateResponsesRef = useRef<Record<string, StoredLiveResponse>>({});
   const [classroomIds, setClassroomIds] = useState<{ sessionId: string; ownerUid: string } | null>(null);
 
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -149,7 +154,21 @@ export default function InstructorRemotePage() {
           ? prepared.find((interaction) => interaction.id === remoteState.activeInteraction?.id)
             || remoteState.activeInteraction
           : null;
-        setState({ ...remoteState, activeInteraction: privateInteraction });
+        const publicResults = remoteState.interactionResults;
+        const summary = privateInteraction && publicResults
+          ? summarizeInteractionResponses(privateInteraction, Object.values(privateResponsesRef.current))
+          : null;
+        const publicSharedText = publicResults?.writtenResponses.find((response) => response.id === publicResults.sharedResponseId)?.text;
+        const privateSharedResponseId = publicSharedText && summary
+          ? summary.writtenResponses.find((response) => response.text === publicSharedText)?.id || null
+          : null;
+        setState({
+          ...remoteState,
+          activeInteraction: privateInteraction,
+          interactionResults: publicResults && summary
+            ? { ...publicResults, ...summary, sharedResponseId: privateSharedResponseId }
+            : publicResults,
+        });
         setClassroomStateReady(true);
       }));
       cleanups.push(subscribeToInstructorPresence(ownerUid, sessionId, setConnectedStudents));
@@ -164,6 +183,26 @@ export default function InstructorRemotePage() {
       cleanups.forEach((cleanup) => cleanup());
     };
   }, [authLoading, user]);
+
+  useEffect(() => {
+    const runId = state.interactionResults?.runId;
+    const interaction = stateRef.current.activeInteraction;
+    if (!classroomIds || !runId || !interaction) {
+      privateResponsesRef.current = {};
+      return;
+    }
+    privateResponsesRef.current = {};
+    return subscribeToInstructorResponses(classroomIds.ownerUid, classroomIds.sessionId, runId, (responseMap) => {
+      privateResponsesRef.current = responseMap;
+      const summary = summarizeInteractionResponses(interaction, Object.values(responseMap));
+      setState((current) => {
+        if (current.interactionResults?.runId !== runId) return current;
+        const next = { ...current, interactionResults: { ...current.interactionResults, ...summary } };
+        stateRef.current = next;
+        return next;
+      });
+    });
+  }, [classroomIds, state.activeInteraction?.id, state.interactionResults?.runId]);
 
   const updateRemoteState = useCallback((updater: (current: LessonDisplayState) => LessonDisplayState) => {
     const next = { ...updater(stateRef.current), updatedAt: Date.now() };
@@ -271,6 +310,15 @@ export default function InstructorRemotePage() {
         : null,
     }));
     if (!classroomIds) sendDemoCommand('reveal');
+  };
+
+  const shareResponse = (responseId: string) => {
+    updateRemoteState((current) => ({
+      ...current,
+      interactionResults: current.interactionResults
+        ? { ...current.interactionResults, sharedResponseId: responseId }
+        : null,
+    }));
   };
 
   const advanceModule = () => {
@@ -423,6 +471,7 @@ export default function InstructorRemotePage() {
       onLaunch={launch}
       onToggleResponses={toggleResponses}
       onReveal={reveal}
+      onShareResponse={shareResponse}
       onAdvanceModule={advanceModule}
       onSpinWheel={spinWheel}
       onFinish={finish}

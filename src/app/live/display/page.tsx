@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'react-qr-code';
-import { Activity, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Sparkles, Smartphone, Timer, Users } from 'lucide-react';
+import { Activity, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Sparkles, Smartphone, Timer, Users } from 'lucide-react';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import SignalAvatarBadge from '@/components/gamification/SignalAvatarBadge';
@@ -21,7 +21,9 @@ import {
   dotStyle,
   formatSessionCode,
   resultPercent,
+  shouldShowClassDistribution,
   total,
+  type InteractionResults,
   type LessonDisplayState,
 } from '../live-data';
 import './display.css';
@@ -56,9 +58,72 @@ const WORD_CLOUD_COLORS = ['#5146e5', '#405bc9', '#6656c7', '#526282'];
 const WHEEL_COLORS = ['#5146e5', '#4676df', '#2f9b78', '#e0a82e', '#dc6a50', '#9a62cf', '#3f8ea8', '#d8799b'];
 
 function wheelGradient(itemCount: number, itemColors?: string[]) {
-  const segments = Math.max(1, Math.min(16, itemCount));
+  const segments = Math.max(1, itemCount);
   const size = 360 / segments;
-  return `conic-gradient(from -90deg, ${Array.from({ length: segments }, (_, index) => `${itemColors?.[index] || WHEEL_COLORS[index % WHEEL_COLORS.length]} ${index * size}deg ${(index + 1) * size}deg`).join(', ')})`;
+  const divider = Math.min(1.4, size * 0.08);
+  return `conic-gradient(from -90deg, ${Array.from({ length: segments }, (_, index) => {
+    const start = index * size;
+    const end = (index + 1) * size;
+    return `${itemColors?.[index] || WHEEL_COLORS[index % WHEEL_COLORS.length]} ${start}deg ${end - divider}deg, rgba(255,255,255,.96) ${end - divider}deg ${end}deg`;
+  }).join(', ')})`;
+}
+
+const WHEEL_SPIN_DURATION_MS = 3600;
+const EMPTY_WHEEL_ITEMS: string[] = [];
+
+function ProjectorWheelSelection({ results }: { results: InteractionResults }) {
+  const spinCount = results.wheelSpinCount || 0;
+  const items = results.wheelItems || EMPTY_WHEEL_ITEMS;
+  const itemsKey = items.join('\u001f');
+  const previousSpinRef = useRef(spinCount);
+  const [previewLabel, setPreviewLabel] = useState(results.wheelSelectedLabel || 'Waiting for the spin');
+  const [isSpinning, setIsSpinning] = useState(false);
+  const spinJustStarted = spinCount > previousSpinRef.current;
+  const spinning = isSpinning || spinJustStarted;
+  const visibleLabel = spinJustStarted
+    ? items[spinCount % Math.max(1, items.length)] || 'Choosing…'
+    : previewLabel;
+
+  useEffect(() => {
+    if (spinCount <= previousSpinRef.current) {
+      setPreviewLabel(results.wheelSelectedLabel || 'Waiting for the spin');
+      setIsSpinning(false);
+      return;
+    }
+    previousSpinRef.current = spinCount;
+    const spinItems = itemsKey ? itemsKey.split('\u001f') : [];
+    const selectedLabel = results.wheelSelectedLabel || 'Selection complete';
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || spinItems.length < 2) {
+      setPreviewLabel(selectedLabel);
+      setIsSpinning(false);
+      return;
+    }
+
+    let previewIndex = spinCount % spinItems.length;
+    setPreviewLabel(spinItems[previewIndex]);
+    setIsSpinning(true);
+    const ticker = window.setInterval(() => {
+      previewIndex = (previewIndex + 1) % spinItems.length;
+      setPreviewLabel(spinItems[previewIndex]);
+    }, 110);
+    const settle = window.setTimeout(() => {
+      window.clearInterval(ticker);
+      setPreviewLabel(selectedLabel);
+      setIsSpinning(false);
+    }, WHEEL_SPIN_DURATION_MS - 80);
+    return () => {
+      window.clearInterval(ticker);
+      window.clearTimeout(settle);
+    };
+  }, [itemsKey, results.wheelSelectedLabel, spinCount]);
+
+  return (
+    <div className={`display-wheel-selection ${results.wheelSelectedLabel ? 'has-result' : ''} ${spinning ? 'is-spinning' : ''}`}>
+      <small>{spinning ? 'Choosing…' : results.wheelSelectedLabel ? 'Selected' : 'Ready when you are'}</small>
+      <strong key={visibleLabel} aria-hidden={spinning}>{visibleLabel}</strong>
+      {!spinning && results.wheelSelectedLabel && <span className="display-wheel-announcement" aria-live="polite">Selected: {results.wheelSelectedLabel}</span>}
+    </div>
+  );
 }
 
 const TEAM_COLOR_VALUES: Record<string, string> = { violet: '#5b4ce6', blue: '#2f73df', teal: '#238b78', green: '#3d9456', gold: '#d99f18', coral: '#df664e', pink: '#c85f92', navy: '#24366f' };
@@ -204,13 +269,14 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   if (!interaction || !results) return null;
 
   const sharedResponse = (results.writtenResponses || []).find((response) => response.id === results.sharedResponseId);
-  const showDistribution = Boolean(interaction.options?.length && results.revealed);
+  const showDistribution = shouldShowClassDistribution(interaction, results);
   const isPeerDiscussion = interaction.type === 'peer-learning' && results.phase === 'discuss';
   const isClock = interaction.type === 'timer';
   const isWordCloud = interaction.type === 'word-cloud';
   const isTeamFormation = interaction.type === 'team-formation';
   const isWheel = interaction.type === 'spin-wheel';
   const isGroupWork = interaction.type === 'group-work';
+  const isCaseMaterial = interaction.type === 'case-study';
   const wordCloudItems = buildWordCloudItems(results.writtenResponses);
   const repeatedWordCloudItems = wordCloudItems.filter((item) => item.count > 1).slice(0, 3);
   const wordCloudDensity = wordCloudDensityClass(wordCloudItems.length);
@@ -219,14 +285,14 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   ];
 
   return (
-    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : isTeamFormation ? 'is-team-formation' : isWheel ? 'is-spin-wheel' : isGroupWork ? 'is-group-work' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
+    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : isTeamFormation ? 'is-team-formation' : isWheel ? 'is-spin-wheel' : isGroupWork ? 'is-group-work' : isCaseMaterial ? 'is-case-material' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
       <div className="interaction-display-heading">
         <div>
           <span className="display-eyebrow"><ListChecks size={20} /> {interaction.label}</span>
-          {isClock || isGroupWork ? <h1>{interaction.title}</h1> : <MarkdownContent heading className="interaction-display-question" markdown={interaction.prompt} />}
-          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : isGroupWork ? <MarkdownContent className="display-group-work-instructions" markdown={interaction.prompt} /> : <p>{isWheel ? results.wheelSelectedLabel ? 'The wheel has spoken.' : 'The instructor will spin when the room is ready.' : isTeamFormation ? 'Choose your team on your phone. New teams will appear here as they are created.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
+          {isClock || isGroupWork || isTeamFormation || isCaseMaterial ? <h1>{interaction.title}</h1> : <MarkdownContent heading className="interaction-display-question" markdown={interaction.prompt} />}
+          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : isGroupWork ? <MarkdownContent className="display-group-work-instructions" markdown={interaction.prompt} /> : isTeamFormation ? <><MarkdownContent className="display-group-work-instructions" markdown={interaction.prompt} /><p>Choose your team on your phone. New teams will appear here as they are created.</p></> : !isCaseMaterial && <p>{isWheel ? results.wheelSelectedLabel ? 'The wheel has spoken.' : 'The instructor will spin when the room is ready.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
         </div>
-        {!isClock && !isWheel && <div className="interaction-display-count">
+        {!isClock && !isWheel && !isCaseMaterial && <div className="interaction-display-count">
           <Users size={21} />
           <strong key={results.responseCount}>{results.responseCount}</strong>
           <span>{isTeamFormation ? 'students joined' : interaction.type === 'group-work' ? interaction.groupingMode === 'ad-hoc' || !lessonState.teams.length ? 'groups' : 'teams' : 'responses'}</span>
@@ -251,7 +317,12 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
               <div className="display-wheel-center"><Dices size={38} /><strong>{results.wheelItems?.length || 0}</strong><span>{interaction.wheelSource === 'teams' ? 'teams' : interaction.wheelSource === 'custom' ? 'items' : 'students'}</span></div>
             </div>
           </div>
-          <div className={`display-wheel-selection ${results.wheelSelectedLabel ? 'has-result' : ''}`} key={`wheel-result-${results.wheelSpinCount || 0}`}><small>{results.wheelSelectedLabel ? 'Selected' : 'Ready when you are'}</small><strong>{results.wheelSelectedLabel || 'Waiting for the spin'}</strong></div>
+          <ProjectorWheelSelection results={results} />
+        </div>
+      ) : isCaseMaterial ? (
+        <div className="display-case-material">
+          <span><BookOpen size={54} /></span>
+          <div><small>Discussion material</small><MarkdownContent markdown={interaction.prompt} /></div>
         </div>
       ) : isTeamFormation ? (
         <div className="display-team-board">
@@ -290,7 +361,7 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
       ) : !showDistribution && interaction.options?.length && (
         <ResponseCurrent count={results.responseCount} runId={results.runId} open={results.open} />
       )}
-      {!isClock && !isWheel && !isPeerDiscussion && !isWordCloud && (showDistribution ? (
+      {!isClock && !isWheel && !isPeerDiscussion && !isWordCloud && !isTeamFormation && !isCaseMaterial && (showDistribution ? (
         <div className="interaction-result-options">
           {interaction.options?.map((option, index) => {
             const count = results.optionCounts[index] ?? 0;
@@ -340,7 +411,7 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
       ) : (
         <div className={`interaction-display-waiting ${sharedResponse ? 'has-shared-response' : ''}`}>
           <MessageCircle size={30} />
-          {sharedResponse ? <><strong>“{sharedResponse.text}”</strong><span>Shared anonymously by the instructor</span></> : <><strong>{results.responseCount ? `${results.responseCount} ${results.responseCount === 1 ? 'response' : 'responses'} received` : 'Responses are open'}</strong><span>Written answers stay private until the instructor shares one.</span></>}
+          {sharedResponse ? <><strong>“{sharedResponse.text}”</strong><span>{isGroupWork && sharedResponse.teamName ? `${sharedResponse.teamName} · Shown by the instructor` : 'Shared anonymously by the instructor'}</span></> : <><strong>{results.responseCount ? `${results.responseCount} ${results.responseCount === 1 ? isGroupWork ? 'team submitted' : 'response received' : isGroupWork ? 'teams submitted' : 'responses received'}` : 'Responses are open'}</strong><span>Written answers stay private until the instructor shares one.</span></>}
         </div>
       ))}
     </section>
@@ -977,7 +1048,7 @@ export default function ClassroomDisplayPage() {
             />
           ) : <ClassroomInteraction lessonState={lessonState} />}
           <footer className="display-footer">
-            <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.activeInteraction.type === 'spin-wheel' ? lessonState.interactionResults?.wheelSelectedLabel ? 'Selection complete' : 'Wheel ready' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
+            <div className="room-rhythm"><i /><span><strong>{lessonState.activeInteraction.title}</strong><small>{lessonState.activeInteraction.type === 'timer' ? 'Shared clock is running' : lessonState.activeInteraction.type === 'case-study' ? 'Case material is on screen' : lessonState.activeInteraction.type === 'spin-wheel' ? lessonState.interactionResults?.wheelSelectedLabel ? 'Selection complete' : 'Wheel ready' : lessonState.interactionResults?.open ? 'Responses are open' : lessonState.interactionResults?.revealed ? 'Result revealed' : 'Responses are locked'}</small></span></div>
             <div className="display-footer-insight remote-control-hint"><MonitorUp size={16} /><span>Controlled from the instructor console</span></div>
             {lessonState.activeInteraction.type === 'pulse'
               ? <div className="display-footer-insight"><Lock size={16} /><span>Individual answers stay private</span></div>

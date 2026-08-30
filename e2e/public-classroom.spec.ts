@@ -354,6 +354,19 @@ test('a custom full-screen timer launched from the instructor console reaches th
   await expect.poll(async () => Math.round((await progressRing.boundingBox())?.width || 0)).toBeGreaterThanOrEqual(380);
   const progressRingBox = await progressRing.boundingBox();
   expect(Math.round(progressRingBox?.width || 0)).toBeLessThanOrEqual(680);
+  const timerCopyBox = await displayPage.locator('.full-screen-projector-timer > div').boundingBox();
+  expect(progressRingBox).not.toBeNull();
+  expect(timerCopyBox).not.toBeNull();
+  const progressRingCenter = {
+    x: progressRingBox!.x + progressRingBox!.width / 2,
+    y: progressRingBox!.y + progressRingBox!.height / 2,
+  };
+  const timerCopyCenter = {
+    x: timerCopyBox!.x + timerCopyBox!.width / 2,
+    y: timerCopyBox!.y + timerCopyBox!.height / 2,
+  };
+  expect(Math.abs(timerCopyCenter.x - progressRingCenter.x)).toBeLessThanOrEqual(2);
+  expect(Math.abs(timerCopyCenter.y - progressRingCenter.y)).toBeLessThanOrEqual(2);
   const timerLabelSize = await displayPage.locator('.full-screen-projector-timer small').evaluate((label) => Number.parseFloat(getComputedStyle(label).fontSize));
   expect(timerLabelSize).toBeGreaterThanOrEqual(13);
   const timerCountFont = await displayPage.locator('.full-screen-projector-timer strong').evaluate((count) => getComputedStyle(count).fontFamily);
@@ -826,6 +839,13 @@ test('students form a named team and use it for later group work', async ({ brow
   await studentPage.getByRole('textbox', { name: 'Your team response' }).fill('A shared internship matching space.');
   await studentPage.getByRole('button', { name: 'Send for Bright Sparks' }).click();
   await expect(consolePage.getByText('A shared internship matching space.')).toBeVisible();
+  const teamSubmission = consolePage.locator('.written-response-list article').filter({ hasText: 'A shared internship matching space.' });
+  await expect(teamSubmission).toContainText('Bright Sparks');
+  await teamSubmission.getByRole('button', { name: /Show on presentation: Bright Sparks/ }).click();
+  await expect(displayPage.getByText('A shared internship matching space.')).toBeVisible();
+  await expect(displayPage.getByText(/Bright Sparks · Shown by the instructor/)).toBeVisible();
+  await expect(secondStudentPage.getByRole('status').filter({ hasText: 'Bright Sparks has submitted.' })).toBeVisible();
+  await expect(secondStudentPage.getByRole('button', { name: 'Send for Bright Sparks' })).toHaveCount(0);
 
   await consolePage.getByRole('button', { name: /Add interaction/ }).first().click();
   const quickAdd = consolePage.getByRole('dialog', { name: 'Add something during class' });
@@ -838,6 +858,45 @@ test('students form a named team and use it for later group work', async ({ brow
   await expect(displayPage.locator('.display-wheel-center strong')).toHaveText('1');
   await expect(displayPage.locator('.display-wheel-center')).toContainText('teams');
   await expect(remotePage.getByRole('button', { name: 'Spin the wheel' })).toBeEnabled();
+
+  await context.close();
+});
+
+test('the projector wheel shows equal slices and cycles team names while spinning', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const displayPage = await context.newPage();
+
+  await consolePage.goto('/live');
+  await displayPage.goto('/live/display');
+  await consolePage.getByRole('button', { name: /Add interaction/ }).first().click();
+  const quickAdd = consolePage.getByRole('dialog', { name: 'Add something during class' });
+  await quickAdd.getByRole('button', { name: /Spin the wheel/ }).click();
+  await quickAdd.getByLabel('Title').fill('Choose a team to present');
+  await quickAdd.getByLabel('Question or instruction').fill('Which team will share next?');
+  await quickAdd.getByLabel('Choose from').selectOption('custom');
+  await quickAdd.getByLabel(/Items · one per line/).fill('Bright Sparks\nMarket Makers\nInsight Crew\nTeam Orbit');
+  await quickAdd.getByRole('button', { name: 'Show now' }).click();
+
+  const wheel = displayPage.locator('.display-wheel-disc');
+  await expect(displayPage.locator('.display-wheel-center strong')).toHaveText('4');
+  const normalizedGradient = (await wheel.evaluate((element) => getComputedStyle(element).backgroundImage)).replace(/\s/g, '');
+  expect((normalizedGradient.match(/rgba\(255,255,255,0\.96\)/g) || []).length / 2).toBe(4);
+  expect(normalizedGradient).toContain('90deg');
+  expect(normalizedGradient).toContain('180deg');
+  expect(normalizedGradient).toContain('270deg');
+  expect(normalizedGradient).toContain('360deg');
+
+  await consolePage.getByRole('button', { name: 'Spin the wheel', exact: true }).click();
+  const selection = displayPage.locator('.display-wheel-selection');
+  await expect(selection).toHaveClass(/is-spinning/);
+  await expect(selection.locator('small')).toHaveText('Choosing…');
+  const firstPreview = await selection.locator('strong').innerText();
+  await displayPage.waitForTimeout(260);
+  expect(await selection.locator('strong').innerText()).not.toBe(firstPreview);
+  await expect(selection).not.toHaveClass(/is-spinning/, { timeout: 5_000 });
+  await expect(selection.locator('small')).toHaveText('Selected');
+  await expect(selection.locator('strong')).toHaveText(/Bright Sparks|Market Makers|Insight Crew|Team Orbit/);
 
   await context.close();
 });

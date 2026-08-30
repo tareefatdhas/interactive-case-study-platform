@@ -2948,11 +2948,19 @@ html[data-input-modality="keyboard"] .student-course-sheet > header > button:foc
 .student-after-response > .student-quiet-guide { margin-bottom: 18px; text-align: left; }
 
 .student-clock-module { animation: student-step-in 300ms ease both; }
+.student-case-material { animation: student-step-in 300ms ease both; }
+.student-case-material > h1 { margin: 14px 0 0; }
+.student-case-instructions { margin-top: 14px; color: #626a80; font-size: 16px; line-height: 1.6; }
+.student-case-material .student-clock-note { margin-top: 24px; }
 .student-clock-module > h1 { margin-top: 14px; }
-.student-clock-instructions { margin-top: 18px; color: #4f586e; font-size: 15px; line-height: 1.48; }
-.student-clock-instructions > p:first-child { color: #697187; font-size: 13px; }
+.student-clock-instructions,
+.student-activity-instructions { margin-top: 18px; color: #4f586e; font-size: 15px; line-height: 1.48; }
+.student-clock-instructions > p:first-child,
+.student-activity-instructions > p:first-child { color: #697187; font-size: 13px; }
 .student-clock-instructions ol,
-.student-clock-instructions ul { gap: 9px; margin-top: 8px; padding-left: 1.45em; color: #25304a; font-weight: 650; }
+.student-clock-instructions ul,
+.student-activity-instructions ol,
+.student-activity-instructions ul { gap: 9px; margin-top: 8px; padding-left: 1.45em; color: #25304a; font-weight: 650; }
 .student-interaction-question { margin-top: 14px; color: var(--student-ink); font-family: var(--seminar-font-display); font-size: clamp(31px, 9.3vw, 44px); font-weight: 500; letter-spacing: -.035em; line-height: 1.05; }
 .student-clock-module .student-timer-banner { margin-top: 26px; }
 

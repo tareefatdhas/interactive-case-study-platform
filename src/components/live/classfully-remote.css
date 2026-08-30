@@ -153,6 +153,16 @@
 .remote-progress { height: 7px; margin: 10px 0 17px; border-radius: 99px; background: #e9e7ee; overflow: hidden; }
 .remote-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6654e9, #9279f4); transition: width 450ms cubic-bezier(.22,.8,.25,1); }
 
+.remote-submission-review { display: grid; gap: 8px; max-height: 260px; margin: 12px 0; overflow-y: auto; }
+.remote-submission-review > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.remote-submission-review > div small { color: var(--remote-violet-deep); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.remote-submission-review > div strong { color: var(--remote-muted); font-size: 10px; }
+.remote-submission-review article { display: grid; gap: 6px; border: 1px solid #dedbe8; border-radius: 12px; padding: 10px; background: #fff; }
+.remote-submission-review article.is-shown { border-color: var(--remote-violet); background: #f7f5ff; box-shadow: inset 3px 0 0 var(--remote-violet); }
+.remote-submission-review article > small { color: var(--remote-violet-deep); font-size: 9px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.remote-submission-review article p { margin: 0; color: var(--remote-ink); font-size: 11px; line-height: 1.45; }
+.remote-submission-review article button { display: flex; width: max-content; align-items: center; gap: 5px; border: 0; padding: 0; color: var(--remote-violet-deep); background: transparent; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+
 .remote-primary-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .remote-primary-actions button {
   display: flex;

@@ -40,7 +40,6 @@ import {
   resetInstructorClassroom,
   setInstructorQuestionDismissed,
   setInstructorQuestionRecognized,
-  type StoredLiveResponse,
   type StoredAttendanceClaim,
 } from '@/lib/firebase/live-classroom';
 import { Timestamp } from 'firebase/firestore';
@@ -54,6 +53,7 @@ import {
   Activity,
   ArrowRight,
   BarChart3,
+  BookOpen,
   Bold,
   CalendarDays,
   CheckCircle2,
@@ -103,11 +103,15 @@ import {
   LESSON_STORAGE_KEY,
   MOODS,
   buildWordCloudItems,
+  createPublicInteraction,
+  createPublicInteractionResults,
   createInteractionResults,
+  interactionAcceptsResponses,
   formatSessionCode,
   percent,
   prepareLiveInteractions,
   resultPercent,
+  summarizeInteractionResponses,
   total,
   type Counts,
   type InteractionResponse,
@@ -561,7 +565,9 @@ function InstructorInteractionStage({
   const isClock = interaction.type === 'timer';
   const isWordCloud = interaction.type === 'word-cloud';
   const isTeamFormation = interaction.type === 'team-formation';
+  const isGroupWork = interaction.type === 'group-work';
   const isWheel = interaction.type === 'spin-wheel';
+  const isCaseMaterial = interaction.type === 'case-study';
   const wordCloudItems = buildWordCloudItems(results.writtenResponses);
   const wordCloudDensity = wordCloudItems.length <= 1 ? 'is-solo' : wordCloudItems.length <= 5 ? 'is-sparse' : 'is-growing';
   const [timerNow, setTimerNow] = useState(Date.now());
@@ -581,10 +587,12 @@ function InstructorInteractionStage({
       <header className="live-interaction-heading">
         <div>
           <span className="eyebrow"><ListChecks size={18} /> {interaction.label} is live</span>
-          <h1>{isClock ? interaction.title : markdownToPlainText(interaction.prompt)}</h1>
-          {isClock && <MarkdownContent className="live-clock-instructions" markdown={interaction.prompt} />}
+          <h1>{isClock || isGroupWork || isTeamFormation || isCaseMaterial ? interaction.title : markdownToPlainText(interaction.prompt)}</h1>
+          {(isClock || isGroupWork || isTeamFormation) && <MarkdownContent className="live-clock-instructions" markdown={interaction.prompt} />}
           <p>{isClock
-            ? 'The full-screen countdown is running on the projector and student phones.'
+            ? 'Use this time to circulate, listen, or prepare the next prompt.'
+            : isCaseMaterial
+              ? 'Use the classroom screen to guide the discussion. No student response is being collected.'
             : isWheel
               ? results.wheelItems?.length ? 'The same wheel is ready on the projector. Spin when the room is looking up.' : `No ${interaction.wheelSource === 'teams' ? 'teams' : interaction.wheelSource === 'custom' ? 'custom items' : 'students'} are available yet.`
             : interaction.resultVisibility === 'after-reveal' && !results.revealed
@@ -597,11 +605,11 @@ function InstructorInteractionStage({
                 ? 'Repeated answers grow as the class cloud forms on the projector.'
               : interaction.type === 'pulse'
                 ? 'You can see how students responded. The projector only shows check-in progress.'
-              : interaction.type === 'group-work'
+              : isGroupWork
                 ? interaction.groupingMode === 'ad-hoc' || !teams.length ? `Students form temporary groups of about ${interaction.groupSize || 4}.` : `${teams.length} class ${teams.length === 1 ? 'team is' : 'teams are'} available for this activity.`
               : 'The class distribution updates as responses arrive.'}</p>
         </div>
-        {!isClock && !isWheel && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{isTeamFormation ? 'students joined' : interaction.type === 'group-work' ? interaction.groupingMode === 'ad-hoc' || !teams.length ? 'groups' : 'teams' : 'responses'}</span></div>}
+        {!isClock && !isWheel && !isCaseMaterial && <div className="live-response-count"><Users size={20} /><strong>{results.responseCount}</strong><span>{isTeamFormation ? 'students joined' : isGroupWork ? interaction.groupingMode === 'ad-hoc' || !teams.length ? 'groups' : 'teams' : 'responses'}</span></div>}
       </header>
 
       {isClock ? (
@@ -614,6 +622,11 @@ function InstructorInteractionStage({
           <div className={`instructor-wheel-result ${results.wheelSelectedLabel ? 'has-result' : ''}`}><Dices size={28} /><span><small>{results.wheelSelectedLabel ? 'Selected' : `${results.wheelItems?.length || 0} items ready`}</small><strong>{results.wheelSelectedLabel || 'Ready to spin'}</strong></span></div>
           <button type="button" onClick={onSpinWheel} disabled={!results.wheelItems?.length} className="instructor-wheel-spin"><Dices size={19} /> {results.wheelSpinCount ? 'Spin again' : 'Spin the wheel'}</button>
           {interaction.wheelRemoveSelected !== false && <p>Each result leaves the wheel before the next spin.</p>}
+        </div>
+      ) : isCaseMaterial ? (
+        <div className="instructor-case-material">
+          <span><BookOpen size={28} /></span>
+          <div><strong>Discussion material</strong><MarkdownContent markdown={interaction.prompt} /></div>
         </div>
       ) : isTeamFormation ? (
         <div className="instructor-team-list">{teams.length ? teams.map((team) => <article key={team.id}><span><strong>{team.name}</strong>{team.description && <small>{team.description}</small>}<em>{team.members?.length ?? team.memberCount ?? 0} students joined</em>{Boolean(team.members?.length) && <span className="instructor-team-members">{team.members?.slice(0, 4).map((member) => member.displayName || member.studentNumber || 'Student').join(', ')}{(team.members?.length || 0) > 4 ? ` +${(team.members?.length || 0) - 4} more` : ''}</span>}</span>{team.tag && <b>{team.tag}</b>}</article>) : <div className="live-word-cloud-empty"><Users size={26} /><strong>Waiting for the first team</strong></div>}</div>
@@ -676,8 +689,9 @@ function InstructorInteractionStage({
           <div className="written-response-list">
             {results.writtenResponses.map((response) => (
               <article className={results.sharedResponseId === response.id ? 'is-shared' : ''} key={response.id}>
+                {response.teamName && <small>{response.teamName}</small>}
                 <p>{response.text}</p>
-                <button type="button" onClick={() => onShareResponse(response.id)}>{results.sharedResponseId === response.id ? 'Showing on projector' : 'Share anonymously'}</button>
+                <button type="button" onClick={() => onShareResponse(response.id)} aria-label={`${results.sharedResponseId === response.id ? 'Shown on presentation' : 'Show on presentation'}: ${response.teamName || response.text}`}>{results.sharedResponseId === response.id ? 'Shown on presentation' : 'Show on presentation'}</button>
               </article>
             ))}
           </div>
@@ -844,33 +858,9 @@ export default function LiveLessonPrototype() {
   }, [interactionRuns]);
 
   const displayState = useMemo<LessonDisplayState>(() => {
-    let publicInteraction = activeInteraction;
-    if ((activeInteraction?.type === 'quiz' || activeInteraction?.type === 'peer-learning') && !interactionResults?.revealed) {
-      const safeInteraction: LiveInteraction = { ...activeInteraction };
-      delete safeInteraction.correctOptionIndex;
-      delete safeInteraction.explanation;
-      publicInteraction = safeInteraction;
-    }
+    const publicInteraction = createPublicInteraction(activeInteraction, interactionResults);
 
-    const sharedResponse = interactionResults?.writtenResponses.find((response) => response.id === interactionResults.sharedResponseId);
-    const sharedResponseIndex = sharedResponse && interactionResults
-      ? interactionResults.writtenResponses.findIndex((response) => response.id === sharedResponse.id)
-      : -1;
-    const publicSharedResponseId = sharedResponse && interactionResults
-      ? `shared-${interactionResults.runId}-${Math.max(0, sharedResponseIndex)}`
-      : null;
-    const publicWordCloudResponses = activeInteraction?.type === 'word-cloud' && interactionResults
-      ? interactionResults.writtenResponses.map((response, index) => ({
-        id: `word-${interactionResults.runId}-${index}`,
-        text: response.text,
-      }))
-      : null;
-    const publicResults = interactionResults ? {
-      ...interactionResults,
-      writtenResponses: publicWordCloudResponses
-        || (sharedResponse && publicSharedResponseId ? [{ id: publicSharedResponseId, text: sharedResponse.text }] : []),
-      sharedResponseId: publicSharedResponseId,
-    } : null;
+    const publicResults = createPublicInteractionResults(activeInteraction, interactionResults);
 
     return {
       session: sessionContext,
@@ -1217,13 +1207,19 @@ export default function LiveLessonPrototype() {
             nextOptionCounts[response.optionIndex] += 1;
           }
           const cleanText = response.text?.trim().slice(0, 280);
+          const groupAlreadySubmitted = currentInteraction.type === 'group-work'
+            && response.teamId
+            && current.submittedTeamIds?.includes(response.teamId);
           return {
             ...current,
-            responseCount: current.responseCount + 1,
+            responseCount: groupAlreadySubmitted ? current.responseCount : current.responseCount + 1,
             optionCounts: nextOptionCounts,
-            writtenResponses: cleanText
-              ? [{ id: response.id, text: cleanText }, ...current.writtenResponses].slice(0, 60)
+            writtenResponses: cleanText && !groupAlreadySubmitted
+              ? [{ id: response.id, text: cleanText, teamId: response.teamId, teamName: response.teamName }, ...current.writtenResponses].slice(0, 60)
               : current.writtenResponses,
+            submittedTeamIds: response.teamId && !groupAlreadySubmitted
+              ? [...(current.submittedTeamIds || []), response.teamId]
+              : current.submittedTeamIds,
           };
         });
       }
@@ -1350,14 +1346,7 @@ export default function LiveLessonPrototype() {
         const responses = Object.values(responseMap).filter((response) => (
           response.runId === interactionResults.runId && response.interactionId === activeInteraction.id
         ));
-        const optionCounts = activeInteraction.options?.map(() => 0) ?? [];
-        const writtenResponses: Array<{ id: string; text: string }> = [];
-        responses.forEach((response: StoredLiveResponse) => {
-          if (typeof response.optionIndex === 'number' && optionCounts[response.optionIndex] !== undefined) {
-            optionCounts[response.optionIndex] += 1;
-          }
-          if (response.text) writtenResponses.push({ id: response.id, text: response.text });
-        });
+        const summary = summarizeInteractionResponses(activeInteraction, responses);
         if (activeInteraction.type === 'team-formation') {
           const teams = formedTeamsRef.current.map((team) => ({ ...team, members: [...(team.members || [])] }));
           responses.forEach((response) => {
@@ -1378,14 +1367,9 @@ export default function LiveLessonPrototype() {
           });
           setFormedTeams(teams);
         }
-        const responseCount = activeInteraction.type === 'group-work'
-          ? new Set(responses.map((response) => response.teamId || response.studentUid)).size
-          : responses.length;
         setInteractionResults((current) => current && current.runId === interactionResults.runId ? {
           ...current,
-          responseCount,
-          optionCounts,
-          writtenResponses: writtenResponses.slice(0, 60),
+          ...summary,
         } : current);
       },
     );
@@ -2453,15 +2437,11 @@ export default function LiveLessonPrototype() {
             </>
           ) : (
           <>
-          {activeInteraction?.type !== 'spin-wheel' && <button
+          {activeInteraction && interactionAcceptsResponses(activeInteraction) ? <button
             className="control-secondary"
             type="button"
-            aria-pressed={activeInteraction?.type === 'timer' ? false : activeInteraction && interactionResults ? !interactionResults.open : paused}
+            aria-pressed={activeInteraction && interactionResults ? !interactionResults.open : paused}
             onClick={() => {
-              if (activeInteraction?.type === 'timer') {
-                returnToSlides();
-                return;
-              }
               if (activeInteraction && interactionResults) {
                 toggleInteractionResponses();
                 return;
@@ -2470,12 +2450,12 @@ export default function LiveLessonPrototype() {
               setToast(paused ? 'Responses are live again' : 'Responses paused');
             }}
           >
-            {activeInteraction?.type === 'timer' ? <Square size={18} /> : (activeInteraction && interactionResults ? !interactionResults.open : paused) ? <Play size={19} /> : <Pause size={19} />}
+            {(activeInteraction && interactionResults ? !interactionResults.open : paused) ? <Play size={19} /> : <Pause size={19} />}
             <span>
-              <strong>{activeInteraction?.type === 'timer' ? 'End timer' : activeInteraction && interactionResults ? (interactionResults.open ? 'Lock responses' : 'Reopen responses') : (paused ? 'Resume responses' : 'Pause responses')}</strong>
-              <small>{activeInteraction?.type === 'timer' ? 'Return the projector to the class view' : activeInteraction && interactionResults ? (interactionResults.open ? 'Students can still answer' : 'No new answers are accepted') : (paused ? 'The chart is frozen' : 'Responses are live')}</small>
+              <strong>{activeInteraction && interactionResults ? (interactionResults.open ? 'Lock responses' : 'Reopen responses') : (paused ? 'Resume responses' : 'Pause responses')}</strong>
+              <small>{activeInteraction && interactionResults ? (interactionResults.open ? 'Students can still answer' : 'No new answers are accepted') : (paused ? 'The chart is frozen' : 'Responses are live')}</small>
             </span>
-          </button>}
+          </button> : activeInteraction?.type === 'timer' ? <button className="control-secondary" type="button" onClick={returnToSlides}><Square size={18} /><span><strong>End timer</strong><small>Return the projector to the class view</small></span></button> : null}
           <div className="next-activity-wrap">
             {activeInteraction ? (
               <button className="control-primary" type="button" onClick={() => nextPreparedInteraction ? launchInteraction(nextPreparedInteraction) : setSessionPlanOpen(true)}>
@@ -2882,6 +2862,7 @@ export default function LiveLessonPrototype() {
           onLaunch={launchInteraction}
           onToggleResponses={toggleInteractionResponses}
           onReveal={revealInteractionResults}
+          onShareResponse={shareWrittenResponse}
           onAdvanceModule={advanceModule}
           onSpinWheel={spinWheel}
           onFinish={returnToSlides}
