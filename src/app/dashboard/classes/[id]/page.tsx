@@ -45,6 +45,7 @@ import {
   Dices,
   FileText,
   HeartPulse,
+  Hash,
   Library,
   LoaderCircle,
   MessageCircle,
@@ -83,6 +84,7 @@ const interactionTypes: Array<{
   { type: 'poll', label: 'Opinion poll', use: 'See where the room stands before discussion.', icon: BarChart3 },
   { type: 'quiz', label: 'Knowledge check', use: 'Catch a misconception while you can address it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', use: 'Collect questions, reasoning, or reflection.', icon: MessageCircle },
+  { type: 'number-response', label: 'Number response', use: 'Collect estimates and map their distribution.', icon: Hash },
   { type: 'word-cloud', label: 'Word cloud', use: 'Turn one-word responses into a live view of shared themes.', icon: Cloud },
   { type: 'reflection', label: 'Exit reflection', use: 'Capture what changed and what students will carry forward.', icon: Sparkles },
   { type: 'team-formation', label: 'Form teams now', use: 'Let students create or join named teams during class.', icon: UsersRound },
@@ -93,7 +95,7 @@ const interactionTypes: Array<{
 ];
 
 const interactionTypeGroups: Array<{ label: string; types: SessionInteractionType[] }> = [
-  { label: 'Quick interactions', types: ['pulse', 'poll', 'quiz', 'open-response', 'word-cloud', 'reflection'] },
+  { label: 'Quick interactions', types: ['pulse', 'poll', 'quiz', 'open-response', 'number-response', 'word-cloud', 'reflection'] },
   { label: 'Teaching flows', types: ['peer-learning', 'group-work'] },
   { label: 'Classroom tools', types: ['timer', 'spin-wheel', 'team-formation'] },
 ];
@@ -108,6 +110,8 @@ const createTemplate = (type: SessionInteractionType): SessionInteraction => ({
       ? 'Which option best matches your view?'
       : type === 'quiz'
       ? 'Choose the best answer.'
+      : type === 'number-response'
+        ? 'What is your best estimate?'
       : type === 'team-formation'
         ? 'Choose your team. If it is not listed yet, create it and add a short note.'
       : type === 'word-cloud'
@@ -1045,6 +1049,7 @@ export default function ClassWorkspacePage({ params }: ClassWorkspaceProps) {
                                 {template.type === 'peer-learning' && <label className="mt-4 flex items-center gap-3 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#555d73]"><Repeat2 className="h-4 w-4 text-[#5146e5]" /> Partner discussion <input type="number" aria-label={`${template.title} discussion minutes`} min={1} max={10} value={template.discussionMinutes || 2} onChange={(event) => updateTemplate(template.id, { discussionMinutes: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#d7dae5] bg-white px-2 py-1.5" /> min</label>}
                                 {template.type === 'group-work' && <div className="mt-4 grid gap-3 rounded-xl border border-[#eadfd9] bg-[#fff8f3] p-3 text-xs font-bold text-[#654f48]"><label className="grid gap-2"><span>How students will work</span><select value={template.groupingMode || 'course-teams'} onChange={(event) => updateTemplate(template.id, { groupingMode: event.target.value as NonNullable<SessionInteraction['groupingMode']> })} className="min-h-10 rounded-lg border border-[#e4d7d1] bg-white px-3 font-normal text-[#313950]"><option value="course-teams">Use their saved class teams</option><option value="ad-hoc">Make temporary groups now</option></select></label>{template.groupingMode === 'ad-hoc' && <label className="flex items-center gap-3">Suggested size <input type="number" aria-label={`${template.title} group size`} min={2} max={10} value={template.groupSize || 4} onChange={(event) => updateTemplate(template.id, { groupSize: Number(event.target.value) })} className="ml-auto w-16 rounded-lg border border-[#e4d7d1] bg-white px-2 py-1.5" /> students</label>}<p className="font-normal leading-5 text-[#6a554e]">{(template.groupingMode || 'course-teams') === 'course-teams' ? 'Students use the team saved in this class.' : 'These groups last for this activity only.'}</p></div>}
                                 {template.type === 'team-formation' && <label className="mt-4 grid gap-2 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#565078]"><span>Course tags <small className="font-normal">Separate with commas</small></span><input defaultValue={(template.teamTags || []).join(', ')} onBlur={(event) => { const teamTags = event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8); updateTemplate(template.id, { teamTags, requireTeamTag: teamTags.length > 0 }); }} placeholder="Theme 1, Theme 2, Theme 3" className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal" /></label>}
+                                {template.type === 'number-response' && <label className="mt-4 grid gap-2 rounded-xl bg-[#f7f6ff] p-3 text-xs font-bold text-[#565078]"><span>Unit <small className="font-normal">Optional</small></span><input value={template.numberUnit || ''} onChange={(event) => updateTemplate(template.id, { numberUnit: event.target.value.slice(0, 18) || undefined })} maxLength={18} placeholder="USD, people, %, km" className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal" /><small className="font-normal leading-5 text-[#697087]">The projector adapts automatically from ordinary values to very wide ranges.</small></label>}
                                 {template.type === 'spin-wheel' && <div className="mt-4 grid gap-3 rounded-xl border border-[#dedaf8] bg-[#f7f6ff] p-3 text-xs font-bold text-[#565078]"><label className="grid gap-2"><span>Choose from</span><select value={template.wheelSource || 'students'} onChange={(event) => updateTemplate(template.id, { wheelSource: event.target.value as NonNullable<SessionInteraction['wheelSource']> })} className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal text-[#313950]"><option value="students">Students who joined</option><option value="teams">Teams created in class</option><option value="custom">A custom list</option></select></label>{template.wheelSource === 'custom' ? <label className="grid gap-2"><span>Items <small className="font-normal">One per line</small></span><textarea value={(template.wheelItems || []).join('\n')} onChange={(event) => updateTemplate(template.id, { wheelItems: event.target.value.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 40) })} rows={5} placeholder={'Topic A\nTopic B\nTopic C'} className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal leading-5 text-[#313950]" /></label> : <p className="font-normal leading-5 text-[#697087]">{template.wheelSource === 'teams' ? 'The wheel uses the current team list when you launch it.' : 'The wheel uses the live attendance list. Student display names will appear on the classroom screen.'}</p>}<label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={template.wheelRemoveSelected !== false} onChange={(event) => updateTemplate(template.id, { wheelRemoveSelected: event.target.checked })} className="accent-[#5146e5]" /> Remove each selection before the next spin</label></div>}
                                 <div className="mt-4 flex flex-wrap items-end justify-between gap-3 text-xs text-[#697087]">
                                   {(template.type === 'timer' || template.type === 'group-work') && (

@@ -53,6 +53,7 @@ export const POINT_RULES = {
     quiz: 2,
     'peer-learning': 2,
     'word-cloud': 2,
+    'number-response': 2,
     'open-response': 3,
     'group-work': 5,
   },

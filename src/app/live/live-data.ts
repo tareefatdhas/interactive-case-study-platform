@@ -11,13 +11,14 @@ export type OnboardingStep = 0 | 1 | 2 | 3 | 4;
 
 export type LiveInteraction = {
   id: string;
-  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'word-cloud' | 'peer-learning' | 'team-formation' | 'group-work' | 'timer' | 'spin-wheel' | 'case-study';
+  type: 'pulse' | 'poll' | 'quiz' | 'open-response' | 'number-response' | 'word-cloud' | 'peer-learning' | 'team-formation' | 'group-work' | 'timer' | 'spin-wheel' | 'case-study';
   label: string;
   title: string;
   prompt: string;
   options?: string[];
   correctOptionIndex?: number;
   explanation?: string;
+  numberUnit?: string;
   speedBonusEnabled?: boolean;
   speedBonusSeconds?: number;
   maxSpeedBonusPoints?: number;
@@ -42,6 +43,7 @@ export type InteractionResponse = {
   interactionId: string;
   optionIndex?: number;
   text?: string;
+  numericValue?: number;
   teamId?: string;
   teamName?: string;
   teamDescription?: string;
@@ -77,6 +79,7 @@ export type InteractionResults = {
   responseCount: number;
   optionCounts: number[];
   writtenResponses: WrittenResponse[];
+  numericValues: number[];
   submittedTeamIds?: string[];
   revealed: boolean;
   sharedResponseId: string | null;
@@ -388,6 +391,7 @@ export function createInteractionResults(interaction: LiveInteraction): Interact
     responseCount: 0,
     optionCounts: interaction.options?.map(() => 0) ?? [],
     writtenResponses: [],
+    numericValues: [],
     submittedTeamIds: interaction.type === 'group-work' ? [] : undefined,
     revealed: interaction.resultVisibility === 'live',
     sharedResponseId: null,
@@ -434,11 +438,15 @@ export function summarizeInteractionResponses(
     }))
     .reverse()
     .slice(0, 60);
+  const numericValues = canonical
+    .flatMap((response) => typeof response.numericValue === 'number' && Number.isFinite(response.numericValue) ? [response.numericValue] : [])
+    .slice(-120);
 
   return {
     responseCount: canonical.length,
     optionCounts,
     writtenResponses,
+    numericValues,
     submittedTeamIds: interaction.type === 'group-work'
       ? [...new Set(canonical.flatMap((response) => response.teamId ? [response.teamId] : []))]
       : undefined,
@@ -455,7 +463,7 @@ export function shouldShowClassDistribution(
   interaction: LiveInteraction,
   results: Pick<InteractionResults, 'revealed'>,
 ) {
-  if (!interaction.options?.length || interaction.type === 'pulse') return false;
+  if ((!interaction.options?.length && interaction.type !== 'number-response') || interaction.type === 'pulse') return false;
   if (interaction.resultVisibility === 'instructor-only') return false;
   return interaction.resultVisibility === 'live' || results.revealed;
 }
@@ -509,6 +517,9 @@ export function createPublicInteractionResults(
       ? [...results.firstOptionCounts]
       : undefined,
     writtenResponses: publicWrittenResponses,
+    numericValues: showDistribution && interaction.type === 'number-response'
+      ? [...results.numericValues]
+      : [],
     sharedResponseId: publicSharedResponseId,
   };
 }
@@ -568,6 +579,8 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
           ? 'Knowledge check'
           : type === 'word-cloud'
             ? 'Word cloud'
+            : type === 'number-response'
+              ? 'Number response'
             : type === 'peer-learning'
               ? 'Peer learning'
               : type === 'team-formation'
@@ -589,6 +602,7 @@ export function prepareLiveInteractions(interactions: SessionInteraction[] = [])
       options: interaction.options,
       correctOptionIndex: interaction.correctOptionIndex,
       explanation: interaction.explanation,
+      numberUnit: interaction.numberUnit,
       durationMinutes: interaction.durationMinutes,
       discussionMinutes: interaction.discussionMinutes,
       groupSize: interaction.groupSize,

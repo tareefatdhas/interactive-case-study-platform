@@ -215,6 +215,7 @@ try {
     { id: 'contract-quiz', type: 'quiz', label: 'Quiz', options: ['A', 'B'], optionIndex: 1 },
     { id: 'contract-peer-learning', type: 'peer-learning', label: 'Peer learning', options: ['A', 'B'], optionIndex: 0 },
     { id: 'contract-open-response', type: 'open-response', label: 'Short response', text: 'I need another example.' },
+    { id: 'contract-number-response', type: 'number-response', label: 'Number response', numericValue: 30_000_000 },
     { id: 'contract-word-cloud', type: 'word-cloud', label: 'Word cloud', text: 'Curiosity' },
     { id: 'contract-group-work', type: 'group-work', label: 'Group work', text: 'Our group chose one shared dependency.' },
   ];
@@ -244,7 +245,9 @@ try {
       },
       updatedAt: Date.now(),
     });
-    const answer = typeof contract.optionIndex === 'number'
+    const answer = typeof contract.numericValue === 'number'
+      ? { numericValue: contract.numericValue }
+      : typeof contract.optionIndex === 'number'
       ? { optionIndex: contract.optionIndex }
       : { text: contract.text };
     if (contract.type === 'group-work') {
@@ -485,7 +488,7 @@ try {
   console.log('PASS Instructor created a production classroom.');
   console.log('PASS Instructor saved private course material for later session planning.');
   console.log('PASS Student resolved the join code and read the live activity.');
-  console.log('PASS Pulse, poll, quiz, peer learning, open response, word cloud, and group work crossed the production rules.');
+  console.log('PASS Pulse, poll, quiz, peer learning, number response, open response, word cloud, and group work crossed the production rules.');
   console.log('PASS The shared clock correctly rejected an unexpected student response.');
   console.log('PASS Instructor received the student records.');
   console.log('PASS Progress can read the live attendance and response records.');

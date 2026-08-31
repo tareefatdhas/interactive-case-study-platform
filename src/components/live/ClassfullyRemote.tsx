@@ -22,6 +22,7 @@ import MarkdownContent from '@/components/live/MarkdownContent';
 import { interactionAcceptsResponses } from '@/app/live/live-data';
 import type { InteractionResults, LiveInteraction, LiveQuestion, LiveSessionContext, LiveTimer } from '@/app/live/live-data';
 import ProjectorPreflight from './ProjectorPreflight';
+import { buildNumericDistribution, formatNumericValue } from '@/lib/numeric-response';
 import './classfully-remote.css';
 
 // Storyboard: shell settles, content arrives, then controls become available.
@@ -142,10 +143,12 @@ export default function ClassfullyRemote({
   const isClock = activeInteraction?.type === 'timer';
   const isGroupWork = activeInteraction?.type === 'group-work';
   const isTeamFormation = activeInteraction?.type === 'team-formation';
+  const isNumberResponse = activeInteraction?.type === 'number-response';
   const isWheel = activeInteraction?.type === 'spin-wheel';
   const isCaseMaterial = activeInteraction?.type === 'case-study';
   const acceptsResponses = activeInteraction ? interactionAcceptsResponses(activeInteraction) : false;
   const peerPhase = results?.phase || 'respond';
+  const numericDistribution = isNumberResponse ? buildNumericDistribution(results?.numericValues || []) : null;
 
   const submitQuickAsk = () => {
     const prompt = quickAsk.trim();
@@ -223,6 +226,7 @@ export default function ClassfullyRemote({
             {acceptsResponses && <div className="remote-progress" aria-label={`${responseProgress}% of connected students responded`}>
               <i style={{ width: `${responseProgress}%` }} />
             </div>}
+            {numericDistribution && <div className="remote-number-summary" aria-label="Number response summary"><span><small>Median</small><strong>{formatNumericValue(numericDistribution.median, activeInteraction.numberUnit, true)}</strong></span><span><small>Range</small><strong>{formatNumericValue(numericDistribution.minimum, activeInteraction.numberUnit, true)}–{formatNumericValue(numericDistribution.maximum, activeInteraction.numberUnit, true)}</strong></span>{numericDistribution.scale !== 'linear' && <em>Wide range adjusted</em>}</div>}
 
             {isPeerLearning && <div className="remote-module-steps" aria-label="Peer learning stages"><span className="is-complete">1 Answer</span><span className={peerPhase === 'discuss' || peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>2 Discuss</span><span className={peerPhase === 'respond-again' || peerPhase === 'complete' ? 'is-complete' : ''}>3 Answer again</span></div>}
             {isGroupWork && <p className="remote-module-note">{groupUsesCourseTeams ? 'Students work with their saved class teams. One person submits for the team.' : `Temporary groups of about ${activeInteraction.groupSize || 4}. Ask each group to choose one note-taker.`}</p>}

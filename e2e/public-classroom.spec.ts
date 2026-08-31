@@ -773,6 +773,58 @@ test('group work collects one group submission beside a shared clock', async ({ 
   await context.close();
 });
 
+test('number responses accept human-friendly input and adapt a wide projector distribution', async ({ browser }) => {
+  const context = await browser.newContext();
+  const consolePage = await context.newPage();
+  const displayPage = await context.newPage();
+  const studentPages = await Promise.all([0, 1, 2].map(() => context.newPage()));
+  await displayPage.setViewportSize({ width: 1440, height: 900 });
+  await studentPages[2].setViewportSize({ width: 390, height: 844 });
+  await Promise.all([
+    consolePage.goto('/live'),
+    displayPage.goto('/live/display'),
+    ...studentPages.map((page) => page.goto('/live/student')),
+  ]);
+
+  await consolePage.getByRole('button', { name: /Add interaction/ }).first().click();
+  const quickAdd = consolePage.getByRole('dialog', { name: 'Add something during class' });
+  await quickAdd.getByRole('button', { name: /Number response/ }).click();
+  await quickAdd.getByLabel('Title').fill('Estimate the annual market');
+  await quickAdd.getByLabel('Question or instruction').fill('What is your best estimate of the annual market size?');
+  await quickAdd.getByPlaceholder('e.g. USD, people, %, km').fill('USD');
+  await quickAdd.getByLabel('When students see results').selectOption('after-reveal');
+  await quickAdd.getByRole('button', { name: 'Show now' }).click();
+
+  const entries = ['2', '5', '30m'];
+  for (let index = 0; index < studentPages.length; index += 1) {
+    const field = studentPages[index].getByRole('textbox', { name: 'Your numeric response in USD' });
+    await field.fill(entries[index]);
+    if (index === 2) {
+      await field.blur();
+      await expect(field).toHaveValue('30,000,000');
+      await expect(studentPages[index].getByText('We’ll record 30,000,000 USD.')).toBeVisible();
+      expect(await studentPages[index].evaluate(() => document.documentElement.scrollWidth)).toBe(await studentPages[index].evaluate(() => window.innerWidth));
+    }
+    await studentPages[index].getByRole('button', { name: 'Send number' }).click();
+    await expect(studentPages[index].getByText('Response sent')).toBeVisible();
+  }
+
+  const projectorDistribution = displayPage.locator('.display-number-distribution');
+  await expect(projectorDistribution).toHaveCount(0);
+  await expect(displayPage.getByText('3 responses are in the room')).toBeVisible();
+  await consolePage.getByRole('button', { name: 'Reveal class result' }).click();
+  await expect(projectorDistribution).toBeVisible();
+  await expect(projectorDistribution.locator('.display-number-plot > i')).toHaveCount(3);
+  await expect(projectorDistribution).toContainText('Median');
+  await expect(projectorDistribution).toContainText('5 USD');
+  await expect(projectorDistribution).toContainText('2 USD–30M USD');
+  await expect(projectorDistribution.getByText(/Scale adjusted/)).toBeVisible();
+  await expect(consolePage.locator('.live-number-distribution')).toContainText('30M USD');
+  expect(await displayPage.evaluate(() => document.documentElement.scrollWidth)).toBe(await displayPage.evaluate(() => window.innerWidth));
+
+  await context.close();
+});
+
 test('formatted group-work instructions stay readable on a short classroom projector', async ({ browser }) => {
   const context = await browser.newContext();
   const consolePage = await context.newPage();

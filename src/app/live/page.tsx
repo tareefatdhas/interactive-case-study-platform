@@ -49,6 +49,7 @@ import { claimSessionStart } from '@/lib/firebase/billing';
 import { bucketDuration, bucketParticipants, setInstructorPlan, track } from '@/lib/analytics/events';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { getInstructorMomentumBoard } from '@/lib/firebase/motivation';
+import { buildNumericDistribution, formatNumericValue } from '@/lib/numeric-response';
 import {
   Activity,
   ArrowRight,
@@ -66,6 +67,7 @@ import {
   GraduationCap,
   GripVertical,
   HeartPulse,
+  Hash,
   Italic,
   ListChecks,
   ListOrdered,
@@ -182,6 +184,7 @@ const ACTIVITY_TYPES: Array<{
   { type: 'poll', label: 'Poll', description: 'See where the room stands', icon: BarChart3, group: 'Quick checks' },
   { type: 'quiz', label: 'Knowledge check', description: 'Check understanding', icon: CircleHelp, group: 'Quick checks' },
   { type: 'open-response', label: 'Short response', description: 'Gather written thinking', icon: MessageCircle, group: 'Quick checks' },
+  { type: 'number-response', label: 'Number response', description: 'Map estimates and quantities', icon: Hash, group: 'Quick checks' },
   { type: 'word-cloud', label: 'Word cloud', description: 'Surface shared themes', icon: Cloud, group: 'Quick checks' },
   { type: 'peer-learning', label: 'Peer learning', description: 'Answer, discuss, answer again', icon: Repeat2, group: 'Class activities' },
   { type: 'team-formation', label: 'Form teams', description: 'Create named teams for this course', icon: Users, group: 'Class activities' },
@@ -207,6 +210,8 @@ const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInt
         ? 'What one word best captures this idea?'
         : type === 'open-response'
           ? 'What is still unclear?'
+          : type === 'number-response'
+            ? 'What is your best estimate?'
           : type === 'team-formation'
             ? 'Choose your team. If it is not listed yet, create it and add a short note.'
           : type === 'group-work'
@@ -217,6 +222,7 @@ const createInteractionDraft = (type: LiveInteraction['type'], initial?: LiveInt
     options: choiceType ? choiceOptions : undefined,
     correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
     explanation: type === 'quiz' || type === 'peer-learning' ? 'Explain why this answer is correct.' : undefined,
+    numberUnit: type === 'number-response' ? '' : undefined,
     durationMinutes: type === 'timer' ? 5 : type === 'group-work' ? 8 : undefined,
     discussionMinutes: type === 'peer-learning' ? 2 : undefined,
     groupSize: type === 'group-work' ? 4 : undefined,
@@ -284,6 +290,7 @@ function runResultState(results: InteractionResults): NonNullable<SessionInterac
     phase: results.phase,
     firstResponseCount: results.firstResponseCount,
     firstOptionCounts: results.firstOptionCounts,
+    numericValues: results.numericValues,
     wheelItems: results.wheelItems,
     wheelItemColors: results.wheelItemColors,
     wheelSelectedIndex: results.wheelSelectedIndex,
@@ -357,6 +364,7 @@ function InteractionComposer({
   const [options, setOptions] = useState(initialDraft.options || []);
   const [correctOptionIndex, setCorrectOptionIndex] = useState(initialDraft.correctOptionIndex || 0);
   const [explanation, setExplanation] = useState(initialDraft.explanation || '');
+  const [numberUnit, setNumberUnit] = useState(initialDraft.numberUnit || '');
   const [discussionMinutes, setDiscussionMinutes] = useState(String(initialDraft.discussionMinutes || 2));
   const [groupSize, setGroupSize] = useState(String(initialDraft.groupSize || 4));
   const [groupingMode, setGroupingMode] = useState<NonNullable<LiveInteraction['groupingMode']>>(initialDraft.groupingMode || (teamCount ? 'course-teams' : 'ad-hoc'));
@@ -401,6 +409,7 @@ function InteractionComposer({
       options: usesChoices ? options.map((option) => option.trim()).filter(Boolean) : undefined,
       correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? correctOptionIndex : undefined,
       explanation: type === 'quiz' || type === 'peer-learning' ? explanation.trim() || undefined : undefined,
+      numberUnit: type === 'number-response' ? numberUnit.trim().slice(0, 18) || undefined : undefined,
       durationMinutes: usesTimer ? durationSeconds / 60 : initialDraft.durationMinutes,
       discussionMinutes: type === 'peer-learning' ? Math.max(1, Number.parseInt(discussionMinutes || '2', 10) || 2) : undefined,
       groupSize: type === 'group-work' ? Math.max(2, Number.parseInt(groupSize || '4', 10) || 4) : undefined,
@@ -450,6 +459,7 @@ function InteractionComposer({
         </div>
       )}
       {(type === 'quiz' || type === 'peer-learning') && <label><span>Answer explanation</span><textarea value={explanation} onChange={(event) => setExplanation(event.target.value)} maxLength={500} rows={3} placeholder="Explain why the marked answer is correct" /></label>}
+      {type === 'number-response' && <label><span>Unit <small>Optional</small></span><input value={numberUnit} onChange={(event) => setNumberUnit(event.target.value.slice(0, 18))} maxLength={18} placeholder="e.g. USD, people, %, km" /><small className="interaction-composer-help">Students can enter commas, decimals, negatives, or shorthand such as 2.5k and 30m.</small></label>}
       {usesTimer && (
         <div className="interaction-composer-duration">
           <span>Duration</span>
@@ -539,6 +549,26 @@ function SortableSessionPlanItem({
   );
 }
 
+function InstructorNumberDistribution({ values, unit }: { values: number[]; unit?: string }) {
+  const distribution = buildNumericDistribution(values);
+  if (!distribution) return <div className="live-number-empty"><Hash size={28} /><strong>Waiting for the first number</strong><small>The distribution will adapt as estimates arrive.</small></div>;
+  return (
+    <div className="live-number-distribution" aria-label={`${values.length} numeric responses. Median ${formatNumericValue(distribution.median, unit)}. Range ${formatNumericValue(distribution.minimum, unit)} to ${formatNumericValue(distribution.maximum, unit)}.`}>
+      <div className="live-number-stats">
+        <span><small>Median</small><strong>{formatNumericValue(distribution.median, unit, true)}</strong></span>
+        <span><small>Range</small><strong>{formatNumericValue(distribution.minimum, unit, true)}–{formatNumericValue(distribution.maximum, unit, true)}</strong></span>
+        <span><small>Average</small><strong>{formatNumericValue(distribution.average, unit, true)}</strong></span>
+      </div>
+      <div className="live-number-plot" role="img" aria-label="Distribution of submitted numbers">
+        <div className="live-number-axis" />
+        {distribution.points.map((point, index) => <i key={`${point.value}-${index}`} style={{ '--number-x': `${point.position}%`, '--number-row': index % 4 } as CSSProperties} title={formatNumericValue(point.value, unit)} />)}
+        {distribution.ticks.map((tick, index) => <span key={`${tick.position}-${index}`} style={{ '--number-x': `${tick.position}%` } as CSSProperties}><b />{formatNumericValue(tick.value, unit, true)}</span>)}
+      </div>
+      {distribution.scale !== 'linear' && <p><Sparkles size={13} /> Wide range adjusted so small and large answers remain visible.</p>}
+    </div>
+  );
+}
+
 function InstructorInteractionStage({
   interaction,
   results,
@@ -564,6 +594,7 @@ function InstructorInteractionStage({
   const isPeerLearning = interaction.type === 'peer-learning';
   const isClock = interaction.type === 'timer';
   const isWordCloud = interaction.type === 'word-cloud';
+  const isNumberResponse = interaction.type === 'number-response';
   const isTeamFormation = interaction.type === 'team-formation';
   const isGroupWork = interaction.type === 'group-work';
   const isWheel = interaction.type === 'spin-wheel';
@@ -599,6 +630,8 @@ function InstructorInteractionStage({
             ? `Students answer privately. Reveal the ${interaction.type === 'quiz' ? 'answer' : 'class result'} when you are ready to discuss it.`
             : interaction.type === 'open-response'
               ? 'Written responses stay on your screen until you choose one to share.'
+              : isNumberResponse
+                ? 'The number line adapts automatically as the range of answers changes.'
               : isTeamFormation
                 ? 'Teams appear here as coordinators register them.'
             : isWordCloud
@@ -646,6 +679,15 @@ function InstructorInteractionStage({
             </span>
           )) : <div className="live-word-cloud-empty"><Cloud size={26} /><strong>Waiting for the first word</strong><small>The cloud will build here as students answer.</small></div>}
         </div>
+      ) : isNumberResponse ? (
+        <>
+          <InstructorNumberDistribution values={results.numericValues} unit={interaction.numberUnit} />
+          {interaction.resultVisibility === 'after-reveal' && !results.revealed && (
+            <button className="reveal-result-button" type="button" onClick={onReveal} disabled={!results.responseCount}>
+              <CheckCircle2 size={18} /> Reveal class result
+            </button>
+          )}
+        </>
       ) : hasChoices ? (
         <div className="live-choice-results">
           {interaction.options?.map((option, index) => {
@@ -1214,6 +1256,9 @@ export default function LiveLessonPrototype() {
             ...current,
             responseCount: groupAlreadySubmitted ? current.responseCount : current.responseCount + 1,
             optionCounts: nextOptionCounts,
+            numericValues: typeof response.numericValue === 'number' && Number.isFinite(response.numericValue)
+              ? [...current.numericValues, response.numericValue].slice(-120)
+              : current.numericValues,
             writtenResponses: cleanText && !groupAlreadySubmitted
               ? [{ id: response.id, text: cleanText, teamId: response.teamId, teamName: response.teamName }, ...current.writtenResponses].slice(0, 60)
               : current.writtenResponses,

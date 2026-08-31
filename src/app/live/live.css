@@ -477,6 +477,31 @@ html[data-input-modality="keyboard"] .history-toolbar button:focus-visible {
 .live-word-cloud-empty strong { color: var(--seminar-ink); }
 .live-word-cloud-empty small { color: var(--seminar-muted); }
 
+.live-number-empty { min-height: 260px; display: grid; place-content: center; justify-items: center; gap: 8px; border: 1px dashed #d8d4f6; border-radius: 22px; color: var(--seminar-violet); background: linear-gradient(180deg, #faf9ff, #fff); text-align: center; }
+.live-number-empty strong { color: var(--seminar-ink); }
+.live-number-empty small { color: var(--seminar-muted); }
+.live-number-distribution { display: grid; gap: 22px; padding: 22px 24px 18px; border: 1px solid #dedaf8; border-radius: 24px; background: linear-gradient(180deg, #faf9ff 0%, #fff 72%); }
+.live-number-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.live-number-stats > span { min-width: 0; padding: 13px 15px; border-radius: 16px; background: #fff; box-shadow: 0 8px 24px rgba(52,44,126,.07); }
+.live-number-stats small { display: block; color: #797f92; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.live-number-stats strong { display: block; overflow: hidden; margin-top: 4px; color: var(--seminar-ink); font-family: var(--seminar-font-display); font-size: clamp(22px, 2.8vw, 34px); font-weight: 520; letter-spacing: -.035em; text-overflow: ellipsis; white-space: nowrap; }
+.live-number-plot { position: relative; min-height: 132px; margin: 0 8px; }
+.live-number-axis { position: absolute; right: 0; bottom: 31px; left: 0; height: 3px; border-radius: 999px; background: #c9c4ed; }
+.live-number-plot > i { --number-row: 0; position: absolute; z-index: 2; bottom: calc(39px + var(--number-row) * 18px); left: var(--number-x); width: 14px; height: 14px; margin-left: -7px; border: 3px solid #fff; border-radius: 50%; background: #5146e5; box-shadow: 0 4px 12px rgba(81,70,229,.28); animation: live-number-arrive 420ms cubic-bezier(.2,.9,.2,1) both; }
+.live-number-plot > span { position: absolute; bottom: 0; left: var(--number-x); color: #73798c; font-size: 10px; font-weight: 750; text-align: center; transform: translateX(-50%); white-space: nowrap; }
+.live-number-plot > span b { display: block; width: 1px; height: 8px; margin: 0 auto 4px; background: #a9a3d3; }
+.live-number-distribution > p { display: flex; align-items: center; gap: 6px; margin: -8px 0 0; color: #675f91; font-size: 11px; }
+@keyframes live-number-arrive { from { opacity: 0; transform: translateY(16px) scale(.5); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (max-width: 720px) {
+  .live-number-stats { grid-template-columns: 1fr; }
+  .live-number-plot > span:nth-of-type(even) { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-number-plot > i { animation: none; }
+}
+
 .instructor-team-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-content: start; }
 .instructor-team-list article { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; min-height: 92px; border: 1px solid #e2def8; border-radius: 17px; background: #fff; padding: 16px; box-shadow: 0 8px 22px rgba(47,42,102,.06); }
 .instructor-team-list article > span { display: grid; gap: 5px; min-width: 0; }

@@ -1771,6 +1771,16 @@ body:has(.student-effect-preview) { margin: 0; background: #efedf8; }
 .student-word-answer input:focus { border-color: var(--student-violet); box-shadow: 0 0 0 3px rgba(81, 70, 229, 0.12); }
 .student-word-answer > small { position: absolute; right: 13px; bottom: 20px; color: var(--student-muted); font-size: 9px; }
 
+.student-number-answer { margin-top: 22px; display: grid; gap: 8px; }
+.student-number-answer > span { color: var(--student-muted); font-size: 10px; font-weight: 780; letter-spacing: .05em; text-transform: uppercase; }
+.student-number-answer > div { display: flex; align-items: stretch; min-height: 72px; overflow: hidden; border: 1px solid var(--student-line); border-radius: 18px; background: #fff; box-shadow: 0 12px 34px rgba(39,31,102,.08); transition: border-color 160ms ease, box-shadow 160ms ease; }
+.student-number-answer > div:focus-within { border-color: var(--student-violet); box-shadow: 0 0 0 4px rgba(81,70,229,.12), 0 14px 38px rgba(39,31,102,.1); }
+.student-number-answer b { display: grid; place-items: center; max-width: 34%; padding: 0 15px; color: #5b5296; background: #f1efff; font-size: 13px; font-weight: 820; overflow-wrap: anywhere; }
+.student-number-answer input { min-width: 0; flex: 1; border: 0; padding: 14px 17px; color: var(--student-ink); background: transparent; font-family: var(--seminar-font-display); font-size: clamp(28px, 8vw, 38px); font-variant-numeric: tabular-nums; letter-spacing: -.035em; outline: none; }
+.student-number-answer > small { min-height: 17px; color: var(--student-muted); font-size: 11px; line-height: 1.45; }
+.student-number-answer.has-error > div { border-color: #d76655; box-shadow: 0 0 0 3px rgba(215,102,85,.1); }
+.student-number-answer.has-error > small { color: #b64f40; font-weight: 700; }
+
 .student-team-form,
 .student-group-response { display: grid; gap: 14px; }
 .student-team-form label,

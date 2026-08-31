@@ -50,6 +50,7 @@ export type SessionInteractionType =
   | 'poll'
   | 'quiz'
   | 'open-response'
+  | 'number-response'
   | 'word-cloud'
   | 'peer-learning'
   | 'team-formation'
@@ -70,6 +71,7 @@ export interface SessionInteraction {
   options?: string[];
   correctOptionIndex?: number;
   explanation?: string;
+  numberUnit?: string;
   speedBonusEnabled?: boolean;
   speedBonusSeconds?: number;
   maxSpeedBonusPoints?: number;
@@ -100,6 +102,7 @@ export interface SessionInteractionRun {
     phase?: 'respond' | 'discuss' | 'respond-again' | 'work' | 'complete';
     firstResponseCount?: number;
     firstOptionCounts?: number[];
+    numericValues?: number[];
     wheelItems?: string[];
     wheelItemColors?: string[];
     wheelSelectedIndex?: number | null;

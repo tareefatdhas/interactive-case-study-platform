@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'react-qr-code';
-import { Activity, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Sparkles, Smartphone, Timer, Users } from 'lucide-react';
+import { Activity, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Cloud, Dices, Hash, HeartPulse, ListChecks, Lock, Maximize2, MessageCircle, MonitorUp, ShieldCheck, Sparkles, Smartphone, Timer, Users } from 'lucide-react';
 import ClassroomStateGate from '@/components/live/ClassroomStateGate';
 import MarkdownContent, { markdownToPlainText } from '@/components/live/MarkdownContent';
 import SignalAvatarBadge from '@/components/gamification/SignalAvatarBadge';
 import CollectiveVisual from '../pulse-preview/CollectiveVisual';
 import { joinDisplayPresence, subscribeToStudentPublicState } from '@/lib/firebase/live-classroom';
 import { ensureStudentAnonymousAuth } from '@/lib/firebase/student-config';
+import { buildNumericDistribution, formatNumericValue } from '@/lib/numeric-response';
 import {
   EMPTY_ONBOARDING_COUNTS,
   DEFAULT_LIVE_QUESTIONS,
@@ -263,6 +264,26 @@ function ResponseCurrent({ count, runId, open }: { count: number; runId: string;
   );
 }
 
+function ProjectorNumberDistribution({ values, unit }: { values: number[]; unit?: string }) {
+  const distribution = buildNumericDistribution(values);
+  if (!distribution) return <div className="display-number-empty"><Hash size={46} /><strong>Waiting for the first number</strong><span>The class distribution will build here.</span></div>;
+  return (
+    <div className="display-number-distribution" aria-label={`${values.length} numeric responses. Median ${formatNumericValue(distribution.median, unit)}. Range ${formatNumericValue(distribution.minimum, unit)} to ${formatNumericValue(distribution.maximum, unit)}.`}>
+      <div className="display-number-stats">
+        <span><small>Median</small><strong>{formatNumericValue(distribution.median, unit, true)}</strong></span>
+        <span><small>Range</small><strong>{formatNumericValue(distribution.minimum, unit, true)}–{formatNumericValue(distribution.maximum, unit, true)}</strong></span>
+        <span><small>Average</small><strong>{formatNumericValue(distribution.average, unit, true)}</strong></span>
+      </div>
+      <div className="display-number-plot" role="img" aria-label="Adaptive number line showing the submitted values">
+        <div className="display-number-axis" />
+        {distribution.points.map((point, index) => <i key={`${point.value}-${index}`} style={{ '--number-x': `${point.position}%`, '--number-row': index % 5, '--number-delay': `${Math.min(index * 18, 280)}ms` } as CSSProperties} title={formatNumericValue(point.value, unit)} />)}
+        {distribution.ticks.map((tick, index) => <span key={`${tick.position}-${index}`} style={{ '--number-x': `${tick.position}%` } as CSSProperties}><b />{formatNumericValue(tick.value, unit, true)}</span>)}
+      </div>
+      {distribution.scale !== 'linear' && <p><Sparkles size={15} /> Scale adjusted so every order of magnitude remains visible.</p>}
+    </div>
+  );
+}
+
 function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState }) {
   const interaction = lessonState.activeInteraction;
   const results = lessonState.interactionResults;
@@ -273,6 +294,7 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   const isPeerDiscussion = interaction.type === 'peer-learning' && results.phase === 'discuss';
   const isClock = interaction.type === 'timer';
   const isWordCloud = interaction.type === 'word-cloud';
+  const isNumberResponse = interaction.type === 'number-response';
   const isTeamFormation = interaction.type === 'team-formation';
   const isWheel = interaction.type === 'spin-wheel';
   const isGroupWork = interaction.type === 'group-work';
@@ -285,12 +307,12 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
   ];
 
   return (
-    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : isTeamFormation ? 'is-team-formation' : isWheel ? 'is-spin-wheel' : isGroupWork ? 'is-group-work' : isCaseMaterial ? 'is-case-material' : ''} ${showDistribution ? 'has-results' : interaction.options?.length ? 'has-response-current' : ''}`}>
+    <section className={`interaction-display-stage ${isClock ? 'is-clock-module' : isPeerDiscussion ? 'is-peer-discussion' : isWordCloud ? 'is-word-cloud' : isNumberResponse ? 'is-number-response' : isTeamFormation ? 'is-team-formation' : isWheel ? 'is-spin-wheel' : isGroupWork ? 'is-group-work' : isCaseMaterial ? 'is-case-material' : ''} ${showDistribution ? 'has-results' : interaction.options?.length || isNumberResponse ? 'has-response-current' : ''}`}>
       <div className="interaction-display-heading">
         <div>
           <span className="display-eyebrow"><ListChecks size={20} /> {interaction.label}</span>
           {isClock || isGroupWork || isTeamFormation || isCaseMaterial ? <h1>{interaction.title}</h1> : <MarkdownContent heading className="interaction-display-question" markdown={interaction.prompt} />}
-          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : isGroupWork ? <MarkdownContent className="display-group-work-instructions" markdown={interaction.prompt} /> : isTeamFormation ? <><MarkdownContent className="display-group-work-instructions" markdown={interaction.prompt} /><p>Choose your team on your phone. New teams will appear here as they are created.</p></> : !isCaseMaterial && <p>{isWheel ? results.wheelSelectedLabel ? 'The wheel has spoken.' : 'The instructor will spin when the room is ready.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
+          {isClock ? <MarkdownContent className="display-clock-instructions" markdown={interaction.prompt} /> : isGroupWork ? <MarkdownContent className="display-group-work-instructions" markdown={interaction.prompt} /> : isTeamFormation ? <><MarkdownContent className="display-group-work-instructions" markdown={interaction.prompt} /><p>Choose your team on your phone. New teams will appear here as they are created.</p></> : !isCaseMaterial && <p>{isWheel ? results.wheelSelectedLabel ? 'The wheel has spoken.' : 'The instructor will spin when the room is ready.' : isPeerDiscussion ? 'Turn to someone near you. Compare your reasoning, not only your answer.' : isWordCloud ? results.open ? 'Each answer joins the room as it arrives.' : 'The cloud is complete. What patterns do you notice?' : isNumberResponse ? showDistribution ? 'The number line adapts as the range changes.' : results.open ? 'Estimates are arriving privately.' : 'The instructor is reviewing the estimates.' : results.phase === 'respond-again' ? 'Answer once more after the conversation.' : results.open ? 'Respond on your phone.' : results.revealed ? 'Responses are locked. Discuss the result together.' : 'Responses are locked while the instructor reviews them.'}</p>}
         </div>
         {!isClock && !isWheel && !isCaseMaterial && <div className="interaction-display-count">
           <Users size={21} />
@@ -328,6 +350,8 @@ function ClassroomInteraction({ lessonState }: { lessonState: LessonDisplayState
         <div className="display-team-board">
           {lessonState.teams.length ? lessonState.teams.map((team, index) => <article key={team.id} style={{ '--team-delay': `${index * 70}ms`, '--team-color': TEAM_COLOR_VALUES[team.color || ''] || '#5146e5' } as CSSProperties}><span>{index + 1}</span><div><strong>{team.name}</strong>{team.description && <p>{team.description}</p>}</div><div className="display-team-meta">{team.tag && <small>{team.tag}</small>}<b>{team.memberCount || 0} joined</b></div></article>) : <div className="display-team-empty"><Users size={44} /><strong>Waiting for the first team</strong><span>Teams will appear as students register.</span></div>}
         </div>
+      ) : isNumberResponse ? (
+        showDistribution ? <ProjectorNumberDistribution values={results.numericValues} unit={interaction.numberUnit} /> : <ResponseCurrent count={results.responseCount} runId={results.runId} open={results.open} />
       ) : isWordCloud ? (
         <div className={`display-word-cloud ${wordCloudDensity}`} aria-label={`Word cloud for ${markdownToPlainText(interaction.prompt)} with ${wordCloudItems.length} unique answers`}>
           {results.responseCount > 0 && <i className="display-word-cloud-ripple" key={`cloud-ripple-${results.responseCount}`} aria-hidden="true" />}

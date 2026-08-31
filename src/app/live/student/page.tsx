@@ -47,6 +47,7 @@ import { subscribeStudentTeams, type CourseTeamRecord } from '@/lib/firebase/cou
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { triggerStudentHaptic } from '@/lib/student-haptics';
 import { motivationConfig } from '@/lib/gamification';
+import { formatNumericValue, parseNumericResponse } from '@/lib/numeric-response';
 import {
   EMPTY_ONBOARDING_COUNTS,
   DEFAULT_LIVE_QUESTIONS,
@@ -828,6 +829,7 @@ export default function StudentWelcomePage() {
   const [selectedMood, setSelectedMood] = useState<MoodKey | null>(null);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [writtenResponse, setWrittenResponse] = useState('');
+  const [numericInput, setNumericInput] = useState('');
   const [teamName, setTeamName] = useState('');
   const [teamDescription, setTeamDescription] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState('');
@@ -1483,7 +1485,7 @@ export default function StudentWelcomePage() {
   }, [lessonState.onboardingRunId, remoteSession]);
 
   const responseScope = `${remoteSession?.ownerUid || 'demo'}:${remoteSession?.sessionId || 'demo'}:${lessonState.interactionResults?.runId || 'none'}`;
-  const persistResponseDraft = useCallback((draft: Partial<{ selectedOption: number | null; writtenResponse: string; teamName: string; teamDescription: string; selectedTeamId: string }>) => {
+  const persistResponseDraft = useCallback((draft: Partial<{ selectedOption: number | null; writtenResponse: string; numericInput: string; teamName: string; teamDescription: string; selectedTeamId: string }>) => {
     const key = `classfully-response-draft:${responseScope}`;
     try {
       const current = JSON.parse(window.localStorage.getItem(key) || '{}');
@@ -1495,7 +1497,7 @@ export default function StudentWelcomePage() {
   useLayoutEffect(() => {
     if (responseScopeRef.current === responseScope) return;
     responseScopeRef.current = responseScope;
-    let draft: { selectedOption?: number | null; writtenResponse?: string; teamName?: string; teamDescription?: string; selectedTeamId?: string } = {};
+    let draft: { selectedOption?: number | null; writtenResponse?: string; numericInput?: string; teamName?: string; teamDescription?: string; selectedTeamId?: string } = {};
     try {
       draft = JSON.parse(window.localStorage.getItem(`classfully-response-draft:${responseScope}`) || '{}');
     } catch {
@@ -1503,6 +1505,7 @@ export default function StudentWelcomePage() {
     }
     setSelectedOption(draft.selectedOption ?? null);
     setWrittenResponse(draft.writtenResponse || '');
+    setNumericInput(draft.numericInput || '');
     setTeamName(draft.teamName || '');
     setTeamDescription(draft.teamDescription || '');
     setSelectedTeamId(draft.selectedTeamId || '');
@@ -1520,6 +1523,7 @@ export default function StudentWelcomePage() {
           if (!response) return;
           setSelectedOption(response.optionIndex ?? null);
           setWrittenResponse(response.text || '');
+          setNumericInput(typeof response.numericValue === 'number' ? formatNumericValue(response.numericValue) : '');
           setTeamName(response.teamName || '');
           setTeamDescription(response.teamDescription || '');
           setSelectedTeamId(response.teamId || '');
@@ -1533,6 +1537,7 @@ export default function StudentWelcomePage() {
         const response = JSON.parse(storedResponse) as InteractionResponse & { submittedAt?: number };
         setSelectedOption(response.optionIndex ?? null);
         setWrittenResponse(response.text || '');
+        setNumericInput(typeof response.numericValue === 'number' ? formatNumericValue(response.numericValue) : '');
         setTeamName(response.teamName || '');
         setTeamDescription(response.teamDescription || '');
         setSelectedTeamId(response.teamId || '');
@@ -1624,6 +1629,7 @@ export default function StudentWelcomePage() {
       interactionId: interaction.id,
       optionIndex: selectedOption ?? undefined,
       text: writtenResponse.trim() || undefined,
+      numericValue: interaction.type === 'number-response' ? parseNumericResponse(numericInput) ?? undefined : undefined,
     };
     if (interaction.type === 'team-formation') {
       const existingTeam = availableTeams.find((team) => team.id === selectedTeamId);
@@ -1655,6 +1661,8 @@ export default function StudentWelcomePage() {
       ? response.teamName || 'Your team'
       : selectedOption !== null
       ? interaction.options?.[selectedOption] || 'Your choice'
+      : interaction.type === 'number-response' && response.numericValue !== undefined
+        ? formatNumericValue(response.numericValue, interaction.numberUnit)
       : writtenResponse.trim() || 'Your response';
     const transportId = beginTransport(transportColor, transportLabel, origin);
     setSubmissionError('');
@@ -1943,11 +1951,14 @@ export default function StudentWelcomePage() {
     && selectedTeamId
     && lessonState.interactionResults?.submittedTeamIds?.includes(selectedTeamId),
   );
+  const parsedNumericResponse = parseNumericResponse(numericInput);
   const responseReady = Boolean(
     lessonState.activeInteraction?.type === 'team-formation'
       ? selectedTeamId || (teamName.trim().length >= 2 && (!lessonState.activeInteraction.requireTeamTag || selectedOption !== null))
       : lessonState.activeInteraction?.type === 'group-work' && groupUsesCourseTeams
         ? selectedTeamId && writtenResponse.trim() && !selectedTeamHasSubmission
+        : lessonState.activeInteraction?.type === 'number-response'
+          ? numericInput.trim() && parsedNumericResponse !== null
         : lessonState.activeInteraction?.options?.length ? selectedOption !== null : writtenResponse.trim(),
   );
   const selectedAnswerLetter = selectedOption !== null ? String.fromCharCode(65 + selectedOption) : '';
@@ -1962,6 +1973,8 @@ export default function StudentWelcomePage() {
         ? selectedTeamId && groupUsesCourseTeams ? `Send for ${availableTeams.find((team) => team.id === selectedTeamId)?.name || 'team'}` : groupUsesCourseTeams ? 'Send team response' : 'Send group response'
         : lessonState.activeInteraction?.type === 'word-cloud'
           ? 'Add to word cloud'
+          : lessonState.activeInteraction?.type === 'number-response'
+            ? 'Send number'
           : 'Send response';
 
   useEffect(() => {
@@ -2083,7 +2096,7 @@ export default function StudentWelcomePage() {
             {interactionSubmitted ? (
               <StudentPostSubmit
                 interaction={lessonState.activeInteraction}
-                answer={lessonState.activeInteraction.type === 'team-formation' ? availableTeams.find((team) => team.id === selectedTeamId)?.name || teamName || 'Team saved' : lessonState.activeInteraction.options?.[selectedOption ?? -1] || writtenResponse || 'Response saved'}
+                answer={lessonState.activeInteraction.type === 'team-formation' ? availableTeams.find((team) => team.id === selectedTeamId)?.name || teamName || 'Team saved' : lessonState.activeInteraction.type === 'number-response' && parsedNumericResponse !== null ? formatNumericValue(parsedNumericResponse, lessonState.activeInteraction.numberUnit) : lessonState.activeInteraction.options?.[selectedOption ?? -1] || writtenResponse || 'Response saved'}
                 questions={lessonState.questions}
                 selectedQuestionVotes={selectedQuestionVotes}
                 ownQuestionIds={ownQuestionIds}
@@ -2144,7 +2157,7 @@ export default function StudentWelcomePage() {
                   <div className="student-kicker">{lessonState.activeInteraction.label} · {lessonState.interactionResults.phase === 'respond-again' ? 'Answer again' : 'Live now'}</div>
                 </div>
                 {lessonState.activeInteraction.type === 'team-formation' || lessonState.activeInteraction.type === 'group-work' ? <><h1 className="student-interaction-question">{lessonState.activeInteraction.title}</h1><MarkdownContent className="student-activity-instructions" markdown={lessonState.activeInteraction.prompt} /></> : <MarkdownContent heading className={`student-interaction-question ${promptDensityClass}`} markdown={lessonState.activeInteraction.prompt} />}
-                <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'You are working with your class team. One person sends the team’s response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response for your instructor.'}</p>
+                <p>{lessonState.activeInteraction.type === 'team-formation' ? 'Choose your team. If it is not here yet, one person can create it.' : lessonState.activeInteraction.type === 'group-work' ? groupUsesCourseTeams ? 'You are working with your class team. One person sends the team’s response.' : `Work in a group of about ${lessonState.activeInteraction.groupSize || 4}. Choose one note-taker to send your group’s response.` : lessonState.activeInteraction.type === 'word-cloud' ? 'Send one word or a short phrase. Repeated answers will grow together on the projector.' : lessonState.activeInteraction.type === 'number-response' ? 'Enter one number. Commas and shorthand such as 2.5k or 30m work too.' : lessonState.interactionResults.phase === 'respond-again' ? 'Choose again. It is fine to keep your answer or change it.' : lessonState.activeInteraction.options?.length ? 'Choose one response.' : 'Write a short response for your instructor.'}</p>
 
                 {lessonState.activeInteraction.type === 'team-formation' ? (
                   <div className="student-team-form">
@@ -2185,6 +2198,12 @@ export default function StudentWelcomePage() {
                       </HapticButton>
                     ))}
                   </div>
+                ) : lessonState.activeInteraction.type === 'number-response' ? (
+                  <label className={`student-number-answer ${numericInput.trim() && parsedNumericResponse === null ? 'has-error' : ''}`}>
+                    <span>Your number</span>
+                    <div>{lessonState.activeInteraction.numberUnit && <b>{lessonState.activeInteraction.numberUnit}</b>}<input value={numericInput} onChange={(event) => { const value = event.target.value.slice(0, 32); setNumericInput(value); persistResponseDraft({ numericInput: value }); }} onBlur={() => { if (parsedNumericResponse !== null) { const value = formatNumericValue(parsedNumericResponse); setNumericInput(value); persistResponseDraft({ numericInput: value }); } }} disabled={!lessonState.interactionResults?.open} inputMode="decimal" maxLength={32} placeholder="e.g. 30,000,000" aria-label={`Your numeric response${lessonState.activeInteraction.numberUnit ? ` in ${lessonState.activeInteraction.numberUnit}` : ''}`} autoComplete="off" /></div>
+                    <small>{numericInput.trim() && parsedNumericResponse === null ? 'Enter one valid number.' : parsedNumericResponse !== null ? `We’ll record ${formatNumericValue(parsedNumericResponse, lessonState.activeInteraction.numberUnit)}.` : 'Decimals, negatives, commas, k, m, and b are supported.'}</small>
+                  </label>
                 ) : lessonState.activeInteraction.type === 'word-cloud' ? (
                   <label className="student-word-answer">
                     <span>One word or short phrase</span>

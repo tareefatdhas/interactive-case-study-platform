@@ -561,7 +561,9 @@ export async function submitStudentInteractionResponse(
     });
     if (!claim.committed) throw new Error('TEAM_SUBMISSION_EXISTS');
   }
-  const answer = typeof response.optionIndex === 'number'
+  const answer = typeof response.numericValue === 'number' && Number.isFinite(response.numericValue)
+    ? { numericValue: response.numericValue }
+    : typeof response.optionIndex === 'number'
     ? { optionIndex: response.optionIndex }
     : { text: response.text?.trim().slice(0, 280) || '' };
   const storedResponse: StoredLiveResponse = cleanFirebaseValue({

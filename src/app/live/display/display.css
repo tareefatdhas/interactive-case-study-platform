@@ -1273,6 +1273,28 @@ html[data-input-modality="keyboard"] .presentation-navigator button:focus-visibl
 .display-word-cloud-empty strong { color: var(--display-ink); font-family: var(--seminar-font-display); font-size: clamp(28px, 3vw, 44px); font-weight: 500; }
 .display-word-cloud-empty span { color: var(--display-muted); font-size: 14px; }
 
+.interaction-display-stage.is-number-response { padding-top: clamp(34px, 5vh, 72px); }
+.interaction-display-stage.is-number-response .interaction-display-heading { align-items: start; }
+.display-number-empty { min-height: clamp(310px, 44vh, 520px); display: grid; place-content: center; justify-items: center; gap: 12px; border: 1px dashed rgba(81,70,229,.28); border-radius: 32px; color: var(--display-violet); background: radial-gradient(circle at 50% 46%, rgba(81,70,229,.08), transparent 48%); text-align: center; }
+.display-number-empty strong { color: var(--display-ink); font-family: var(--seminar-font-display); font-size: clamp(30px, 3.7vw, 54px); font-weight: 500; }
+.display-number-empty span { color: var(--display-muted); font-size: 15px; }
+.display-number-distribution { min-height: clamp(330px, 46vh, 540px); display: grid; grid-template-rows: auto 1fr auto; gap: clamp(16px, 2.5vh, 30px); padding: clamp(24px, 3vw, 46px); border: 1px solid rgba(81,70,229,.18); border-radius: 34px; background: linear-gradient(180deg, rgba(248,247,255,.97), rgba(255,255,255,.96)); box-shadow: 0 28px 74px rgba(48,39,116,.1); }
+.display-number-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(12px, 1.6vw, 24px); }
+.display-number-stats > span { min-width: 0; padding: clamp(14px, 1.7vw, 24px); border-radius: 22px; background: #fff; box-shadow: 0 10px 28px rgba(48,39,116,.075); }
+.display-number-stats small { display: block; color: #777d90; font-size: clamp(9px, .8vw, 12px); font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.display-number-stats strong { display: block; overflow: hidden; margin-top: 4px; color: var(--display-ink); font-family: var(--seminar-font-display); font-size: clamp(28px, 3.7vw, 58px); font-variant-numeric: tabular-nums; font-weight: 520; letter-spacing: -.045em; line-height: 1.05; text-overflow: ellipsis; white-space: nowrap; }
+.display-number-plot { position: relative; min-height: clamp(155px, 21vh, 250px); margin: 0 clamp(10px, 1.5vw, 24px); }
+.display-number-axis { position: absolute; right: 0; bottom: 43px; left: 0; height: 4px; border-radius: 99px; background: linear-gradient(90deg, #bdb6e9, #5146e5 50%, #bdb6e9); }
+.display-number-plot > i { --number-row: 0; position: absolute; z-index: 2; bottom: calc(54px + var(--number-row) * clamp(18px, 2.2vh, 27px)); left: var(--number-x); width: clamp(16px, 1.45vw, 23px); height: clamp(16px, 1.45vw, 23px); border: clamp(3px, .25vw, 4px) solid #fff; border-radius: 50%; background: #5146e5; box-shadow: 0 6px 18px rgba(81,70,229,.32); transform: translateX(-50%); animation: display-number-arrive 520ms var(--number-delay) cubic-bezier(.16,1,.3,1) both; }
+.display-number-plot > span { position: absolute; bottom: 0; left: var(--number-x); color: #696f84; font-size: clamp(10px, .9vw, 14px); font-weight: 800; transform: translateX(-50%); white-space: nowrap; }
+.display-number-plot > span b { display: block; width: 2px; height: 11px; margin: 0 auto 5px; border-radius: 2px; background: #9f98cf; }
+.display-number-distribution > p { display: flex; align-items: center; justify-content: center; gap: 7px; margin: -8px 0 0; color: #666083; font-size: clamp(10px, .9vw, 13px); }
+@keyframes display-number-arrive { from { opacity: 0; transform: translate(-50%, 22px) scale(.45); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .display-number-plot > i { animation: none; }
+}
+
 .interaction-display-stage.is-spin-wheel {
   justify-content: flex-start;
   overflow: hidden;

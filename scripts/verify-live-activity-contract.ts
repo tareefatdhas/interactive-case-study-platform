@@ -17,6 +17,7 @@ const types: SessionInteractionType[] = [
   'poll',
   'quiz',
   'open-response',
+  'number-response',
   'word-cloud',
   'peer-learning',
   'team-formation',
@@ -54,6 +55,7 @@ assert.equal(byType('pulse').resultVisibility, 'instructor-only');
 assert.equal(byType('quiz').resultVisibility, 'after-reveal');
 assert.equal(byType('peer-learning').resultVisibility, 'after-reveal');
 assert.equal(byType('open-response').resultVisibility, 'instructor-only');
+assert.equal(byType('number-response').resultVisibility, 'live');
 assert.equal(byType('group-work').resultVisibility, 'instructor-only');
 assert.equal(byType('word-cloud').resultVisibility, 'live');
 assert.equal(byType('team-formation').resultVisibility, 'live');
@@ -62,6 +64,7 @@ assert.equal(interactionAcceptsResponses(byType('timer')), false);
 assert.equal(interactionAcceptsResponses(byType('spin-wheel')), false);
 assert.equal(interactionAcceptsResponses(byType('case-study')), false);
 assert.equal(interactionAcceptsResponses(byType('poll')), true);
+assert.equal(interactionAcceptsResponses(byType('number-response')), true);
 
 const populatedResults = (interaction: LiveInteraction, revealed: boolean): InteractionResults => ({
   ...createInteractionResults(interaction),
@@ -86,6 +89,19 @@ const livePoll = byType('poll');
 const publicLivePoll = createPublicInteractionResults(livePoll, populatedResults(livePoll, true));
 assert.equal(shouldShowClassDistribution(livePoll, publicLivePoll!), true);
 assert.deepEqual(publicLivePoll?.optionCounts, [1, 2, 0]);
+
+const numberResponse = byType('number-response');
+const numberSummary = summarizeInteractionResponses(numberResponse, [
+  { id: 'number-a', runId: 'number-run', interactionId: numberResponse.id, numericValue: 2 },
+  { id: 'number-b', runId: 'number-run', interactionId: numberResponse.id, numericValue: 5 },
+  { id: 'number-c', runId: 'number-run', interactionId: numberResponse.id, numericValue: 30_000_000 },
+]);
+assert.deepEqual(numberSummary.numericValues, [2, 5, 30_000_000]);
+const publicNumber = createPublicInteractionResults(numberResponse, { ...populatedResults(numberResponse, true), ...numberSummary });
+assert.equal(shouldShowClassDistribution(numberResponse, publicNumber!), true);
+assert.deepEqual(publicNumber?.numericValues, [2, 5, 30_000_000]);
+const hiddenNumber = createPublicInteractionResults({ ...numberResponse, resultVisibility: 'after-reveal' }, { ...populatedResults(numberResponse, false), ...numberSummary });
+assert.deepEqual(hiddenNumber?.numericValues, []);
 
 const heldPoll: LiveInteraction = { ...livePoll, resultVisibility: 'after-reveal' };
 const hiddenPoll = createPublicInteractionResults(heldPoll, populatedResults(heldPoll, false));

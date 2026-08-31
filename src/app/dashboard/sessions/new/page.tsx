@@ -29,6 +29,7 @@ import {
   FileText,
   GripVertical,
   HeartPulse,
+  Hash,
   ListChecks,
   MessageCircle,
   Plus,
@@ -52,6 +53,7 @@ const interactionOptions: Array<{
   { type: 'poll', label: 'Opinion poll', description: 'Open a discussion with the room’s starting view.', icon: BarChart3 },
   { type: 'quiz', label: 'Knowledge check', description: 'Reveal a misconception while there is time to reteach it.', icon: CircleHelp },
   { type: 'open-response', label: 'Short response', description: 'Gather questions or a brief reflection for review.', icon: MessageCircle },
+  { type: 'number-response', label: 'Number response', description: 'Collect estimates and show their distribution on an adaptive number line.', icon: Hash },
   { type: 'word-cloud', label: 'Word cloud', description: 'Gather one word or a short phrase and show shared themes live.', icon: Cloud },
   { type: 'reflection', label: 'Exit reflection', description: 'Capture what changed and what students will carry forward.', icon: Sparkles },
   { type: 'team-formation', label: 'Form teams now', description: 'Let students create or join named teams during class.', icon: UsersRound },
@@ -70,7 +72,7 @@ const interactionGroups: Array<{
   {
     label: 'Quick interactions',
     description: 'One focused classroom moment',
-    types: ['pulse', 'poll', 'quiz', 'open-response', 'word-cloud', 'reflection'],
+    types: ['pulse', 'poll', 'quiz', 'open-response', 'number-response', 'word-cloud', 'reflection'],
   },
   {
     label: 'Teaching flows',
@@ -118,6 +120,7 @@ const defaultPrompt: Record<SessionInteractionType, string> = {
   poll: 'Which option best matches your view?',
   quiz: 'Choose the best answer.',
   'open-response': 'What question is still unresolved?',
+  'number-response': 'What is your best estimate?',
   'word-cloud': 'What one word best captures this idea?',
   'team-formation': 'Create a team name, add a short description, and choose the direction that fits your group.',
   'peer-learning': 'Choose the best answer. You will discuss it with a partner, then answer again.',
@@ -290,6 +293,7 @@ function NewSessionContent() {
             : undefined,
         correctOptionIndex: type === 'quiz' || type === 'peer-learning' ? 0 : undefined,
         explanation: type === 'quiz' || type === 'peer-learning' ? 'Explain why this answer is correct.' : undefined,
+        numberUnit: type === 'number-response' ? '' : undefined,
         wheelSource: type === 'spin-wheel' ? 'students' : undefined,
         wheelItems: type === 'spin-wheel' ? [] : undefined,
         wheelRemoveSelected: type === 'spin-wheel' ? true : undefined,
@@ -803,6 +807,7 @@ function NewSessionContent() {
                           )}
                           {interaction.type === 'timer' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">The clock starts when you launch this activity. Students see the prompt and the same countdown on their phones.</p>}
                           {interaction.type === 'open-response' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Written responses stay on the instructor screen. You choose what appears on the projector.</p>}
+                          {interaction.type === 'number-response' && <label className="grid gap-2 rounded-lg bg-[#f7f6ff] px-3 py-3 text-xs font-semibold text-[#4f576d]"><span>Unit <small className="font-normal">Optional</small></span><input value={interaction.numberUnit || ''} onChange={(event) => updateInteraction(interaction.id, { numberUnit: event.target.value.slice(0, 18) || undefined })} maxLength={18} placeholder="USD, people, %, km" className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal" /><small className="font-normal leading-5 text-[#697087]">Students can use commas or shorthand such as 2.5k and 30m. The projector adapts to the range.</small></label>}
                           {interaction.type === 'word-cloud' && <p className="rounded-lg bg-[#f7f6ff] px-3 py-2 text-xs leading-5 text-[#5a6278]">Students send one word or a short phrase. Repeated answers grow larger in the live projector cloud.</p>}
                           {interaction.type === 'team-formation' && <label className="grid gap-2 rounded-lg bg-[#f7f6ff] px-3 py-3 text-xs font-semibold text-[#4f576d]"><span>Course tags <small className="font-normal">Separate with commas</small></span><input defaultValue={(interaction.teamTags || []).join(', ')} onBlur={(event) => { const teamTags = event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8); updateInteraction(interaction.id, { teamTags, requireTeamTag: teamTags.length > 0 }); }} placeholder="Theme 1, Theme 2, Theme 3" className="rounded-lg border border-[#d7dae5] bg-white px-3 py-2 font-normal" /></label>}
                           {interaction.type === 'group-work' && <p className="rounded-lg bg-[#fff7f2] px-3 py-2 text-xs leading-5 text-[#6a554e]">{interaction.groupingMode === 'ad-hoc' ? 'One student submits for each temporary group. The projector shows group submissions, not student names.' : 'Each student sees their saved team. One person submits for the team.'}</p>}

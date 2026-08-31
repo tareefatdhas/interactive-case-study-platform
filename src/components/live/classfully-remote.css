@@ -149,6 +149,11 @@
 .remote-response-metric > div { display: flex; align-items: baseline; gap: 7px; }
 .remote-response-metric strong { font-size: 25px; letter-spacing: -0.05em; animation: remote-number-arrive 280ms cubic-bezier(.2,.8,.2,1); }
 .remote-response-metric span { color: var(--remote-muted); font-size: 11px; }
+.remote-number-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 11px; }
+.remote-number-summary > span { min-width: 0; padding: 9px 10px; border: 1px solid #dedaf8; border-radius: 11px; background: #f8f7ff; }
+.remote-number-summary small { display: block; color: var(--remote-muted); font-size: 8px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.remote-number-summary strong { display: block; overflow: hidden; margin-top: 2px; color: var(--remote-ink); font-size: 15px; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
+.remote-number-summary em { grid-column: 1 / -1; color: var(--remote-violet-deep); font-size: 9px; font-style: normal; font-weight: 750; }
 .remote-response-status { padding: 5px 8px; border-radius: 999px; background: #edf7f1; color: var(--remote-green) !important; font-weight: 750; }
 .remote-progress { height: 7px; margin: 10px 0 17px; border-radius: 99px; background: #e9e7ee; overflow: hidden; }
 .remote-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6654e9, #9279f4); transition: width 450ms cubic-bezier(.22,.8,.25,1); }
